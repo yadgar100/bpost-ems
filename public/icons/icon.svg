@@ -1,0 +1,27 @@
+<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4F46E5;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7C3AED;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="512" height="512" rx="120" fill="url(#grad)"/>
+  
+  <!-- Clock Icon -->
+  <circle cx="256" cy="200" r="80" fill="none" stroke="white" stroke-width="12"/>
+  <line x1="256" y1="200" x2="256" y2="150" stroke="white" stroke-width="10" stroke-linecap="round"/>
+  <line x1="256" y1="200" x2="290" y2="220" stroke="white" stroke-width="10" stroke-linecap="round"/>
+  
+  <!-- QR Code representation -->
+  <rect x="180" y="320" width="60" height="60" fill="white" rx="8"/>
+  <rect x="272" y="320" width="60" height="60" fill="white" rx="8"/>
+  <rect x="190" y="330" width="20" height="20" fill="#4F46E5"/>
+  <rect x="220" y="330" width="10" height="40" fill="#4F46E5"/>
+  <rect x="282" y="330" width="40" height="10" fill="#4F46E5"/>
+  <rect x="292" y="350" width="30" height="20" fill="#4F46E5"/>
+  
+  <!-- Title -->
+  <text x="256" y="450" font-family="Arial, sans-serif" font-size="48" font-weight="bold" fill="white" text-anchor="middle">BP</text>
+</svg>

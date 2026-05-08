@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- PWA Meta Tags -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="B-Post" />
+    <meta name="theme-color" content="#4F46E5" />
+    <meta name="description" content="B-Post Employee Management - Professional employee time tracking and payroll management system with GPS verification and QR code check-in" />
+
+    <!-- App Icons -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192x192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512x512.png" />
+
+    <title>B-Post Employee Management System</title>
+
+    <!-- Leaflet CSS + JS (kept as CDN globals — used via window.L) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- QR Scanner (kept as CDN global — used via window.Html5QrcodeScanner) -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+
+    <!-- Unregister any old service workers -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(regs => {
+                regs.forEach(r => r.unregister());
+            });
+        }
+    </script>
+
+    <!-- PWA Install Prompt -->
+    <script>
+        let deferredPrompt;
+        const installButton = document.createElement('button');
+        installButton.id = 'install-button';
+        installButton.style.cssText = `
+            position:fixed;bottom:20px;right:20px;background:#4F46E5;color:white;
+            border:none;border-radius:12px;padding:12px 24px;font-weight:600;
+            box-shadow:0 4px 6px rgba(0,0,0,.1);cursor:pointer;z-index:9999;
+            display:none;font-size:14px;`;
+        installButton.innerHTML = '📱 Install App';
+        document.body.appendChild(installButton);
+        window.addEventListener('beforeinstallprompt', e => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installButton.style.display = 'block';
+            installButton.addEventListener('click', async () => {
+                if (!deferredPrompt) return;
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                deferredPrompt = null;
+                installButton.style.display = 'none';
+            });
+        });
+        window.addEventListener('appinstalled', () => { installButton.style.display = 'none'; });
+        if (window.matchMedia('(display-mode: standalone)').matches) {
+            installButton.style.display = 'none';
+        }
+    </script>
+</body>
+</html>

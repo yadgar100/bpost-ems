@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>B-Post Icon Generator</title>
+</head>
+<body>
+    <h2>B-Post Employee Management Icon Generator</h2>
+    <p>Right-click each canvas and "Save image as..." with the corresponding filename:</p>
+    
+    <div id="icons"></div>
+    
+    <script>
+        const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+        const iconsDiv = document.getElementById('icons');
+        
+        sizes.forEach(size => {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            
+            // Gradient background
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#4F46E5');
+            gradient.addColorStop(1, '#7C3AED');
+            ctx.fillStyle = gradient;
+            
+            // Rounded rectangle
+            const radius = size * 0.23;
+            ctx.beginPath();
+            ctx.moveTo(radius, 0);
+            ctx.lineTo(size - radius, 0);
+            ctx.quadraticCurveTo(size, 0, size, radius);
+            ctx.lineTo(size, size - radius);
+            ctx.quadraticCurveTo(size, size, size - radius, size);
+            ctx.lineTo(radius, size);
+            ctx.quadraticCurveTo(0, size, 0, size - radius);
+            ctx.lineTo(0, radius);
+            ctx.quadraticCurveTo(0, 0, radius, 0);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Clock circle
+            const clockY = size * 0.39;
+            const clockRadius = size * 0.156;
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = size * 0.023;
+            ctx.beginPath();
+            ctx.arc(size/2, clockY, clockRadius, 0, 2 * Math.PI);
+            ctx.stroke();
+            
+            // Clock hands
+            ctx.lineCap = 'round';
+            ctx.lineWidth = size * 0.02;
+            // Hour hand
+            ctx.beginPath();
+            ctx.moveTo(size/2, clockY);
+            ctx.lineTo(size/2, clockY - clockRadius * 0.6);
+            ctx.stroke();
+            // Minute hand
+            ctx.beginPath();
+            ctx.moveTo(size/2, clockY);
+            ctx.lineTo(size/2 + clockRadius * 0.4, clockY + clockRadius * 0.25);
+            ctx.stroke();
+            
+            // QR squares
+            const qrY = size * 0.625;
+            const qrSize = size * 0.117;
+            const qrGap = size * 0.18;
+            
+            ctx.fillStyle = 'white';
+            const cornerRadius = size * 0.016;
+            
+            // Left square
+            ctx.beginPath();
+            ctx.roundRect(size/2 - qrGap - qrSize, qrY, qrSize, qrSize, cornerRadius);
+            ctx.fill();
+            
+            // Right square
+            ctx.beginPath();
+            ctx.roundRect(size/2 + qrGap, qrY, qrSize, qrSize, cornerRadius);
+            ctx.fill();
+            
+            // Inner patterns
+            ctx.fillStyle = '#4F46E5';
+            const innerSize = qrSize * 0.33;
+            ctx.fillRect(size/2 - qrGap - qrSize + qrSize*0.17, qrY + qrSize*0.17, innerSize, innerSize);
+            ctx.fillRect(size/2 + qrGap + qrSize*0.33, qrY + qrSize*0.33, innerSize*1.5, innerSize);
+            
+            // Text
+            ctx.fillStyle = 'white';
+            ctx.font = `bold ${size * 0.094}px Arial, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('BP', size/2, size * 0.88);
+            
+            // Add to page
+            const container = document.createElement('div');
+            container.style.marginBottom = '20px';
+            
+            const label = document.createElement('p');
+            label.innerHTML = `<strong>icon-${size}x${size}.png</strong>`;
+            container.appendChild(label);
+            container.appendChild(canvas);
+            
+            iconsDiv.appendChild(container);
+        });
+        
+        // Polyfill for roundRect (for older browsers)
+        if (!CanvasRenderingContext2D.prototype.roundRect) {
+            CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+                if (w < 2 * r) r = w / 2;
+                if (h < 2 * r) r = h / 2;
+                this.beginPath();
+                this.moveTo(x + r, y);
+                this.arcTo(x + w, y, x + w, y + h, r);
+                this.arcTo(x + w, y + h, x, y + h, r);
+                this.arcTo(x, y + h, x, y, r);
+                this.arcTo(x, y, x + w, y, r);
+                this.closePath();
+                return this;
+            }
+        }
+    </script>
+</body>
+</html>
