@@ -4715,8 +4715,8 @@ import React, { useState, useEffect } from 'react';
                   {exp.status === 'approved' && (
                    <button onClick={() => handleAction(exp.id, 'paid', { paidBy: currentUser.firstName + ' ' + currentUser.lastName })} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold hover:bg-blue-200">Mark Paid</button>
                   )}
-                  {(exp.status === 'rejected' || exp.status === 'paid') && (
-                   <button onClick={() => handleDelete(exp.id)} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs font-semibold hover:bg-gray-200">Delete</button>
+                  {hasPermission('canDeleteAgentCollections') && (
+                   <button onClick={() => handleDelete(exp.id)} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold hover:bg-red-200">Delete</button>
                   )}
                    </div>
                   </td>
