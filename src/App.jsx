@@ -1,8 +1,66 @@
-import React, { useState, useEffect } from 'react';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    
+    <!-- PWA Meta Tags -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="B-Post">
+    <meta name="theme-color" content="#4F46E5">
+    <meta name="description" content="B-Post Employee Management - Professional employee time tracking and payroll management system with GPS verification and QR code check-in">
+    
+    <!-- App Icons -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512x512.png">
+    
+    <title>B-Post Employee Management System</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+                sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .leaflet-container {
+            height: 100%;
+            width: 100%;
+            border-radius: 0.75rem;
+        }
+        #location-map {
+            height: 500px;
+            width: 100%;
+            z-index: 1;
+        }
+        #qr-reader {
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        #qr-reader__dashboard_section_swaplink {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
 
-/* global Html5QrcodeScanner, L */
-
-
+    <script type="text/babel">
+        const { useState, useEffect } = React;
 
         const API_BASE_URL = 'https://bpost-api-vercel-fixed.vercel.app';
         const API_ENDPOINTS = {
@@ -315,7 +373,7 @@ import React, { useState, useEffect } from 'react';
             </svg>
         );
 
-        export default function EmployeeTimesheetApp() {
+        function EmployeeTimesheetApp() {
             const [currentView, setCurrentView] = useState('login');
             const [currentUser, setCurrentUser] = useState(null);
 
@@ -751,6 +809,17 @@ import React, { useState, useEffect } from 'react';
                 };
                 document.addEventListener('visibilitychange', handleVisibilityChange);
                 return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+            }, [currentUser]);
+
+            // Auto-refresh timesheets every 60s so Currently Working stays live
+            useEffect(() => {
+                if (!currentUser) return;
+                const interval = setInterval(() => {
+                  if (document.visibilityState === 'visible') {
+                   loadTimesheetsFromAPI();
+                  }
+                }, 60000);
+                return () => clearInterval(interval);
             }, [currentUser]);
 
             const [manualEntryData, setManualEntryData] = useState({
@@ -8361,8 +8430,7 @@ import React, { useState, useEffect } from 'react';
                   return ts.employeeId === emp.id &&
                    (ts.date === todayStr || ts.date === today) &&
                    ts.startTime && ts.startTime !== '' &&
-                   (!ts.finishTime || ts.finishTime === '') &&
-                   (ts.status === 'checkedin' || ts.status === 'pending');
+                   ts.status === 'checkedin';
                    });
                    return !!todayTs;
                   });
@@ -8381,7 +8449,7 @@ import React, { useState, useEffect } from 'react';
                   {activeNow.length > 0 && (
                    <div className="space-y-1.5">
                   {activeNow.map(function(emp) {
-                   const ts = timesheets.find(function(t) { return t.employeeId === emp.id && (t.date === todayStr || t.date === today) && t.startTime && (!t.finishTime || t.finishTime === ''); });
+                   const ts = timesheets.find(function(t) { return t.employeeId === emp.id && (t.date === todayStr || t.date === today) && t.startTime && t.status === 'checkedin'; });
                    const startTime = ts ? ts.startTime : '';
                    const startParts = startTime ? startTime.split(':') : [];
                    let elapsed = '';
@@ -8708,3 +8776,104 @@ import React, { useState, useEffect } from 'react';
                 </div>
             );
         }
+
+        ReactDOM.render(<EmployeeTimesheetApp />, document.getElementById('root'));
+</script>
+
+    <!-- Service Worker Registration - DISABLED TO PREVENT CACHING ISSUES -->
+    <script>
+        // Service worker disabled to prevent caching old code
+        console.log('ℹ️ Service Worker disabled - app will always load fresh code');
+        
+        // Unregister any existing service workers
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(registrations => {
+                for (let registration of registrations) {
+                    registration.unregister();
+                    console.log('🗑️ Unregistered existing service worker');
+                }
+            });
+        }
+    </script>
+
+    <!-- PWA Install Prompt (still works without service worker) -->
+    <script>
+        let deferredPrompt;
+        const installButton = document.createElement('button');
+        installButton.id = 'install-button';
+        installButton.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #4F46E5;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 12px 24px;
+            font-weight: 600;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            cursor: pointer;
+            z-index: 9999;
+            display: none;
+            font-size: 14px;
+        `;
+        installButton.innerHTML = '📱 Install App';
+        document.body.appendChild(installButton);
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Prevent the mini-infobar from appearing on mobile
+            e.preventDefault();
+            // Save the event for later use
+            deferredPrompt = e;
+            // Show install button
+            installButton.style.display = 'block';
+
+            installButton.addEventListener('click', async () => {
+                if (!deferredPrompt) return;
+                
+                // Show the install prompt
+                deferredPrompt.prompt();
+                
+                // Wait for the user's response
+                const { outcome } = await deferredPrompt.userChoice;
+                console.log(`User response to install prompt: ${outcome}`);
+                
+                // Clear the saved prompt
+                deferredPrompt = null;
+                // Hide the install button
+                installButton.style.display = 'none';
+            });
+        });
+
+        // Hide install button if already installed
+        window.addEventListener('appinstalled', () => {
+            console.log('✅ B-Post Employee Management installed successfully!');
+            installButton.style.display = 'none';
+            deferredPrompt = null;
+        });
+
+        // Detect if running as installed PWA
+        if (window.matchMedia('(display-mode: standalone)').matches) {
+            console.log('✅ Running as installed PWA');
+            installButton.style.display = 'none';
+        }
+
+        // Request notification permission (optional)
+        if ('Notification' in window && Notification.permission === 'default') {
+            // Don't auto-request - let admin enable this in settings
+            console.log('Notifications available but not requested yet');
+        }
+
+        // Handle offline/online status
+        window.addEventListener('online', () => {
+            console.log('✅ Back online');
+            // You could show a toast notification here
+        });
+
+        window.addEventListener('offline', () => {
+            console.log('📴 Offline mode - using cached data');
+            // You could show a toast notification here
+        });
+    </script>
+</body>
+</html>
