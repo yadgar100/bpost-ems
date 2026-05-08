@@ -5238,7 +5238,7 @@ import React, { useState, useEffect } from 'react';
                 );
             };
 
-            const AgentReport = ({ onClose, visibleEmployees: visEmp }) => {
+            const AgentReport = ({ onClose, visibleEmployees: visEmp, onRefresh }) => {
                 const today = new Date().toISOString().split('T')[0];
                 const firstOfMonth = today.slice(0,8) + '01';
                 const [fromDate, setFromDate] = useState(firstOfMonth);
@@ -5261,7 +5261,10 @@ import React, { useState, useEffect } from 'react';
                   if (!window.confirm('Delete this collection record for ' + col.employeeName + ' on ' + col.date + '? This cannot be undone.')) return;
                   try {
                    await apiCall(API_ENDPOINTS.agentCollections + '/' + col.id, { method: 'DELETE' });
+                   // Remove from local report view immediately
                    setReportData(function(prev) { return prev ? prev.filter(function(c) { return c.id !== col.id; }) : prev; });
+                   // Sync parent agentCollections state so report stays correct on re-open
+                   if (onRefresh) await onRefresh();
                   } catch(e) { alert('Failed to delete: ' + e.message); }
                 };
 
@@ -8218,7 +8221,7 @@ import React, { useState, useEffect } from 'react';
                    )}
 
                    {showAgentReport && (
-                  <AgentReport onClose={() => setShowAgentReport(false)} visibleEmployees={visibleEmployees} />
+                  <AgentReport onClose={() => setShowAgentReport(false)} visibleEmployees={visibleEmployees} onRefresh={loadAgentCollectionsFromAPI} />
                    )}
 
                    <div className="bg-indigo-600 text-white p-6 shadow-lg">
