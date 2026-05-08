@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 /* global Html5QrcodeScanner, L */
 
 
-
         const API_BASE_URL = 'https://bpost-api-vercel-fixed.vercel.app';
         const API_ENDPOINTS = {
             login: `${API_BASE_URL}/api/auth/login`,
@@ -3375,7 +3374,7 @@ import React, { useState, useEffect } from 'react';
                 }, []);
 
                 return (
-                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl my-8">
                   <div className="sticky top-0 z-10 bg-white p-6 border-b border-gray-200 flex justify-between items-center rounded-t-2xl">
                    <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
@@ -4798,7 +4797,7 @@ import React, { useState, useEffect } from 'react';
                 }, 0) : 0;
 
                 return (
-                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto" onClick={function(e) { if(e.target === e.currentTarget) onClose(); }}>
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl my-8">
                   <div className="sticky top-0 z-10 bg-white rounded-t-2xl p-6 border-b border-gray-200 flex justify-between items-center">
                    <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
@@ -5318,7 +5317,7 @@ import React, { useState, useEffect } from 'react';
                 const totalPaid = reportData ? reportData.reduce(function(s,c) { return s+c.amountPaid; }, 0) : 0;
 
                 return (
-                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto" onClick={function(e) { if (e.target === e.currentTarget) onClose(); }}>
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl my-8">
                   <div className="sticky top-0 z-10 bg-white rounded-t-2xl p-6 border-b border-gray-200 flex justify-between items-center">
                    <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><Truck className="w-7 h-7 text-orange-600" />Agent Collection Report</h2>
@@ -8718,3 +8717,5 @@ import React, { useState, useEffect } from 'react';
                 </div>
             );
         }
+
+</script>
