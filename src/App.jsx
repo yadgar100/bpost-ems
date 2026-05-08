@@ -357,7 +357,8 @@ import React, { useState, useEffect } from 'react';
                    canManageAgents: true,
                    canViewCompanyAccounting: true,
                    canDeleteEmployees: true,
-                   canAddEmployeeHours: true
+                   canAddEmployeeHours: true,
+                   canDeleteAgentCollections: true
                   }
                 }
             ];
@@ -5256,6 +5257,14 @@ import React, { useState, useEffect } from 'react';
                   return function() { window.removeEventListener('keydown', handleEsc); };
                 }, []);
 
+                const handleDeleteCollection = async function(col) {
+                  if (!window.confirm('Delete this collection record for ' + col.employeeName + ' on ' + col.date + '? This cannot be undone.')) return;
+                  try {
+                   await apiCall(API_ENDPOINTS.agentCollections + '/' + col.id, { method: 'DELETE' });
+                   setReportData(function(prev) { return prev ? prev.filter(function(c) { return c.id !== col.id; }) : prev; });
+                  } catch(e) { alert('Failed to delete: ' + e.message); }
+                };
+
                 const startEdit = function(col) {
                   setEditingId(col.id);
                   setEditVals({ fromCode: col.fromCode, toCode: col.toCode, amountCollected: col.amountCollected, amountPaid: col.amountPaid, boxesQty: col.boxesQty });
@@ -5407,7 +5416,12 @@ import React, { useState, useEffect } from 'react';
                    <button onClick={function(){setEditingId(null);}} className="px-2 py-1 bg-gray-200 text-gray-600 rounded text-xs font-semibold hover:bg-gray-300">Cancel</button>
                   </div>
                    ) : (
-                  <button onClick={function(){startEdit(col);}} className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-semibold hover:bg-orange-200">Edit</button>
+                  <div className="flex gap-1">
+                   <button onClick={function(){startEdit(col);}} className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-semibold hover:bg-orange-200">Edit</button>
+                   {hasPermission('canDeleteAgentCollections') && (
+                  <button onClick={function(){handleDeleteCollection(col);}} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold hover:bg-red-200">Delete</button>
+                   )}
+                  </div>
                    )}
                   </td>
                    )}
@@ -6623,6 +6637,7 @@ import React, { useState, useEffect } from 'react';
                   canManageAgentCollections: false,
                   canManageAgents: false,
                   canViewCompanyAccounting: false,
+                  canDeleteAgentCollections: false,
                   canViewCountryOnly: false,
                   canViewBranchOnly: false,
                   restrictedBranches: []
@@ -6643,7 +6658,7 @@ import React, { useState, useEffect } from 'react';
                   }
                   await handleCreateAdmin(newAdminData, newAdminPermissions);
                   setNewAdminData({ firstName: '', lastName: '', email: '', department: 'Administration', position: '', password: '', hourlyRate: '0' });
-                  setNewAdminPermissions({ canManageEmployees: false, canApproveTimesheets: false, canManageLocations: false, canSetRates: false, canCreateAdmins: false, canManageAdminPermissions: false, canViewPayroll: false, canDeleteEmployees: false, canAddEmployeeHours: false, canViewCountryOnly: false, canViewBranchOnly: false });
+                  setNewAdminPermissions({ canManageEmployees: false, canApproveTimesheets: false, canManageLocations: false, canSetRates: false, canCreateAdmins: false, canManageAdminPermissions: false, canViewPayroll: false, canDeleteEmployees: false, canAddEmployeeHours: false, canViewCountryOnly: false, canViewBranchOnly: false, canDeleteAgentCollections: false });
                   alert('Admin account created successfully!');
                   setActiveTab('list');
                 };
@@ -6689,6 +6704,7 @@ import React, { useState, useEffect } from 'react';
                   canManageAdminPermissions: 'Manage Admin Permissions',
                   canViewPayroll: 'View Payroll Data',
                   canDeleteEmployees: 'Delete Employees',
+                  canDeleteAgentCollections: 'Delete Agent Collections',
                   canAddEmployeeHours: 'Manually Add Employee Hours',
                   canManageAgentCollections: 'Edit Agent Collection Records',
                   canManageAgents: 'Manage Agents',
