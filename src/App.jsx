@@ -8354,7 +8354,64 @@ import React, { useState, useEffect } from 'react';
                   )}
                    </div>
                   )}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                  {/* Currently Working — full-width horizontal banner */}
+                  {(() => {
+                  const todayStr = new Date().toISOString().split('T')[0];
+                  const today = new Date().toLocaleDateString('en-CA');
+                  const activeNow = visibleEmployees.filter(function(emp) {
+                   const todayTs = timesheets.find(function(ts) {
+                  return ts.employeeId === emp.id &&
+                   (ts.date === todayStr || ts.date === today) &&
+                   ts.startTime && ts.startTime !== '' &&
+                   ts.status === 'checkedin';
+                   });
+                   return !!todayTs;
+                  });
+                  return (
+                   <div className="bg-green-50 border-2 border-green-200 rounded-xl shadow mb-6 p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                   <div className="bg-green-500 p-2.5 rounded-lg relative flex-shrink-0">
+                  <Clock className="w-5 h-5 text-white" />
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-400 rounded-full animate-pulse"></span>
+                   </div>
+                   <div>
+                  <p className="text-xs text-gray-600 font-medium">Currently Working</p>
+                  <p className="text-xl font-bold text-green-700">{activeNow.length}</p>
+                   </div>
+                  </div>
+                  {activeNow.length > 0 ? (
+                   <div style={{display:'flex', flexWrap:'wrap', gap:'6px'}}>
+                  {activeNow.map(function(emp) {
+                   const ts = timesheets.find(function(t) { return t.employeeId === emp.id && (t.date === todayStr || t.date === today) && t.startTime && t.status === 'checkedin'; });
+                   const startTime = ts ? ts.startTime : '';
+                   const startParts = startTime ? startTime.split(':') : [];
+                   let elapsed = '';
+                   if (startParts.length >= 2) {
+                  const now = new Date();
+                  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(startParts[0]), parseInt(startParts[1]));
+                  const mins = Math.floor((now - start) / 60000);
+                  const hrs = Math.floor(mins / 60);
+                  const rem = mins % 60;
+                  elapsed = hrs > 0 ? hrs + 'h ' + rem + 'm' : rem + 'm';
+                   }
+                   return (
+                  <div key={emp.id} style={{display:'flex', alignItems:'center', gap:'6px', background:'white', borderRadius:'8px', padding:'4px 10px', fontSize:'12px'}}>
+                   <span style={{width:'7px', height:'7px', background:'#22c55e', borderRadius:'50%', flexShrink:0}}></span>
+                   <span style={{fontWeight:600, color:'#1f2937'}}>{emp.firstName} {emp.lastName}</span>
+                   <span style={{color:'#9ca3af'}}>{emp.employeeId}</span>
+                   <span style={{fontWeight:700, color:'#15803d'}}>{startTime}</span>
+                   {elapsed && <span style={{color:'#9ca3af'}}>({elapsed})</span>}
+                  </div>
+                   );
+                  })}
+                   </div>
+                  ) : (
+                   <p className="text-xs text-gray-400">No employees currently clocked in</p>
+                  )}
+                   </div>
+                  );
+                   })()}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                    <div className="bg-white p-6 rounded-xl shadow">
                   <div className="flex items-center gap-4">
                    <div className="bg-purple-100 p-3 rounded-lg">
@@ -8381,68 +8438,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                    </div>
 
-                   {(() => {
-                  const today = new Date().toISOString().split('T')[0];
-                  const todayStr = new Date().toISOString().split('T')[0];
-                  const activeNow = visibleEmployees.filter(function(emp) {
-                   if (emp.isAdmin) return false;
-                   const todayTs = timesheets.find(function(ts) {
-                  return ts.employeeId === emp.id &&
-                   (ts.date === todayStr || ts.date === today) &&
-                   ts.startTime && ts.startTime !== '' &&
-                   ts.status === 'checkedin';
-                   });
-                   return !!todayTs;
-                  });
-                  return (
-                   <div className="bg-green-50 border-2 border-green-200 p-4 rounded-xl shadow">
-                  <div className="flex items-center gap-3 mb-2">
-                   <div className="bg-green-500 p-2.5 rounded-lg relative flex-shrink-0">
-                  <Clock className="w-5 h-5 text-white" />
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-400 rounded-full animate-pulse"></span>
-                   </div>
-                   <div>
-                  <p className="text-xs text-gray-600 font-medium">Currently Working</p>
-                  <p className="text-xl font-bold text-green-700">{activeNow.length}</p>
-                   </div>
-                  </div>
-                  {activeNow.length > 0 && (
-                   <div className="space-y-1 pr-1" style={{maxHeight: '192px', overflowY: 'auto'}}>
-                  {activeNow.map(function(emp) {
-                   const ts = timesheets.find(function(t) { return t.employeeId === emp.id && (t.date === todayStr || t.date === today) && t.startTime && t.status === 'checkedin'; });
-                   const startTime = ts ? ts.startTime : '';
-                   const startParts = startTime ? startTime.split(':') : [];
-                   let elapsed = '';
-                   if (startParts.length >= 2) {
-                  const now = new Date();
-                  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(startParts[0]), parseInt(startParts[1]));
-                  const mins = Math.floor((now - start) / 60000);
-                  const hrs = Math.floor(mins / 60);
-                  const rem = mins % 60;
-                  elapsed = hrs > 0 ? hrs + 'h ' + rem + 'm' : rem + 'm';
-                   }
-                   return (
-                  <div key={emp.id} className="flex items-center justify-between bg-white rounded px-2 py-1 gap-2">
-                   <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse flex-shrink-0"></span>
-                  <span className="text-xs font-semibold text-gray-800 truncate">{emp.firstName} {emp.lastName}</span>
-                  <span className="text-xs text-gray-400 flex-shrink-0">{emp.employeeId}</span>
-                   </div>
-                   <div className="text-right flex-shrink-0">
-                  <span className="text-xs font-bold text-green-700">{startTime}</span>
-                  {elapsed && <span className="text-xs text-gray-400 ml-1">({elapsed})</span>}
-                   </div>
-                  </div>
-                   );
-                  })}
-                   </div>
-                  )}
-                  {activeNow.length === 0 && (
-                   <p className="text-xs text-gray-400">No employees currently clocked in</p>
-                  )}
-                   </div>
-                  );
-                   })()}
+
 
                    <div className="bg-white p-6 rounded-xl shadow cursor-pointer hover:shadow-md transition" onClick={() => setShowExpenseManager(true)}>
                   <div className="flex items-center gap-4">
