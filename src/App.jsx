@@ -5300,14 +5300,6 @@ import React, { useState, useEffect } from 'react';
                   const filtered = agentCollections.filter(function(c) {
                    if (!visEmp.some(function(e) { return e.id === c.employeeId; })) return false;
                    if (empFilter && c.employeeId !== parseInt(empFilter)) return false;
-                   if (branchFilter) {
-                  const emp = visEmp.find(function(e) { return e.id === c.employeeId; });
-                  if (!emp || !(emp.branches||[]).includes(branchFilter)) return false;
-                   }
-                   if (countryFilter) {
-                  const emp = visEmp.find(function(e) { return e.id === c.employeeId; });
-                  if (!emp || emp.country !== countryFilter) return false;
-                   }
                    return c.date >= fromDate && c.date <= toDate;
                   }).sort(function(a,b) { return a.date < b.date ? -1 : 1; });
                   setReportData(filtered);
@@ -5361,9 +5353,7 @@ import React, { useState, useEffect } from 'react';
                   <select value={empFilter} onChange={function(e) { setEmpFilter(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
                    <option value="">All Employees</option>
                    {visEmp.filter(function(e) {
-                   return !e.isAdmin && agentCollections.some(function(c) { return c.employeeId === e.id; })
-                   && (!branchFilter || (e.branches||[]).includes(branchFilter))
-                   && (!countryFilter || e.country === countryFilter);
+                   return !e.isAdmin && agentCollections.some(function(c) { return c.employeeId === e.id; });
                    }).map(function(e) { return <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>; })}
                   </select>
                    </div>
