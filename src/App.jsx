@@ -8354,25 +8354,51 @@ import React, { useState, useEffect } from 'react';
                   )}
                    </div>
                   )}
-                  {/* Currently Working — full-width horizontal banner */}
-                  {(() => {
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+                   <div className="bg-white p-6 rounded-xl shadow">
+                  <div className="flex items-center gap-4">
+                   <div className="bg-purple-100 p-3 rounded-lg">
+                  <Users className="w-6 h-6 text-purple-600" />
+                   </div>
+                   <div>
+                  <p className="text-sm text-gray-600">Total Employees</p>
+                  <p className="text-2xl font-bold">{visibleEmployees.filter(e => !e.isAdmin).length}</p>
+                   </div>
+                  </div>
+                   </div>
+
+                   <div className="bg-white p-6 rounded-xl shadow">
+                  <div className="flex items-center gap-4">
+                   <div className="bg-blue-100 p-3 rounded-lg">
+                  <Calendar className="w-6 h-6 text-blue-600" />
+                   </div>
+                   <div>
+                  <p className="text-sm text-gray-600">Pending Timesheets</p>
+                  <p className="text-2xl font-bold">
+                   {timesheets.filter(ts => ts.status === 'pending' && visibleEmployees.some(e => e.id === ts.employeeId)).length}
+                  </p>
+                   </div>
+                  </div>
+                   </div>
+
+                   {/* Currently Working card */}
+                   {(() => {
                   const todayStr = new Date().toISOString().split('T')[0];
                   const today = new Date().toLocaleDateString('en-CA');
                   const activeNow = visibleEmployees.filter(function(emp) {
+                   if (emp.isAdmin) return false;
                    const todayTs = timesheets.find(function(ts) {
-                  return ts.employeeId === emp.id &&
-                   (ts.date === todayStr || ts.date === today) &&
-                   ts.startTime && ts.startTime !== '' &&
-                   ts.status === 'checkedin';
+                  return ts.employeeId === emp.id && (ts.date === todayStr || ts.date === today) && ts.startTime && ts.startTime !== '' && ts.status === 'checkedin';
                    });
                    return !!todayTs;
                   });
                   return (
-                   <div className="bg-green-50 border-2 border-green-200 rounded-xl shadow mb-6 p-4">
-                  <div className="flex items-center gap-3 mb-3">
-                   <div className="bg-green-500 p-2.5 rounded-lg relative flex-shrink-0">
-                  <Clock className="w-5 h-5 text-white" />
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-400 rounded-full animate-pulse"></span>
+                   <div className="bg-green-50 border-2 border-green-200 rounded-xl shadow p-4">
+                  <div className="flex items-center gap-3 mb-2">
+                   <div className="bg-green-500 p-2 rounded-lg relative flex-shrink-0">
+                  <Clock className="w-4 h-4 text-white" />
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
                    </div>
                    <div>
                   <p className="text-xs text-gray-600 font-medium">Currently Working</p>
@@ -8380,7 +8406,7 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   </div>
                   {activeNow.length > 0 ? (
-                   <div style={{display:'flex', flexWrap:'wrap', gap:'6px'}}>
+                   <div style={{maxHeight:'160px', overflowY:'auto'}}>
                   {activeNow.map(function(emp) {
                    const ts = timesheets.find(function(t) { return t.employeeId === emp.id && (t.date === todayStr || t.date === today) && t.startTime && t.status === 'checkedin'; });
                    const startTime = ts ? ts.startTime : '';
@@ -8395,12 +8421,12 @@ import React, { useState, useEffect } from 'react';
                   elapsed = hrs > 0 ? hrs + 'h ' + rem + 'm' : rem + 'm';
                    }
                    return (
-                  <div key={emp.id} style={{display:'flex', alignItems:'center', gap:'6px', background:'white', borderRadius:'8px', padding:'4px 10px', fontSize:'12px'}}>
-                   <span style={{width:'7px', height:'7px', background:'#22c55e', borderRadius:'50%', flexShrink:0}}></span>
-                   <span style={{fontWeight:600, color:'#1f2937'}}>{emp.firstName} {emp.lastName}</span>
-                   <span style={{color:'#9ca3af'}}>{emp.employeeId}</span>
-                   <span style={{fontWeight:700, color:'#15803d'}}>{startTime}</span>
-                   {elapsed && <span style={{color:'#9ca3af'}}>({elapsed})</span>}
+                  <div key={emp.id} style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'white', borderRadius:'6px', padding:'3px 8px', marginBottom:'3px'}}>
+                   <div style={{display:'flex', alignItems:'center', gap:'6px', minWidth:0}}>
+                  <span style={{width:'6px', height:'6px', background:'#22c55e', borderRadius:'50%', flexShrink:0}}></span>
+                  <span style={{fontSize:'11px', fontWeight:600, color:'#1f2937', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{emp.firstName} {emp.lastName}</span>
+                   </div>
+                   <span style={{fontSize:'11px', fontWeight:700, color:'#15803d', flexShrink:0, marginLeft:'6px'}}>{startTime}{elapsed ? ' ('+elapsed+')' : ''}</span>
                   </div>
                    );
                   })}
@@ -8411,36 +8437,8 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   );
                    })()}
-                  <div style={{display:"flex", flexWrap:"wrap", gap:"24px", marginBottom:"32px"}}>
-                   <div className="bg-white p-6 rounded-xl shadow" style={{flex:"1", minWidth:"180px"}}>
-                  <div className="flex items-center gap-4">
-                   <div className="bg-purple-100 p-3 rounded-lg">
-                  <Users className="w-6 h-6 text-purple-600" />
-                   </div>
-                   <div>
-                  <p className="text-sm text-gray-600">Total Employees</p>
-                  <p className="text-2xl font-bold">{visibleEmployees.filter(e => !e.isAdmin).length}</p>
-                   </div>
-                  </div>
-                   </div>
 
-                   <div className="bg-white p-6 rounded-xl shadow" style={{flex:"1", minWidth:"180px"}}>
-                  <div className="flex items-center gap-4">
-                   <div className="bg-blue-100 p-3 rounded-lg">
-                  <Calendar className="w-6 h-6 text-blue-600" />
-                   </div>
-                   <div>
-                  <p className="text-sm text-gray-600">Pending Timesheets</p>
-                  <p className="text-2xl font-bold">
-                   {timesheets.filter(ts => ts.status === 'pending' && visibleEmployees.some(e => e.id === ts.employeeId)).length}
-                  </p>
-                   </div>
-                  </div>
-                   </div>
-
-
-
-                   <div className="bg-white p-6 rounded-xl shadow cursor-pointer hover:shadow-md transition" style={{flex:"1", minWidth:"180px"}} onClick={() => setShowExpenseManager(true)}>
+                   <div className="bg-white p-6 rounded-xl shadow cursor-pointer hover:shadow-md transition" onClick={() => setShowExpenseManager(true)}>
                   <div className="flex items-center gap-4">
                    <div className="bg-teal-100 p-3 rounded-lg">
                   <Receipt className="w-6 h-6 text-teal-600" />
@@ -8457,7 +8455,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                    </div>
 
-                   <div className="bg-white p-6 rounded-xl shadow" style={{flex:"1", minWidth:"180px"}}>
+                   <div className="bg-white p-6 rounded-xl shadow">
                   <div className="flex items-center gap-4">
                    <div className="bg-green-100 p-3 rounded-lg">
                   <MapPin className="w-6 h-6 text-green-600" />
@@ -8471,7 +8469,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                    </div>
 
-                   <div className="bg-white p-6 rounded-xl shadow" style={{flex:"1", minWidth:"180px"}}>
+                   <div className="bg-white p-6 rounded-xl shadow">
                   <div className="flex items-center gap-4">
                    <div className="bg-amber-100 p-3 rounded-lg">
                   <DollarSign className="w-6 h-6 text-amber-600" />
