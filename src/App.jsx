@@ -8394,7 +8394,7 @@ import React, { useState, useEffect } from 'react';
                    return !!todayTs;
                   });
                   return (
-                   <div className="bg-green-50 border-2 border-green-200 rounded-xl shadow p-4">
+                   <div className="bg-green-50 border-2 border-green-200 rounded-xl shadow p-4" style={{alignSelf:'start', overflow:'hidden'}}>
                   <div className="flex items-center gap-3 mb-2">
                    <div className="bg-green-500 p-2 rounded-lg relative flex-shrink-0">
                   <Clock className="w-4 h-4 text-white" />
