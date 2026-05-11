@@ -8395,19 +8395,19 @@ import React, { useState, useEffect } from 'react';
                    return !!todayTs;
                   });
                   return (
-                   <div className="bg-green-50 border-2 border-green-200 p-6 rounded-xl shadow">
-                  <div className="flex items-center gap-4 mb-3">
-                   <div className="bg-green-500 p-3 rounded-lg relative">
-                  <Clock className="w-6 h-6 text-white" />
-                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-pulse"></span>
+                   <div className="bg-green-50 border-2 border-green-200 p-4 rounded-xl shadow">
+                  <div className="flex items-center gap-3 mb-2">
+                   <div className="bg-green-500 p-2.5 rounded-lg relative flex-shrink-0">
+                  <Clock className="w-5 h-5 text-white" />
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-400 rounded-full animate-pulse"></span>
                    </div>
                    <div>
-                  <p className="text-sm text-gray-600 font-medium">Currently Working</p>
-                  <p className="text-2xl font-bold text-green-700">{activeNow.length}</p>
+                  <p className="text-xs text-gray-600 font-medium">Currently Working</p>
+                  <p className="text-xl font-bold text-green-700">{activeNow.length}</p>
                    </div>
                   </div>
                   {activeNow.length > 0 && (
-                   <div className="space-y-1.5">
+                   <div className="overflow-y-auto max-h-48 space-y-1 pr-1">
                   {activeNow.map(function(emp) {
                    const ts = timesheets.find(function(t) { return t.employeeId === emp.id && (t.date === todayStr || t.date === today) && t.startTime && t.status === 'checkedin'; });
                    const startTime = ts ? ts.startTime : '';
@@ -8422,13 +8422,13 @@ import React, { useState, useEffect } from 'react';
                   elapsed = hrs > 0 ? hrs + 'h ' + rem + 'm' : rem + 'm';
                    }
                    return (
-                  <div key={emp.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5">
-                   <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse flex-shrink-0"></span>
-                  <span className="text-sm font-semibold text-gray-800">{emp.firstName} {emp.lastName}</span>
-                  <span className="text-xs text-gray-400">{emp.employeeId}</span>
+                  <div key={emp.id} className="flex items-center justify-between bg-white rounded px-2 py-1 gap-2">
+                   <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse flex-shrink-0"></span>
+                  <span className="text-xs font-semibold text-gray-800 truncate">{emp.firstName} {emp.lastName}</span>
+                  <span className="text-xs text-gray-400 flex-shrink-0">{emp.employeeId}</span>
                    </div>
-                   <div className="text-right">
+                   <div className="text-right flex-shrink-0">
                   <span className="text-xs font-bold text-green-700">{startTime}</span>
                   {elapsed && <span className="text-xs text-gray-400 ml-1">({elapsed})</span>}
                    </div>
