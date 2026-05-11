@@ -8407,7 +8407,7 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   </div>
                   {activeNow.length > 0 && (
-                   <div className="overflow-y-auto max-h-48 space-y-1 pr-1">
+                   <div className="space-y-1 pr-1" style={{maxHeight: '192px', overflowY: 'auto'}}>
                   {activeNow.map(function(emp) {
                    const ts = timesheets.find(function(t) { return t.employeeId === emp.id && (t.date === todayStr || t.date === today) && t.startTime && t.status === 'checkedin'; });
                    const startTime = ts ? ts.startTime : '';
