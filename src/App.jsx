@@ -576,6 +576,7 @@ import React, { useState, useEffect } from 'react';
             const [showReportGenerator, setShowReportGenerator] = useState(false);
             const [showFinancialManager, setShowFinancialManager] = useState(false);
             const [showEmployeeAccounting, setShowEmployeeAccounting] = useState(false);
+            const [empAccountingState, setEmpAccountingState] = useState({ empId: '', fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], report: null });
             const [showCompanyAccounting, setShowCompanyAccounting] = useState(false);
             const [showPayrollSettings, setShowPayrollSettings] = useState(false);
             const [showAnnualLeave, setShowAnnualLeave] = useState(false);
@@ -5445,13 +5446,17 @@ import React, { useState, useEffect } from 'react';
                 );
             };
 
-            const EmployeeAccounting = ({ onClose, visibleEmployees: visEmp }) => {
+            const EmployeeAccounting = ({ onClose, visibleEmployees: visEmp, persistedState, onStateChange }) => {
                 const today = new Date().toISOString().split('T')[0];
-                const firstOfMonth = today.slice(0,8) + '01';
-                const [empId, setEmpId] = useState('');
-                const [fromDate, setFromDate] = useState(firstOfMonth);
-                const [toDate, setToDate] = useState(today);
-                const [report, setReport] = useState(null);
+                // Use persisted state from parent so remounts don't wipe the report
+                const empId = persistedState ? persistedState.empId : '';
+                const setEmpId = (v) => onStateChange && onStateChange(function(s) { return {...s, empId: typeof v === 'function' ? v(s.empId) : v}; });
+                const fromDate = persistedState ? persistedState.fromDate : today.slice(0,8)+'01';
+                const setFromDate = (v) => onStateChange && onStateChange(function(s) { return {...s, fromDate: typeof v === 'function' ? v(s.fromDate) : v}; });
+                const toDate = persistedState ? persistedState.toDate : today;
+                const setToDate = (v) => onStateChange && onStateChange(function(s) { return {...s, toDate: typeof v === 'function' ? v(s.toDate) : v}; });
+                const report = persistedState ? persistedState.report : null;
+                const setReport = (v) => onStateChange && onStateChange(function(s) { return {...s, report: typeof v === 'function' ? v(s.report) : v}; });
                 const [settling, setSettling] = useState(false);
                 const [settleNote, setSettleNote] = useState('');
                 const [settleAmount, setSettleAmount] = useState('');
@@ -8197,7 +8202,7 @@ import React, { useState, useEffect } from 'react';
                    )}
 
                    {showEmployeeAccounting && (
-                  <EmployeeAccounting onClose={() => setShowEmployeeAccounting(false)} visibleEmployees={visibleEmployees} />
+                  <EmployeeAccounting onClose={() => setShowEmployeeAccounting(false)} visibleEmployees={visibleEmployees} persistedState={empAccountingState} onStateChange={setEmpAccountingState} />
                    )}
 
                    {showCompanyAccounting && (
