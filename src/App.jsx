@@ -2310,7 +2310,7 @@ import React, { useState, useEffect } from 'react';
                   const note = accountCreditNoteRef.current ? accountCreditNoteRef.current.value : '';
                   setAccountCreditSaving(true);
                   try {
-                   await apiCall(API_ENDPOINTS.adjustments, { method: 'POST', body: JSON.stringify({ employeeId: currentUser.id, type: 'account_credit', amount: amt, reason: note || 'Account credit — cash to accountant', date: accountCreditDate }) });
+                   await apiCall(API_ENDPOINTS.adjustments, { method: 'POST', body: JSON.stringify({ employeeId: currentUser.id, type: 'account_credit_pending', amount: amt, reason: note || 'Account credit — cash to accountant', date: accountCreditDate }) });
                    await loadAdjustmentsFromAPI();
                    setShowAccountCredit(false);
                    alert('Account credit of ' + getCurrencySymbol(currentUser.currency||'GBP') + amt.toFixed(2) + ' recorded successfully.');
@@ -2492,6 +2492,31 @@ import React, { useState, useEffect } from 'react';
                    Account Credit
                   </button>
                   </div>
+
+                  {(() => {
+                   const myCredits = financialAdjustments.filter(function(a){return a.employeeId===currentUser.id && (a.type==='account_credit'||a.type==='account_credit_pending');}).sort(function(a,b){return a.date>b.date?-1:1;});
+                   if (!myCredits.length) return null;
+                   const sym2 = getCurrencySymbol(currentUser.currency||'GBP');
+                   return (
+                  <div className="mt-6 bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+                   <h3 className="text-sm font-bold text-indigo-700 mb-3 flex items-center gap-2"><DollarSign className="w-4 h-4"/>My Account Credits</h3>
+                   <div className="space-y-2">
+                  {myCredits.map(function(a){return (
+                   <div key={a.id} className="bg-white rounded-lg px-3 py-2 flex items-center justify-between text-sm">
+                  <div>
+                   <p className="font-semibold text-gray-800">{sym2}{parseFloat(a.amount).toFixed(2)}</p>
+                   <p className="text-xs text-gray-500">{new Date(a.date).toLocaleDateString('en-GB')} · {a.reason}</p>
+                  </div>
+                  <span className={a.type==='account_credit'?'px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700':'px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700'}>
+                   {a.type==='account_credit'?'Approved':'Pending'}
+                  </span>
+                   </div>
+                  );})}
+                   </div>
+                   <p className="text-xs text-gray-500 mt-2">Total approved: <strong className="text-indigo-700">{sym2}{myCredits.filter(function(a){return a.type==='account_credit';}).reduce(function(s,a){return s+(parseFloat(a.amount)||0);},0).toFixed(2)}</strong></p>
+                  </div>
+                   );
+                   })()}
 
                   {(() => {
                    const myExpenses = expenses.filter(e => e.employeeId === currentUser.id);
@@ -2998,6 +3023,19 @@ import React, { useState, useEffect } from 'react';
                   History
                    </button>
                    <button
+                  onClick={() => setActiveTab('credits')}
+                  className={`flex-1 px-6 py-3 font-semibold transition relative ${
+                   activeTab === 'credits'
+                  ? 'bg-indigo-50 text-indigo-600 border-b-2 border-indigo-600'
+                  : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                   >
+                  Account Credits
+                  {financialAdjustments.filter(function(a){return a.type==='account_credit_pending' && visibleEmpIds.has(a.employeeId);}).length > 0 && (
+                  <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
+                  )}
+                   </button>
+                   <button
                   onClick={() => setActiveTab('summary')}
                   className={`flex-1 px-6 py-3 font-semibold transition ${
                    activeTab === 'summary'
@@ -3132,6 +3170,68 @@ import React, { useState, useEffect } from 'react';
                    </button>
                   </div>
                    )}
+
+                   {activeTab === 'credits' && (() => {
+                  const pendingCredits = financialAdjustments.filter(function(a){return a.type==='account_credit_pending' && visibleEmpIds.has(a.employeeId);});
+                  const approvedCreds = financialAdjustments.filter(function(a){return a.type==='account_credit' && visibleEmpIds.has(a.employeeId);});
+                  const handleApprove = async function(adj) {
+                   try {
+                  await apiCall(API_ENDPOINTS.adjustments + '/' + adj.id, { method: 'PUT', body: JSON.stringify({ type: 'account_credit', amount: adj.amount, reason: adj.reason, date: adj.date, employeeId: adj.employeeId }) });
+                  await loadAdjustmentsFromAPI();
+                   } catch(e) { alert('Failed: ' + e.message); }
+                  };
+                  const handleReject = async function(adj) {
+                   if (!window.confirm('Reject and delete this credit of ' + getCurrencySymbol('GBP') + parseFloat(adj.amount).toFixed(2) + ' from ' + adj.employeeName + '?')) return;
+                   try {
+                  await apiCall(API_ENDPOINTS.adjustments + '/' + adj.id, { method: 'DELETE' });
+                  await loadAdjustmentsFromAPI();
+                   } catch(e) { alert('Failed: ' + e.message); }
+                  };
+                  return (
+                  <div className="space-y-6">
+                   {pendingCredits.length > 0 && (
+                  <div>
+                   <h3 className="text-base font-bold text-orange-700 mb-3 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse inline-block"></span>
+                  Pending Approval ({pendingCredits.length})
+                   </h3>
+                   <div className="space-y-2">
+                  {pendingCredits.map(function(a) { return (
+                   <div key={a.id} className="bg-orange-50 border border-orange-200 rounded-lg p-4 flex items-center justify-between gap-4">
+                  <div className="flex-1">
+                   <p className="font-semibold text-gray-800">{a.employeeName}</p>
+                   <p className="text-sm text-gray-500">{new Date(a.date).toLocaleDateString('en-GB')} · {a.reason}</p>
+                  </div>
+                  <p className="font-bold text-indigo-700 text-lg">{getCurrencySymbol('GBP')}{parseFloat(a.amount).toFixed(2)}</p>
+                  <div className="flex gap-2">
+                   <button onClick={function(){handleApprove(a);}} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700">Approve</button>
+                   <button onClick={function(){handleReject(a);}} className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-sm font-semibold hover:bg-red-200">Reject</button>
+                  </div>
+                   </div>
+                  ); })}
+                   </div>
+                  </div>
+                   )}
+                   {pendingCredits.length === 0 && <p className="text-green-600 text-sm font-medium py-4">✓ No pending credits to approve.</p>}
+                   {approvedCreds.length > 0 && (
+                  <div>
+                   <h3 className="text-base font-bold text-gray-700 mb-3">Approved Credits</h3>
+                   <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {[...approvedCreds].reverse().map(function(a) { return (
+                   <div key={a.id} className="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center justify-between">
+                  <div>
+                   <p className="text-sm font-semibold text-gray-800">{a.employeeName}</p>
+                   <p className="text-xs text-gray-500">{new Date(a.date).toLocaleDateString('en-GB')} · {a.reason}</p>
+                  </div>
+                  <span className="font-bold text-indigo-700">{getCurrencySymbol('GBP')}{parseFloat(a.amount).toFixed(2)}</span>
+                   </div>
+                  ); })}
+                   </div>
+                  </div>
+                   )}
+                  </div>
+                  );
+                   })()}
 
                    {activeTab === 'history' && (
                   <div>
@@ -5555,9 +5655,11 @@ import React, { useState, useEffect } from 'react';
                   return a.employeeId === parseInt(empId) && a.type === 'acct_settle' && a.date <= toDate;
                   }).reduce(function(s,a) { return s + (parseFloat(a.amount)||0); }, 0);
                   const accountCredits = financialAdjustments.filter(function(a) {
-                  return a.employeeId === parseInt(empId) && a.type === 'account_credit' && a.date >= fromDate && a.date <= toDate;
+                  return a.employeeId === parseInt(empId) && (a.type === 'account_credit' || a.type === 'account_credit_pending') && a.date >= fromDate && a.date <= toDate;
                   });
-                  const totalAccountCredits = accountCredits.reduce(function(s,a) { return s + (parseFloat(a.amount)||0); }, 0);
+                  const approvedCredits = accountCredits.filter(function(a) { return a.type === 'account_credit'; });
+                  const totalAccountCredits = approvedCredits.reduce(function(s,a) { return s + (parseFloat(a.amount)||0); }, 0);
+                  const pendingCreditsTotal = accountCredits.filter(function(a){return a.type==='account_credit_pending';}).reduce(function(s,a){return s+(parseFloat(a.amount)||0);},0);
                   const previousBonuses = 0;
                   const previousPenalties = 0;
 
@@ -5576,7 +5678,7 @@ import React, { useState, useEffect } from 'react';
                   const grossBalance = totalCollected - totalPaidToAgents - totalEarned - totalExpenses;
                   const balance = grossBalance - previousPayments - totalAccountCredits;
 
-                  setReport({ tsRows, empExpenses, empCollections, empAdjustments, accountCredits, totalEarned, totalExpenses, totalCollected, totalPaidToAgents, grossBalance, previousPayments, previousBonuses, previousPenalties, totalAccountCredits, balance, hourlyRate });
+                  setReport({ tsRows, empExpenses, empCollections, empAdjustments, accountCredits, totalEarned, totalExpenses, totalCollected, totalPaidToAgents, grossBalance, previousPayments, previousBonuses, previousPenalties, totalAccountCredits, pendingCreditsTotal, balance, hourlyRate });
                 };
 
                 const handleSettle = async function() {
