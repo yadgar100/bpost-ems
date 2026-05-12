@@ -5668,7 +5668,7 @@ import React, { useState, useEffect } from 'react';
                   <Section title="Agent Collections" color="bg-green-500" total={sym + report.totalCollected.toFixed(2)}>
                   {report.empCollections.length === 0 ? <p className="text-gray-400 text-sm">No collections in this period</p> : (
                   <table className="w-full text-sm">
-                  <thead><tr className="bg-green-50">{['Date','Agent','From','To','Collected','Paid to Agent'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-green-700">{h}</th>;})}</tr></thead>
+                  <thead><tr className="bg-green-50">{['Date','Agent','From','To','Collected','Paid to Agent','Bank Transfer (→ Company)'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-green-700">{h}</th>;})}</tr></thead>
                   <tbody className="divide-y divide-gray-100">
                     {report.empCollections.map(function(c){return (
                     <tr key={c.id} className="hover:bg-green-50">
@@ -5678,12 +5678,14 @@ import React, { useState, useEffect } from 'react';
                     <td className="px-3 py-2 font-semibold">{c.toCode||'—'}</td>
                     <td className="px-3 py-2 font-bold text-green-700">{sym}{c.amountCollected.toFixed(2)}</td>
                     <td className="px-3 py-2 text-red-600 font-semibold">{c.amountPaid>0?'-'+sym+c.amountPaid.toFixed(2):'—'}</td>
+                    <td className="px-3 py-2 text-blue-600 font-semibold">{(c.bankAmount||0)>0?<span className="flex items-center gap-1"><span className="text-xs">🏦</span>{sym}{(c.bankAmount||0).toFixed(2)}</span>:'—'}</td>
                     </tr>
                     );})}
                     <tr className="bg-green-50 font-bold border-t-2 border-green-200">
                     <td colSpan="4" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Net Collections</td>
                     <td className="px-3 py-2 text-green-700">{sym}{report.totalCollected.toFixed(2)}</td>
                     <td className="px-3 py-2 text-red-600">-{sym}{report.totalPaidToAgents.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-blue-600">{sym}{report.empCollections.reduce(function(s,c){return s+(c.bankAmount||0);},0).toFixed(2)}<span className="text-xs text-gray-400 ml-1">(co.)</span></td>
                     </tr>
                   </tbody>
                   </table>
