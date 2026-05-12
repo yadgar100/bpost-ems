@@ -547,6 +547,11 @@ import React, { useState, useEffect } from 'react';
             const [showAgentManager, setShowAgentManager] = useState(false);
             const [showAgentReport, setShowAgentReport] = useState(false);
             const [showAgentCollectionForm, setShowAgentCollectionForm] = useState(false);
+            const [showAccountCredit, setShowAccountCredit] = useState(false);
+            const [accountCreditAmount, setAccountCreditAmount] = useState('');
+            const [accountCreditNote, setAccountCreditNote] = useState('');
+            const [accountCreditDate, setAccountCreditDate] = useState(new Date().toISOString().split('T')[0]);
+            const [accountCreditSaving, setAccountCreditSaving] = useState(false);
             const [myAgents, setMyAgents] = useState([]);
             const [expenses, setExpenses] = useState([]);
             const [showExpenseManager, setShowExpenseManager] = useState(false);
@@ -2272,6 +2277,53 @@ import React, { useState, useEffect } from 'react';
                    {showExpenseForm && <ExpenseForm onClose={() => setShowExpenseForm(false)} />}
 
                    {showAgentCollectionForm && <AgentCollectionForm onClose={() => setShowAgentCollectionForm(false)} />}
+                   {showAccountCredit && (
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+                   <div className="bg-indigo-700 rounded-t-2xl px-6 py-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                   <DollarSign className="w-6 h-6 text-white" />
+                   <h2 className="text-lg font-bold text-white">Account Credit</h2>
+                  </div>
+                  <button onClick={() => setShowAccountCredit(false)} className="text-indigo-200 hover:text-white"><X className="w-5 h-5" /></button>
+                   </div>
+                   <div className="p-6">
+                  <p className="text-sm text-gray-500 mb-4">Record cash handed over to the accountant. This will be deducted from your account balance.</p>
+                  <div className="space-y-3">
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Date</label>
+                  <input type="date" value={accountCreditDate} onChange={function(e){setAccountCreditDate(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   </div>
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Amount *</label>
+                  <input type="number" min="0.01" step="0.01" value={accountCreditAmount} onChange={function(e){setAccountCreditAmount(e.target.value);}} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   </div>
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Note (optional)</label>
+                  <input type="text" value={accountCreditNote} onChange={function(e){setAccountCreditNote(e.target.value);}} placeholder="e.g. Cash handed to accountant" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   </div>
+                  </div>
+                  <div className="flex gap-3 mt-5">
+                   <button onClick={async function() {
+                  const amt = parseFloat(accountCreditAmount);
+                  if (!amt || amt <= 0) { alert('Please enter a valid amount'); return; }
+                  setAccountCreditSaving(true);
+                  try {
+                   await apiCall(API_ENDPOINTS.adjustments, { method: 'POST', body: JSON.stringify({ employeeId: currentUser.id, type: 'account_credit', amount: amt, reason: accountCreditNote || 'Account credit — cash to accountant', date: accountCreditDate }) });
+                   await loadAdjustmentsFromAPI();
+                   setShowAccountCredit(false);
+                   alert('Account credit of ' + getCurrencySymbol(currentUser.currency||'GBP') + amt.toFixed(2) + ' recorded successfully.');
+                  } catch(e) { alert('Failed: ' + e.message); }
+                  setAccountCreditSaving(false);
+                   }} disabled={accountCreditSaving} className="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 text-sm">
+                  {accountCreditSaving ? 'Saving...' : 'Submit Credit'}
+                   </button>
+                   <button onClick={() => setShowAccountCredit(false)} className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-200 text-sm">Cancel</button>
+                  </div>
+                   </div>
+                  </div>
+                  </div>
+                   )}
 
                    <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 text-white shadow-lg">
                   <div className="max-w-2xl mx-auto px-4 pt-5 pb-6">
@@ -2431,6 +2483,13 @@ import React, { useState, useEffect } from 'react';
                    Agent Collection
                   </button>
                    )}
+                  <button
+                   onClick={() => { setAccountCreditAmount(''); setAccountCreditNote(''); setAccountCreditDate(new Date().toISOString().split('T')[0]); setShowAccountCredit(true); }}
+                   className="mt-3 px-6 py-3 rounded-lg font-semibold transition bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-2"
+                  >
+                   <DollarSign className="w-4 h-4" />
+                   Account Credit
+                  </button>
                   </div>
 
                   {(() => {
@@ -5494,6 +5553,10 @@ import React, { useState, useEffect } from 'react';
                   const previousPayments = financialAdjustments.filter(function(a) {
                   return a.employeeId === parseInt(empId) && a.type === 'acct_settle' && a.date <= toDate;
                   }).reduce(function(s,a) { return s + (parseFloat(a.amount)||0); }, 0);
+                  const accountCredits = financialAdjustments.filter(function(a) {
+                  return a.employeeId === parseInt(empId) && a.type === 'account_credit' && a.date >= fromDate && a.date <= toDate;
+                  });
+                  const totalAccountCredits = accountCredits.reduce(function(s,a) { return s + (parseFloat(a.amount)||0); }, 0);
                   const previousBonuses = 0;
                   const previousPenalties = 0;
 
@@ -5510,9 +5573,9 @@ import React, { useState, useEffect } from 'react';
                   const totalPaidToAgents = empCollections.reduce(function(s,c) { return s+c.amountPaid; }, 0);
 
                   const grossBalance = totalCollected - totalPaidToAgents - totalEarned - totalExpenses;
-                  const balance = grossBalance - previousPayments;
+                  const balance = grossBalance - previousPayments - totalAccountCredits;
 
-                  setReport({ tsRows, empExpenses, empCollections, empAdjustments, totalEarned, totalExpenses, totalCollected, totalPaidToAgents, grossBalance, previousPayments, previousBonuses, previousPenalties, balance, hourlyRate });
+                  setReport({ tsRows, empExpenses, empCollections, empAdjustments, accountCredits, totalEarned, totalExpenses, totalCollected, totalPaidToAgents, grossBalance, previousPayments, previousBonuses, previousPenalties, totalAccountCredits, balance, hourlyRate });
                 };
 
                 const handleSettle = async function() {
@@ -5715,6 +5778,27 @@ import React, { useState, useEffect } from 'react';
                   )}
                   </Section>
 
+                  {report.accountCredits && report.accountCredits.length > 0 && (
+                  <Section title="Account Credits" color="bg-indigo-500" total={'-' + sym + (report.totalAccountCredits||0).toFixed(2)}>
+                  <table className="w-full text-sm">
+                  <thead><tr className="bg-indigo-50">{['Date','Note','Amount'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-indigo-700">{h}</th>;})}</tr></thead>
+                  <tbody className="divide-y divide-gray-100">
+                  {report.accountCredits.map(function(a){return (
+                   <tr key={a.id} className="hover:bg-indigo-50">
+                  <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{new Date(a.date).toLocaleDateString('en-GB')}</td>
+                  <td className="px-3 py-2 text-gray-700">{a.reason || 'Cash to accountant'}</td>
+                  <td className="px-3 py-2 font-bold text-indigo-700">-{sym}{(parseFloat(a.amount)||0).toFixed(2)}</td>
+                   </tr>
+                  );})}
+                  <tr className="bg-indigo-50 font-bold border-t-2 border-indigo-200">
+                  <td colSpan="2" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Total Credits</td>
+                  <td className="px-3 py-2 text-indigo-700">-{sym}{(report.totalAccountCredits||0).toFixed(2)}</td>
+                  </tr>
+                  </tbody>
+                  </table>
+                  </Section>
+                  )}
+
                   <Section title="Approved Expenses" color="bg-teal-500" total={sym + report.totalExpenses.toFixed(2)}>
                   {report.empExpenses.length === 0 ? <p className="text-gray-400 text-sm">No approved expenses in this period</p> : (
                   <table className="w-full text-sm">
@@ -5749,6 +5833,12 @@ import React, { useState, useEffect } from 'react';
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Paid to Agents</span>
                     <span className="font-semibold text-red-600">-{sym}{report.totalPaidToAgents.toFixed(2)}</span>
+                  </div>
+                  )}
+                  {(report.totalAccountCredits||0) > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Account Credits (Cash to Accountant)</span>
+                    <span className="font-semibold text-indigo-600">-{sym}{(report.totalAccountCredits||0).toFixed(2)}</span>
                   </div>
                   )}
                   <div className="flex justify-between text-sm">
