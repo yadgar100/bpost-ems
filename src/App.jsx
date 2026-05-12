@@ -546,6 +546,7 @@ import React, { useState, useEffect } from 'react';
             const [agentCollections, setAgentCollections] = useState([]);
             const [showAgentManager, setShowAgentManager] = useState(false);
             const [showAgentReport, setShowAgentReport] = useState(false);
+            const [agentReportState, setAgentReportState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], empFilter:'', branchFilter:'', countryFilter:'', reportData:null });
             const [showAgentCollectionForm, setShowAgentCollectionForm] = useState(false);
             const [showAccountCredit, setShowAccountCredit] = useState(false);
             const [accountCreditDate, setAccountCreditDate] = useState(new Date().toISOString().split('T')[0]);
@@ -556,6 +557,7 @@ import React, { useState, useEffect } from 'react';
             const [expenses, setExpenses] = useState([]);
             const [showExpenseManager, setShowExpenseManager] = useState(false);
             const [showExpenseReport, setShowExpenseReport] = useState(false);
+            const [expReportState, setExpReportState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], empFilter:'', branchFilter:'', reportData:null });
             const [showExpenseForm, setShowExpenseForm] = useState(false);
             const [branchList, setBranchList] = useState([]);
 
@@ -579,6 +581,7 @@ import React, { useState, useEffect } from 'react';
             const [showManualEntry, setShowManualEntry] = useState(false);
             const [showEmployeeManager, setShowEmployeeManager] = useState(false);
             const [showReportGenerator, setShowReportGenerator] = useState(false);
+            const [reportGenState, setReportGenState] = useState({ startDate: (() => { const d=new Date(); d.setDate(d.getDate()-7); return d.toISOString().split('T')[0]; })(), endDate: new Date().toISOString().split('T')[0], selectedDepartment:'all', selectedEmployee:'all', selectedBranch:'all', selectedCountry:'all', reportType:'summary', generatedReport:null, expandedEmp:null });
             const [showFinancialManager, setShowFinancialManager] = useState(false);
             const [showEmployeeAccounting, setShowEmployeeAccounting] = useState(false);
             const [empAccountingState, setEmpAccountingState] = useState({ empId: '', fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], report: null });
@@ -3374,21 +3377,19 @@ import React, { useState, useEffect } from 'react';
                 );
             };
 
-            const ReportGenerator = ({ onClose, visibleEmployees: visEmp }) => {
+            const ReportGenerator = ({ onClose, visibleEmployees: visEmp, persistedState, onStateChange }) => {
                 const filteredByCountry = visEmp || employees;
-                const [expandedEmp, setExpandedEmp] = useState(null);
-                const [reportType, setReportType] = useState('summary');
-                const [startDate, setStartDate] = useState(() => {
-                  const date = new Date();
-                  date.setDate(date.getDate() - 7);
-                  return date.toISOString().split('T')[0];
-                });
-                const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
-                const [selectedDepartment, setSelectedDepartment] = useState('all');
-                const [selectedEmployee, setSelectedEmployee] = useState('all');
-                const [selectedBranch, setSelectedBranch] = useState('all');
-                const [selectedCountry, setSelectedCountry] = useState('all');
-                const [generatedReport, setGeneratedReport] = useState(null);
+                const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
+                const expandedEmp = persistedState ? persistedState.expandedEmp : null; const setExpandedEmp = mk('expandedEmp');
+                const reportType = persistedState ? persistedState.reportType : 'summary'; const setReportType = mk('reportType');
+                const startDate = persistedState ? persistedState.startDate : (() => { const d=new Date(); d.setDate(d.getDate()-7); return d.toISOString().split('T')[0]; })();
+                const setStartDate = mk('startDate');
+                const endDate = persistedState ? persistedState.endDate : new Date().toISOString().split('T')[0]; const setEndDate = mk('endDate');
+                const selectedDepartment = persistedState ? persistedState.selectedDepartment : 'all'; const setSelectedDepartment = mk('selectedDepartment');
+                const selectedEmployee = persistedState ? persistedState.selectedEmployee : 'all'; const setSelectedEmployee = mk('selectedEmployee');
+                const selectedBranch = persistedState ? persistedState.selectedBranch : 'all'; const setSelectedBranch = mk('selectedBranch');
+                const selectedCountry = persistedState ? persistedState.selectedCountry : 'all'; const setSelectedCountry = mk('selectedCountry');
+                const generatedReport = persistedState ? persistedState.generatedReport : null; const setGeneratedReport = mk('generatedReport');
 
                 const generateReport = () => {
                   if (!startDate || !endDate) {
@@ -4894,14 +4895,14 @@ import React, { useState, useEffect } from 'react';
                 );
             };
 
-            const ExpenseReport = ({ onClose, visibleEmployees: visEmp }) => {
+            const ExpenseReport = ({ onClose, visibleEmployees: visEmp, persistedState, onStateChange }) => {
                 const today = new Date().toISOString().split('T')[0];
-                const firstOfMonth = today.slice(0,8) + '01';
-                const [fromDate, setFromDate] = useState(firstOfMonth);
-                const [toDate, setToDate] = useState(today);
-                const [empFilter, setEmpFilter] = useState('');
-                const [branchFilter, setBranchFilter] = useState('');
-                const [reportData, setReportData] = useState(null);
+                const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
+                const fromDate = persistedState ? persistedState.fromDate : today.slice(0,8)+'01'; const setFromDate = mk('fromDate');
+                const toDate = persistedState ? persistedState.toDate : today; const setToDate = mk('toDate');
+                const empFilter = persistedState ? persistedState.empFilter : ''; const setEmpFilter = mk('empFilter');
+                const branchFilter = persistedState ? persistedState.branchFilter : ''; const setBranchFilter = mk('branchFilter');
+                const reportData = persistedState ? persistedState.reportData : null; const setReportData = mk('reportData');
 
                 React.useEffect(function() {
                   const handleEsc = function(e) { if (e.key === 'Escape') onClose(); };
@@ -5399,15 +5400,15 @@ import React, { useState, useEffect } from 'react';
                 );
             };
 
-            const AgentReport = ({ onClose, visibleEmployees: visEmp, onRefresh }) => {
+            const AgentReport = ({ onClose, visibleEmployees: visEmp, onRefresh, persistedState, onStateChange }) => {
                 const today = new Date().toISOString().split('T')[0];
-                const firstOfMonth = today.slice(0,8) + '01';
-                const [fromDate, setFromDate] = useState(firstOfMonth);
-                const [toDate, setToDate] = useState(today);
-                const [empFilter, setEmpFilter] = useState('');
-                const [branchFilter, setBranchFilter] = useState('');
-                const [countryFilter, setCountryFilter] = useState('');
-                const [reportData, setReportData] = useState(null);
+                const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
+                const fromDate = persistedState ? persistedState.fromDate : today.slice(0,8)+'01'; const setFromDate = mk('fromDate');
+                const toDate = persistedState ? persistedState.toDate : today; const setToDate = mk('toDate');
+                const empFilter = persistedState ? persistedState.empFilter : ''; const setEmpFilter = mk('empFilter');
+                const branchFilter = persistedState ? persistedState.branchFilter : ''; const setBranchFilter = mk('branchFilter');
+                const countryFilter = persistedState ? persistedState.countryFilter : ''; const setCountryFilter = mk('countryFilter');
+                const reportData = persistedState ? persistedState.reportData : null; const setReportData = mk('reportData');
                 const [editingId, setEditingId] = useState(null);
                 const [editVals, setEditVals] = useState({});
                 const [savingId, setSavingId] = useState(null);
@@ -8382,7 +8383,7 @@ import React, { useState, useEffect } from 'react';
                    )}
 
                    {showReportGenerator && (
-                  <ReportGenerator onClose={() => setShowReportGenerator(false)} visibleEmployees={visibleEmployees} />
+                  <ReportGenerator onClose={() => setShowReportGenerator(false)} visibleEmployees={visibleEmployees} persistedState={reportGenState} onStateChange={setReportGenState} />
                    )}
 
                    {showFinancialManager && (
@@ -8394,7 +8395,7 @@ import React, { useState, useEffect } from 'react';
                    )}
 
                    {showExpenseReport && (
-                  <ExpenseReport onClose={() => setShowExpenseReport(false)} visibleEmployees={visibleEmployees} />
+                  <ExpenseReport onClose={() => setShowExpenseReport(false)} visibleEmployees={visibleEmployees} persistedState={expReportState} onStateChange={setExpReportState} />
                    )}
 
                    {showEmployeeAccounting && (
@@ -8418,7 +8419,7 @@ import React, { useState, useEffect } from 'react';
                    )}
 
                    {showAgentReport && (
-                  <AgentReport onClose={() => setShowAgentReport(false)} visibleEmployees={visibleEmployees} onRefresh={loadAgentCollectionsFromAPI} />
+                  <AgentReport onClose={() => setShowAgentReport(false)} visibleEmployees={visibleEmployees} onRefresh={loadAgentCollectionsFromAPI} persistedState={agentReportState} onStateChange={setAgentReportState} />
                    )}
 
                    <div className="bg-indigo-600 text-white p-6 shadow-lg">
