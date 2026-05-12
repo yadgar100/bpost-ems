@@ -548,10 +548,10 @@ import React, { useState, useEffect } from 'react';
             const [showAgentReport, setShowAgentReport] = useState(false);
             const [showAgentCollectionForm, setShowAgentCollectionForm] = useState(false);
             const [showAccountCredit, setShowAccountCredit] = useState(false);
-            const [accountCreditAmount, setAccountCreditAmount] = useState('');
-            const [accountCreditNote, setAccountCreditNote] = useState('');
             const [accountCreditDate, setAccountCreditDate] = useState(new Date().toISOString().split('T')[0]);
             const [accountCreditSaving, setAccountCreditSaving] = useState(false);
+            const accountCreditAmountRef = React.useRef(null);
+            const accountCreditNoteRef = React.useRef(null);
             const [myAgents, setMyAgents] = useState([]);
             const [expenses, setExpenses] = useState([]);
             const [showExpenseManager, setShowExpenseManager] = useState(false);
@@ -2296,20 +2296,21 @@ import React, { useState, useEffect } from 'react';
                    </div>
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Amount *</label>
-                  <input type="number" min="0.01" step="0.01" value={accountCreditAmount} onChange={function(e){setAccountCreditAmount(e.target.value);}} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  <input type="number" min="0.01" step="0.01" ref={accountCreditAmountRef} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                    </div>
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Note (optional)</label>
-                  <input type="text" value={accountCreditNote} onChange={function(e){setAccountCreditNote(e.target.value);}} placeholder="e.g. Cash handed to accountant" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  <input type="text" ref={accountCreditNoteRef} defaultValue="" placeholder="e.g. Cash handed to accountant" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                    </div>
                   </div>
                   <div className="flex gap-3 mt-5">
                    <button onClick={async function() {
-                  const amt = parseFloat(accountCreditAmount);
+                  const amt = parseFloat(accountCreditAmountRef.current ? accountCreditAmountRef.current.value : '');
                   if (!amt || amt <= 0) { alert('Please enter a valid amount'); return; }
+                  const note = accountCreditNoteRef.current ? accountCreditNoteRef.current.value : '';
                   setAccountCreditSaving(true);
                   try {
-                   await apiCall(API_ENDPOINTS.adjustments, { method: 'POST', body: JSON.stringify({ employeeId: currentUser.id, type: 'account_credit', amount: amt, reason: accountCreditNote || 'Account credit — cash to accountant', date: accountCreditDate }) });
+                   await apiCall(API_ENDPOINTS.adjustments, { method: 'POST', body: JSON.stringify({ employeeId: currentUser.id, type: 'account_credit', amount: amt, reason: note || 'Account credit — cash to accountant', date: accountCreditDate }) });
                    await loadAdjustmentsFromAPI();
                    setShowAccountCredit(false);
                    alert('Account credit of ' + getCurrencySymbol(currentUser.currency||'GBP') + amt.toFixed(2) + ' recorded successfully.');
@@ -2484,7 +2485,7 @@ import React, { useState, useEffect } from 'react';
                   </button>
                    )}
                   <button
-                   onClick={() => { setAccountCreditAmount(''); setAccountCreditNote(''); setAccountCreditDate(new Date().toISOString().split('T')[0]); setShowAccountCredit(true); }}
+                   onClick={() => { if(accountCreditAmountRef.current) accountCreditAmountRef.current.value=''; if(accountCreditNoteRef.current) accountCreditNoteRef.current.value=''; setAccountCreditDate(new Date().toISOString().split('T')[0]); setShowAccountCredit(true); }}
                    className="mt-3 px-6 py-3 rounded-lg font-semibold transition bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-2"
                   >
                    <DollarSign className="w-4 h-4" />
