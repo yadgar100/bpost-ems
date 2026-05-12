@@ -5271,7 +5271,7 @@ import React, { useState, useEffect } from 'react';
 
                 const startEdit = function(col) {
                   setEditingId(col.id);
-                  setEditVals({ fromCode: col.fromCode, toCode: col.toCode, amountCollected: col.amountCollected, amountPaid: col.amountPaid, boxesQty: col.boxesQty });
+                  setEditVals({ fromCode: col.fromCode, toCode: col.toCode, amountCollected: col.amountCollected, amountPaid: col.amountPaid, bankAmount: col.bankAmount || 0, boxesQty: col.boxesQty });
                 };
 
                 const saveEdit = async function(col) {
@@ -5284,6 +5284,7 @@ import React, { useState, useEffect } from 'react';
                    toCode: editVals.toCode,
                    amountCollected: parseFloat(editVals.amountCollected) || 0,
                    amountPaid: parseFloat(editVals.amountPaid) || 0,
+                   bankAmount: parseFloat(editVals.bankAmount) || 0,
                    boxesQty: parseInt(editVals.boxesQty) || 0,
                    notes: col.notes
                   })
@@ -5406,7 +5407,7 @@ import React, { useState, useEffect } from 'react';
                   {isEditing ? <input type="number" value={editVals.amountPaid} onChange={function(e){setEditVals(Object.assign({},editVals,{amountPaid:e.target.value}));}} className={ic} /> : (col.amountPaid > 0 ? sym+col.amountPaid.toFixed(2) : '—')}
                    </td>
                    <td className="px-4 py-3 font-bold text-blue-600">
-                  {col.bankAmount > 0 ? <span className="flex items-center gap-1"><span className="text-xs">🏦</span>{sym}{(col.bankAmount||0).toFixed(2)}</span> : <span className="text-gray-300">—</span>}
+                  {isEditing ? <input type="number" min="0" step="0.01" value={editVals.bankAmount} onChange={function(e){setEditVals(Object.assign({},editVals,{bankAmount:e.target.value}));}} className={ic} /> : (col.bankAmount > 0 ? <span className="flex items-center gap-1"><span className="text-xs">🏦</span>{sym}{(col.bankAmount||0).toFixed(2)}</span> : <span className="text-gray-300">—</span>)}
                    </td>
                    {hasPermission('canManageAgentCollections') && (
                   <td className="px-4 py-3">
