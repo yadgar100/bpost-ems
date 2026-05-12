@@ -586,6 +586,7 @@ import React, { useState, useEffect } from 'react';
             const [showEmployeeAccounting, setShowEmployeeAccounting] = useState(false);
             const [empAccountingState, setEmpAccountingState] = useState({ empId: '', fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], report: null });
             const [showCompanyAccounting, setShowCompanyAccounting] = useState(false);
+            const [companyAcctState, setCompanyAcctState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], branchFilter:'', countryFilter:'', report:null, collapsed:{collections:false,payroll:false,expenses:false,summary:false} });
             const [showPayrollSettings, setShowPayrollSettings] = useState(false);
             const [showAnnualLeave, setShowAnnualLeave] = useState(false);
             const [showChangePassword, setShowChangePassword] = useState(false);
@@ -6030,15 +6031,16 @@ import React, { useState, useEffect } from 'react';
                 );
             };
 
-            const CompanyAccounting = ({ onClose, visibleEmployees: visEmp }) => {
+            const CompanyAccounting = ({ onClose, visibleEmployees: visEmp, persistedState, onStateChange }) => {
                 const today = new Date().toISOString().split('T')[0];
-                const firstOfMonth = today.slice(0,8) + '01';
-                const [fromDate, setFromDate] = useState(firstOfMonth);
-                const [toDate, setToDate] = useState(today);
-                const [branchFilter, setBranchFilter] = useState('');
-                const [countryFilter, setCountryFilter] = useState('');
-                const [report, setReport] = useState(null);
-                const [collapsed, setCollapsed] = useState({ collections: false, payroll: false, expenses: false, summary: false });
+                const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
+                const fromDate = persistedState ? persistedState.fromDate : today.slice(0,8)+'01'; const setFromDate = mk('fromDate');
+                const toDate = persistedState ? persistedState.toDate : today; const setToDate = mk('toDate');
+                const branchFilter = persistedState ? persistedState.branchFilter : ''; const setBranchFilter = mk('branchFilter');
+                const countryFilter = persistedState ? persistedState.countryFilter : ''; const setCountryFilter = mk('countryFilter');
+                const report = persistedState ? persistedState.report : null; const setReport = mk('report');
+                const collapsed = persistedState ? persistedState.collapsed : {collections:false,payroll:false,expenses:false,summary:false};
+                const setCollapsed = mk('collapsed');
                 const toggleSection = function(key) { setCollapsed(function(prev) { return Object.assign({}, prev, {[key]: !prev[key]}); }); };
 
                 const countryList = [...new Set(visEmp.filter(function(e) { return !e.isAdmin && e.country; }).map(function(e) { return e.country; }))].sort();
@@ -8403,7 +8405,7 @@ import React, { useState, useEffect } from 'react';
                    )}
 
                    {showCompanyAccounting && (
-                  <CompanyAccounting onClose={() => setShowCompanyAccounting(false)} visibleEmployees={visibleEmployees} />
+                  <CompanyAccounting onClose={() => setShowCompanyAccounting(false)} visibleEmployees={visibleEmployees} persistedState={companyAcctState} onStateChange={setCompanyAcctState} />
                    )}
 
                    {showVehicleManager && (
