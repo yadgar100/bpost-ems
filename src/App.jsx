@@ -2281,54 +2281,7 @@ import React, { useState, useEffect } from 'react';
                    {showExpenseForm && <ExpenseForm onClose={() => setShowExpenseForm(false)} />}
 
                    {showAgentCollectionForm && <AgentCollectionForm onClose={() => setShowAgentCollectionForm(false)} />}
-                   {showAccountCredit && (
-                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-                   <div className="bg-indigo-700 rounded-t-2xl px-6 py-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                   <DollarSign className="w-6 h-6 text-white" />
-                   <h2 className="text-lg font-bold text-white">Account Credit</h2>
-                  </div>
-                  <button onClick={() => setShowAccountCredit(false)} className="text-indigo-200 hover:text-white"><X className="w-5 h-5" /></button>
-                   </div>
-                   <div className="p-6">
-                  <p className="text-sm text-gray-500 mb-4">Record cash handed over to the accountant. This will be deducted from your account balance.</p>
-                  <div className="space-y-3">
-                   <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Date</label>
-                  <input type="date" value={accountCreditDate} onChange={function(e){setAccountCreditDate(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                   </div>
-                   <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Amount *</label>
-                  <input type="number" min="0.01" step="0.01" ref={accountCreditAmountRef} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                   </div>
-                   <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Note (optional)</label>
-                  <input type="text" ref={accountCreditNoteRef} defaultValue="" placeholder="e.g. Cash handed to accountant" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                   </div>
-                  </div>
-                  <div className="flex gap-3 mt-5">
-                   <button onClick={async function() {
-                  const amt = parseFloat(accountCreditAmountRef.current ? accountCreditAmountRef.current.value : '');
-                  if (!amt || amt <= 0) { alert('Please enter a valid amount'); return; }
-                  const note = accountCreditNoteRef.current ? accountCreditNoteRef.current.value : '';
-                  setAccountCreditSaving(true);
-                  try {
-                   await apiCall(API_ENDPOINTS.adjustments, { method: 'POST', body: JSON.stringify({ employeeId: currentUser.id, type: 'account_credit_pending', amount: amt, reason: note || 'Account credit — cash to accountant', date: accountCreditDate }) });
-                   await loadAdjustmentsFromAPI();
-                   setShowAccountCredit(false);
-                   alert('Account credit of ' + getCurrencySymbol(currentUser.currency||'GBP') + amt.toFixed(2) + ' recorded successfully.');
-                  } catch(e) { alert('Failed: ' + e.message); }
-                  setAccountCreditSaving(false);
-                   }} disabled={accountCreditSaving} className="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 text-sm">
-                  {accountCreditSaving ? 'Saving...' : 'Submit Credit'}
-                   </button>
-                   <button onClick={() => setShowAccountCredit(false)} className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-200 text-sm">Cancel</button>
-                  </div>
-                   </div>
-                  </div>
-                  </div>
-                   )}
+
 
                    <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 text-white shadow-lg">
                   <div className="max-w-2xl mx-auto px-4 pt-5 pb-6">
@@ -2488,17 +2441,10 @@ import React, { useState, useEffect } from 'react';
                    Agent Collection
                   </button>
                    )}
-                  <button
-                   onClick={() => { if(accountCreditAmountRef.current) accountCreditAmountRef.current.value=''; if(accountCreditNoteRef.current) accountCreditNoteRef.current.value=''; setAccountCreditDate(new Date().toISOString().split('T')[0]); setShowAccountCredit(true); }}
-                   className="mt-3 px-6 py-3 rounded-lg font-semibold transition bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-2"
-                  >
-                   <DollarSign className="w-4 h-4" />
-                   Account Credit
-                  </button>
                   </div>
 
                   {(() => {
-                   const myCredits = financialAdjustments.filter(function(a){return a.employeeId===currentUser.id && (a.type==='account_credit'||a.type==='account_credit_pending');}).sort(function(a,b){return a.date>b.date?-1:1;});
+                   const myCredits = financialAdjustments.filter(function(a){return a.employeeId===currentUser.id && a.type==='account_credit';}).sort(function(a,b){return a.date>b.date?-1:1;});
                    if (!myCredits.length) return null;
                    const sym2 = getCurrencySymbol(currentUser.currency||'GBP');
                    return (
@@ -2511,9 +2457,7 @@ import React, { useState, useEffect } from 'react';
                    <p className="font-semibold text-gray-800">{sym2}{parseFloat(a.amount).toFixed(2)}</p>
                    <p className="text-xs text-gray-500">{new Date(a.date).toLocaleDateString('en-GB')} · {a.reason}</p>
                   </div>
-                  <span className={a.type==='account_credit'?'px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700':'px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700'}>
-                   {a.type==='account_credit'?'Approved':'Pending'}
-                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">Credited</span>
                    </div>
                   );})}
                    </div>
@@ -3035,9 +2979,7 @@ import React, { useState, useEffect } from 'react';
                   }`}
                    >
                   Account Credits
-                  {financialAdjustments.filter(function(a){return a.type==='account_credit_pending' && visibleEmpIds.has(a.employeeId);}).length > 0 && (
-                  <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
-                  )}
+
                    </button>
                    <button
                   onClick={() => setActiveTab('summary')}
@@ -3176,63 +3118,84 @@ import React, { useState, useEffect } from 'react';
                    )}
 
                    {activeTab === 'credits' && (() => {
-                  const pendingCredits = financialAdjustments.filter(function(a){return a.type==='account_credit_pending' && visibleEmpIds.has(a.employeeId);});
-                  const approvedCreds = financialAdjustments.filter(function(a){return a.type==='account_credit' && visibleEmpIds.has(a.employeeId);});
-                  const handleApprove = async function(adj) {
+                  const allCredits = financialAdjustments.filter(function(a){return a.type==='account_credit' && visibleEmpIds.has(a.employeeId);});
+                  const [addingCredit, setAddingCredit] = React.useState(false);
+                  const [creditEmpId, setCreditEmpId] = React.useState('');
+                  const [creditAmt, setCreditAmt] = React.useState('');
+                  const [creditNote, setCreditNote] = React.useState('');
+                  const [creditDate, setCreditDate] = React.useState(new Date().toISOString().split('T')[0]);
+                  const [creditSaving, setCreditSaving] = React.useState(false);
+                  const handleAddCredit = async function() {
+                   const amt = parseFloat(creditAmt);
+                   if (!creditEmpId) { alert('Please select an employee'); return; }
+                   if (!amt || amt <= 0) { alert('Please enter a valid amount'); return; }
+                   setCreditSaving(true);
                    try {
-                  await apiCall(API_ENDPOINTS.adjustments + '/' + adj.id, { method: 'PUT', body: JSON.stringify({ type: 'account_credit', amount: adj.amount, reason: adj.reason, date: adj.date, employeeId: adj.employeeId }) });
+                  await apiCall(API_ENDPOINTS.adjustments, { method: 'POST', body: JSON.stringify({ employeeId: parseInt(creditEmpId), type: 'account_credit', amount: amt, reason: creditNote || 'Account credit', date: creditDate }) });
                   await loadAdjustmentsFromAPI();
+                  setCreditEmpId(''); setCreditAmt(''); setCreditNote(''); setAddingCredit(false);
                    } catch(e) { alert('Failed: ' + e.message); }
+                   setCreditSaving(false);
                   };
-                  const handleReject = async function(adj) {
-                   if (!window.confirm('Reject and delete this credit of ' + getCurrencySymbol('GBP') + parseFloat(adj.amount).toFixed(2) + ' from ' + adj.employeeName + '?')) return;
-                   try {
-                  await apiCall(API_ENDPOINTS.adjustments + '/' + adj.id, { method: 'DELETE' });
-                  await loadAdjustmentsFromAPI();
-                   } catch(e) { alert('Failed: ' + e.message); }
+                  const handleDeleteCredit = async function(a) {
+                   if (!window.confirm('Delete credit of £' + parseFloat(a.amount).toFixed(2) + ' for ' + a.employeeName + '?')) return;
+                   try { await apiCall(API_ENDPOINTS.adjustments + '/' + a.id, { method: 'DELETE' }); await loadAdjustmentsFromAPI(); }
+                   catch(e) { alert('Failed: ' + e.message); }
                   };
                   return (
-                  <div className="space-y-6">
-                   {pendingCredits.length > 0 && (
+                  <div className="space-y-4">
+                   <div className="flex justify-between items-center">
+                  <h3 className="text-base font-bold text-gray-700">Account Credits</h3>
+                  <button onClick={function(){setAddingCredit(!addingCredit);}} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 flex items-center gap-2">
+                   <DollarSign className="w-4 h-4" /> Add Credit
+                  </button>
+                   </div>
+                   {addingCredit && (
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
+                   <div className="grid grid-cols-2 gap-3">
                   <div>
-                   <h3 className="text-base font-bold text-orange-700 mb-3 flex items-center gap-2">
-                  <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse inline-block"></span>
-                  Pending Approval ({pendingCredits.length})
-                   </h3>
-                   <div className="space-y-2">
-                  {pendingCredits.map(function(a) { return (
-                   <div key={a.id} className="bg-orange-50 border border-orange-200 rounded-lg p-4 flex items-center justify-between gap-4">
-                  <div className="flex-1">
-                   <p className="font-semibold text-gray-800">{a.employeeName}</p>
-                   <p className="text-sm text-gray-500">{new Date(a.date).toLocaleDateString('en-GB')} · {a.reason}</p>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Employee *</label>
+                   <select value={creditEmpId} onChange={function(e){setCreditEmpId(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <option value="">Select employee...</option>
+                  {[...visEmp].filter(function(e){return !e.isAdmin;}).sort(function(a,b){return (a.firstName+a.lastName).localeCompare(b.firstName+b.lastName);}).map(function(e){return <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.employeeId})</option>;})}
+                   </select>
                   </div>
-                  <p className="font-bold text-indigo-700 text-lg">{getCurrencySymbol('GBP')}{parseFloat(a.amount).toFixed(2)}</p>
-                  <div className="flex gap-2">
-                   <button onClick={function(){handleApprove(a);}} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700">Approve</button>
-                   <button onClick={function(){handleReject(a);}} className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-sm font-semibold hover:bg-red-200">Reject</button>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Date *</label>
+                   <input type="date" value={creditDate} onChange={function(e){setCreditDate(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                    </div>
-                  ); })}
+                   <div className="grid grid-cols-2 gap-3">
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Amount *</label>
+                   <input type="number" min="0.01" step="0.01" value={creditAmt} onChange={function(e){setCreditAmt(e.target.value);}} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Note</label>
+                   <input type="text" value={creditNote} onChange={function(e){setCreditNote(e.target.value);}} placeholder="e.g. Cash received from agent" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                   </div>
+                   <div className="flex gap-2">
+                  <button onClick={handleAddCredit} disabled={creditSaving} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">{creditSaving?'Saving...':'Save Credit'}</button>
+                  <button onClick={function(){setAddingCredit(false);}} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200">Cancel</button>
                    </div>
                   </div>
                    )}
-                   {pendingCredits.length === 0 && <p className="text-green-600 text-sm font-medium py-4">✓ No pending credits to approve.</p>}
-                   {approvedCreds.length > 0 && (
-                  <div>
-                   <h3 className="text-base font-bold text-gray-700 mb-3">Approved Credits</h3>
-                   <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {[...approvedCreds].reverse().map(function(a) { return (
-                   <div key={a.id} className="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center justify-between">
+                   <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {allCredits.length === 0 && <p className="text-gray-400 text-sm py-4">No account credits recorded yet.</p>}
+                  {[...allCredits].reverse().map(function(a) { return (
+                   <div key={a.id} className="bg-white border border-gray-200 rounded-lg p-3 flex items-center justify-between">
                   <div>
                    <p className="text-sm font-semibold text-gray-800">{a.employeeName}</p>
                    <p className="text-xs text-gray-500">{new Date(a.date).toLocaleDateString('en-GB')} · {a.reason}</p>
                   </div>
-                  <span className="font-bold text-indigo-700">{getCurrencySymbol('GBP')}{parseFloat(a.amount).toFixed(2)}</span>
+                  <div className="flex items-center gap-3">
+                   <span className="font-bold text-indigo-700">{getCurrencySymbol('GBP')}{parseFloat(a.amount).toFixed(2)}</span>
+                   <button onClick={function(){handleDeleteCredit(a);}} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold hover:bg-red-200">Delete</button>
+                  </div>
                    </div>
                   ); })}
                    </div>
-                  </div>
-                   )}
                   </div>
                   );
                    })()}
@@ -3403,12 +3366,17 @@ import React, { useState, useEffect } from 'react';
                    return;
                   }
 
-                  const filteredTimesheets = timesheets.filter(ts => {
-                   const tsDate = new Date(ts.date);
-                   const start = new Date(startDate);
-                   const end = new Date(endDate);
-                   return tsDate >= start && tsDate <= end;
-                  });
+                  const filteredTimesheets = (() => {
+                   // Deduplicate: if a date has both checkedin + pending/approved, keep only the pending/approved
+                   const inRange = timesheets.filter(ts => {
+                  const tsDate = new Date(ts.date);
+                  return tsDate >= new Date(startDate) && tsDate <= new Date(endDate);
+                   });
+                   const betterExists = (ts) => ts.status === 'checkedin' && inRange.some(function(t) {
+                  return t.employeeId === ts.employeeId && t.date === ts.date && (t.status === 'pending' || t.status === 'approved');
+                   });
+                   return inRange.filter(function(ts) { return !betterExists(ts); });
+                  })();
 
                   let relevantEmployees = filteredByCountry.filter(emp => !emp.isAdmin);
                   if (selectedDepartment !== 'all') {
@@ -5657,11 +5625,11 @@ import React, { useState, useEffect } from 'react';
                   return a.employeeId === parseInt(empId) && a.type === 'acct_settle' && a.date <= toDate;
                   }).reduce(function(s,a) { return s + (parseFloat(a.amount)||0); }, 0);
                   const accountCredits = financialAdjustments.filter(function(a) {
-                  return a.employeeId === parseInt(empId) && (a.type === 'account_credit' || a.type === 'account_credit_pending') && a.date >= fromDate && a.date <= toDate;
+                  return a.employeeId === parseInt(empId) && a.type === 'account_credit' && a.date >= fromDate && a.date <= toDate;
                   });
-                  const approvedCredits = accountCredits.filter(function(a) { return a.type === 'account_credit'; });
+                  const approvedCredits = accountCredits;
                   const totalAccountCredits = approvedCredits.reduce(function(s,a) { return s + (parseFloat(a.amount)||0); }, 0);
-                  const pendingCreditsTotal = accountCredits.filter(function(a){return a.type==='account_credit_pending';}).reduce(function(s,a){return s+(parseFloat(a.amount)||0);},0);
+                  const pendingCreditsTotal = 0; // deprecated — credits now admin-only
                   const previousBonuses = 0;
                   const previousPenalties = 0;
 
