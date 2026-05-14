@@ -2789,6 +2789,89 @@ import React, { useState, useEffect } from 'react';
                 );
             };
 
+            const AccountCreditsTab = ({ visEmp, financialAdjustments, visibleEmpIds, loadAdjustmentsFromAPI, apiCall, API_ENDPOINTS, getCurrencySymbol }) => {
+                const allCredits = financialAdjustments.filter(function(a){return a.type==='account_credit' && visibleEmpIds.has(a.employeeId);});
+                const [addingCredit, setAddingCredit] = useState(false);
+                const [creditEmpId, setCreditEmpId] = useState('');
+                const [creditAmt, setCreditAmt] = useState('');
+                const [creditNote, setCreditNote] = useState('');
+                const [creditDate, setCreditDate] = useState(new Date().toISOString().split('T')[0]);
+                const [creditSaving, setCreditSaving] = useState(false);
+                const handleAddCredit = async function() {
+                  const amt = parseFloat(creditAmt);
+                  if (!creditEmpId) { alert('Please select an employee'); return; }
+                  if (!amt || amt <= 0) { alert('Please enter a valid amount'); return; }
+                  setCreditSaving(true);
+                  try {
+                   await apiCall(API_ENDPOINTS.adjustments, { method: 'POST', body: JSON.stringify({ employeeId: parseInt(creditEmpId), type: 'account_credit', amount: amt, reason: creditNote || 'Account credit', date: creditDate }) });
+                   await loadAdjustmentsFromAPI();
+                   setCreditEmpId(''); setCreditAmt(''); setCreditNote(''); setAddingCredit(false);
+                  } catch(e) { alert('Failed: ' + e.message); }
+                  setCreditSaving(false);
+                };
+                const handleDeleteCredit = async function(a) {
+                  if (!window.confirm('Delete credit of £' + parseFloat(a.amount).toFixed(2) + ' for ' + a.employeeName + '?')) return;
+                  try { await apiCall(API_ENDPOINTS.adjustments + '/' + a.id, { method: 'DELETE' }); await loadAdjustmentsFromAPI(); }
+                  catch(e) { alert('Failed: ' + e.message); }
+                };
+                return (
+                  <div className="space-y-4">
+                   <div className="flex justify-between items-center">
+                  <h3 className="text-base font-bold text-gray-700">Account Credits</h3>
+                  <button onClick={function(){setAddingCredit(!addingCredit);}} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 flex items-center gap-2">
+                   <DollarSign className="w-4 h-4" /> Add Credit
+                  </button>
+                   </div>
+                   {addingCredit && (
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
+                   <div className="grid grid-cols-2 gap-3">
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Employee *</label>
+                   <select value={creditEmpId} onChange={function(e){setCreditEmpId(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <option value="">Select employee...</option>
+                  {[...visEmp].filter(function(e){return !e.isAdmin;}).sort(function(a,b){return (a.firstName+a.lastName).localeCompare(b.firstName+b.lastName);}).map(function(e){return <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.employeeId})</option>;})}
+                   </select>
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Date *</label>
+                   <input type="date" value={creditDate} onChange={function(e){setCreditDate(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                   </div>
+                   <div className="grid grid-cols-2 gap-3">
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Amount *</label>
+                   <input type="number" min="0.01" step="0.01" value={creditAmt} onChange={function(e){setCreditAmt(e.target.value);}} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Note</label>
+                   <input type="text" value={creditNote} onChange={function(e){setCreditNote(e.target.value);}} placeholder="e.g. Cash received from agent" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                   </div>
+                   <div className="flex gap-2">
+                  <button onClick={handleAddCredit} disabled={creditSaving} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">{creditSaving?'Saving...':'Save Credit'}</button>
+                  <button onClick={function(){setAddingCredit(false);}} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200">Cancel</button>
+                   </div>
+                  </div>
+                   )}
+                   <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {allCredits.length === 0 && <p className="text-gray-400 text-sm py-4">No account credits recorded yet.</p>}
+                  {[...allCredits].reverse().map(function(a) { return (
+                   <div key={a.id} className="bg-white border border-gray-200 rounded-lg p-3 flex items-center justify-between">
+                  <div>
+                   <p className="text-sm font-semibold text-gray-800">{a.employeeName}</p>
+                   <p className="text-xs text-gray-500">{new Date(a.date).toLocaleDateString('en-GB')} · {a.reason}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                   <span className="font-bold text-indigo-700">{getCurrencySymbol('GBP')}{parseFloat(a.amount).toFixed(2)}</span>
+                   <button onClick={function(){handleDeleteCredit(a);}} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold hover:bg-red-200">Delete</button>
+                  </div>
+                   </div>
+                  ); })}
+                   </div>
+                  </div>
+                );
+            };
+
             const FinancialManager = ({ onClose, visibleEmployees: visEmp }) => {
                 const filteredByCountry = (visEmp || employees).filter(e => !e.isAdmin);
                 const visibleEmpIds = new Set(filteredByCountry.map(e => e.id));
@@ -3124,66 +3207,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                    )}
 
-                   {activeTab === 'credits' && (() => {  /* credits tab */
-                  const allCredits = financialAdjustments.filter(function(a){return a.type==='account_credit' && visibleEmpIds.has(a.employeeId);});
-
-                  return (
-                  <div className="space-y-4">
-                   <div className="flex justify-between items-center">
-                  <h3 className="text-base font-bold text-gray-700">Account Credits</h3>
-                  <button onClick={function(){setAddingCredit(!addingCredit);}} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 flex items-center gap-2">
-                   <DollarSign className="w-4 h-4" /> Add Credit
-                  </button>
-                   </div>
-                   {addingCredit && (
-                  <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
-                   <div className="grid grid-cols-2 gap-3">
-                  <div>
-                   <label className="block text-xs font-semibold text-gray-600 mb-1">Employee *</label>
-                   <select value={creditEmpId} onChange={function(e){setCreditEmpId(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                  <option value="">Select employee...</option>
-                  {[...visEmp].filter(function(e){return !e.isAdmin;}).sort(function(a,b){return (a.firstName+a.lastName).localeCompare(b.firstName+b.lastName);}).map(function(e){return <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.employeeId})</option>;})}
-                   </select>
-                  </div>
-                  <div>
-                   <label className="block text-xs font-semibold text-gray-600 mb-1">Date *</label>
-                   <input type="date" value={creditDate} onChange={function(e){setCreditDate(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                  </div>
-                   </div>
-                   <div className="grid grid-cols-2 gap-3">
-                  <div>
-                   <label className="block text-xs font-semibold text-gray-600 mb-1">Amount *</label>
-                   <input type="number" min="0.01" step="0.01" value={creditAmt} onChange={function(e){setCreditAmt(e.target.value);}} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                  </div>
-                  <div>
-                   <label className="block text-xs font-semibold text-gray-600 mb-1">Note</label>
-                   <input type="text" value={creditNote} onChange={function(e){setCreditNote(e.target.value);}} placeholder="e.g. Cash received from agent" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                  </div>
-                   </div>
-                   <div className="flex gap-2">
-                  <button onClick={handleAddCredit} disabled={creditSaving} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">{creditSaving?'Saving...':'Save Credit'}</button>
-                  <button onClick={function(){setAddingCredit(false);}} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200">Cancel</button>
-                   </div>
-                  </div>
-                   )}
-                   <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {allCredits.length === 0 && <p className="text-gray-400 text-sm py-4">No account credits recorded yet.</p>}
-                  {[...allCredits].reverse().map(function(a) { return (
-                   <div key={a.id} className="bg-white border border-gray-200 rounded-lg p-3 flex items-center justify-between">
-                  <div>
-                   <p className="text-sm font-semibold text-gray-800">{a.employeeName}</p>
-                   <p className="text-xs text-gray-500">{new Date(a.date).toLocaleDateString('en-GB')} · {a.reason}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                   <span className="font-bold text-indigo-700">{getCurrencySymbol('GBP')}{parseFloat(a.amount).toFixed(2)}</span>
-                   <button onClick={function(){handleDeleteCredit(a);}} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold hover:bg-red-200">Delete</button>
-                  </div>
-                   </div>
-                  ); })}
-                   </div>
-                  </div>
-                  );
-                   })()}
+                   {activeTab === 'credits' && <AccountCreditsTab visEmp={visEmp} financialAdjustments={financialAdjustments} visibleEmpIds={visibleEmpIds} loadAdjustmentsFromAPI={loadAdjustmentsFromAPI} apiCall={apiCall} API_ENDPOINTS={API_ENDPOINTS} getCurrencySymbol={getCurrencySymbol} />}
 
                    {activeTab === 'history' && (
                   <div>
@@ -4421,9 +4445,13 @@ import React, { useState, useEffect } from 'react';
 
                 const removeItem = (id) => setItems(items.filter(i => i.id !== id));
 
+                const _submitGuard = React.useRef(false);
                 const submitAll = async () => {
+                  if (_submitGuard.current || saving) return;
                   if (items.length === 0) { alert('Add at least one expense item'); return; }
+                  _submitGuard.current = true;
                   setSaving(true);
+                  const countToSubmit = items.length;
                   try {
                    for (const item of items) {
                   await apiCall(API_ENDPOINTS.expenses, {
@@ -4432,16 +4460,16 @@ import React, { useState, useEffect } from 'react';
                   });
                    }
                    await loadExpensesFromAPI();
-
                    setItems([]);
                    const emptyF = { date: today, category: '', description: '', amount: '', receiptNote: '', receiptImage: null };
                    setForm(emptyF);
                    localStorage.removeItem('bpost_pending_expenses');
                    localStorage.removeItem('bpost_pending_form');
-                   alert(`✓ ${items.length} expense${items.length > 1 ? 's' : ''} submitted for approval`);
+                   alert(`✓ ${countToSubmit} expense${countToSubmit > 1 ? 's' : ''} submitted for approval`);
                    onClose();
                   } catch(e) { alert('Failed to submit: ' + e.message); }
                   setSaving(false);
+                  _submitGuard.current = false;
                 };
 
                 const sym = getCurrencySymbol(currentUser.currency || 'GBP');
