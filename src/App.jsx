@@ -2795,6 +2795,13 @@ import React, { useState, useEffect } from 'react';
                 const visibleAdjustments = financialAdjustments.filter(a => visibleEmpIds.has(a.employeeId));
                 const [activeTab, setActiveTab] = useState('add');
                 const [adjustmentType, setAdjustmentType] = useState('bonus');
+                // Account Credits tab state — must be at component level (no hooks in IIFEs)
+                const [addingCredit, setAddingCredit] = useState(false);
+                const [creditEmpId, setCreditEmpId] = useState('');
+                const [creditAmt, setCreditAmt] = useState('');
+                const [creditNote, setCreditNote] = useState('');
+                const [creditDate, setCreditDate] = useState(new Date().toISOString().split('T')[0]);
+                const [creditSaving, setCreditSaving] = useState(false);
                 const [adjustmentData, setAdjustmentData] = useState({
                   employeeId: '',
                   type: 'bonus',
@@ -3117,31 +3124,9 @@ import React, { useState, useEffect } from 'react';
                   </div>
                    )}
 
-                   {activeTab === 'credits' && (() => {
+                   {activeTab === 'credits' && (() => {  /* credits tab */
                   const allCredits = financialAdjustments.filter(function(a){return a.type==='account_credit' && visibleEmpIds.has(a.employeeId);});
-                  const [addingCredit, setAddingCredit] = React.useState(false);
-                  const [creditEmpId, setCreditEmpId] = React.useState('');
-                  const [creditAmt, setCreditAmt] = React.useState('');
-                  const [creditNote, setCreditNote] = React.useState('');
-                  const [creditDate, setCreditDate] = React.useState(new Date().toISOString().split('T')[0]);
-                  const [creditSaving, setCreditSaving] = React.useState(false);
-                  const handleAddCredit = async function() {
-                   const amt = parseFloat(creditAmt);
-                   if (!creditEmpId) { alert('Please select an employee'); return; }
-                   if (!amt || amt <= 0) { alert('Please enter a valid amount'); return; }
-                   setCreditSaving(true);
-                   try {
-                  await apiCall(API_ENDPOINTS.adjustments, { method: 'POST', body: JSON.stringify({ employeeId: parseInt(creditEmpId), type: 'account_credit', amount: amt, reason: creditNote || 'Account credit', date: creditDate }) });
-                  await loadAdjustmentsFromAPI();
-                  setCreditEmpId(''); setCreditAmt(''); setCreditNote(''); setAddingCredit(false);
-                   } catch(e) { alert('Failed: ' + e.message); }
-                   setCreditSaving(false);
-                  };
-                  const handleDeleteCredit = async function(a) {
-                   if (!window.confirm('Delete credit of £' + parseFloat(a.amount).toFixed(2) + ' for ' + a.employeeName + '?')) return;
-                   try { await apiCall(API_ENDPOINTS.adjustments + '/' + a.id, { method: 'DELETE' }); await loadAdjustmentsFromAPI(); }
-                   catch(e) { alert('Failed: ' + e.message); }
-                  };
+
                   return (
                   <div className="space-y-4">
                    <div className="flex justify-between items-center">
@@ -6012,6 +5997,24 @@ import React, { useState, useEffect } from 'react';
                 const toggleSection = function(key) { setCollapsed(function(prev) { return Object.assign({}, prev, {[key]: !prev[key]}); }); };
 
                 const countryList = [...new Set(visEmp.filter(function(e) { return !e.isAdmin && e.country; }).map(function(e) { return e.country; }))].sort();
+
+                const handleAddCredit = async function() {
+                  const amt = parseFloat(creditAmt);
+                  if (!creditEmpId) { alert('Please select an employee'); return; }
+                  if (!amt || amt <= 0) { alert('Please enter a valid amount'); return; }
+                  setCreditSaving(true);
+                  try {
+                   await apiCall(API_ENDPOINTS.adjustments, { method: 'POST', body: JSON.stringify({ employeeId: parseInt(creditEmpId), type: 'account_credit', amount: amt, reason: creditNote || 'Account credit', date: creditDate }) });
+                   await loadAdjustmentsFromAPI();
+                   setCreditEmpId(''); setCreditAmt(''); setCreditNote(''); setAddingCredit(false);
+                  } catch(e) { alert('Failed: ' + e.message); }
+                  setCreditSaving(false);
+                };
+                const handleDeleteCredit = async function(a) {
+                  if (!window.confirm('Delete credit of £' + parseFloat(a.amount).toFixed(2) + ' for ' + a.employeeName + '?')) return;
+                  try { await apiCall(API_ENDPOINTS.adjustments + '/' + a.id, { method: 'DELETE' }); await loadAdjustmentsFromAPI(); }
+                  catch(e) { alert('Failed: ' + e.message); }
+                };
 
                 const filteredEmp = visEmp.filter(function(e) {
                   if (e.isAdmin) return false;
