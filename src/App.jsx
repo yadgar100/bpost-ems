@@ -5394,6 +5394,9 @@ import React, { useState, useEffect } from 'react';
                 const [editingId, setEditingId] = useState(null);
                 const [editVals, setEditVals] = useState({});
                 const [savingId, setSavingId] = useState(null);
+                const [showAddForm, setShowAddForm] = useState(false);
+                const [addForm, setAddForm] = useState({ employeeId:'', agentId:'', date: new Date().toISOString().split('T')[0], fromCode:'', toCode:'', amountCollected:'', amountPaid:'', bankAmount:'', boxesQty:'', notes:'' });
+                const [addSaving, setAddSaving] = useState(false);
 
                 React.useEffect(function() {
                   const handleEsc = function(e) { if (e.key === 'Escape') onClose(); };
@@ -5410,6 +5413,32 @@ import React, { useState, useEffect } from 'react';
                    // Sync parent agentCollections state so report stays correct on re-open
                    if (onRefresh) await onRefresh();
                   } catch(e) { alert('Failed to delete: ' + e.message); }
+                };
+
+                const handleAddCollection = async function() {
+                  if (!addForm.employeeId || !addForm.agentId) { alert('Please select an employee and an agent'); return; }
+                  if (!addForm.date) { alert('Please select a date'); return; }
+                  setAddSaving(true);
+                  try {
+                   const payload = {
+                  employeeId: parseInt(addForm.employeeId),
+                  agentId: parseInt(addForm.agentId),
+                  date: addForm.date,
+                  fromCode: addForm.fromCode || '',
+                  toCode: addForm.toCode || '',
+                  amountCollected: parseFloat(addForm.amountCollected) || 0,
+                  amountPaid: parseFloat(addForm.amountPaid) || 0,
+                  bankAmount: parseFloat(addForm.bankAmount) || 0,
+                  boxesQty: parseInt(addForm.boxesQty) || 0,
+                  notes: addForm.notes || ''
+                   };
+                   await apiCall(API_ENDPOINTS.agentCollections, { method: 'POST', body: JSON.stringify(payload) });
+                   if (onRefresh) await onRefresh();
+                   setAddForm({ employeeId:'', agentId:'', date: new Date().toISOString().split('T')[0], fromCode:'', toCode:'', amountCollected:'', amountPaid:'', bankAmount:'', boxesQty:'', notes:'' });
+                   setShowAddForm(false);
+                   generateReport();
+                  } catch(e) { alert('Failed to add: ' + e.message); }
+                  setAddSaving(false);
                 };
 
                 const startEdit = function(col) {
@@ -5510,7 +5539,69 @@ import React, { useState, useEffect } from 'react';
                    </div>
                    <button onClick={generateReport} className="bg-orange-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-orange-700 text-sm">Generate Report</button>
                    {reportData && <button onClick={exportCSV} className="bg-green-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-green-700 text-sm">Export CSV</button>}
+                   <button onClick={function(){setShowAddForm(!showAddForm);}} className="bg-indigo-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-indigo-700 text-sm flex items-center gap-2">
+                  <span className="text-lg leading-none">+</span> Add Collection
+                   </button>
                   </div>
+
+                  {showAddForm && (
+                  <div className="mx-6 mb-4 bg-indigo-50 border border-indigo-200 rounded-xl p-5">
+                   <h3 className="text-sm font-bold text-indigo-800 mb-4">Manually Add Collection Record</h3>
+                   <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Employee *</label>
+                   <select value={addForm.employeeId} onChange={function(e){setAddForm(Object.assign({},addForm,{employeeId:e.target.value}));}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <option value="">Select employee...</option>
+                  {[...visEmp].filter(function(e){return !e.isAdmin;}).sort(function(a,b){return (a.firstName+a.lastName).localeCompare(b.firstName+b.lastName);}).map(function(e){return <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>;})}
+                   </select>
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Agent *</label>
+                   <select value={addForm.agentId} onChange={function(e){setAddForm(Object.assign({},addForm,{agentId:e.target.value}));}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <option value="">Select agent...</option>
+                  {agents.map(function(a){return <option key={a.Id||a.id} value={a.Id||a.id}>{a.AgentCode||a.agentCode} — {a.City||a.city}</option>;})}
+                   </select>
+                  </div>
+                   </div>
+                   <div className="grid grid-cols-3 gap-3 mb-3">
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Date *</label>
+                   <input type="date" value={addForm.date} onChange={function(e){setAddForm(Object.assign({},addForm,{date:e.target.value}));}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">From Code</label>
+                   <input type="text" value={addForm.fromCode} onChange={function(e){setAddForm(Object.assign({},addForm,{fromCode:e.target.value}));}} placeholder="e.g. OX79" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">To Code</label>
+                   <input type="text" value={addForm.toCode} onChange={function(e){setAddForm(Object.assign({},addForm,{toCode:e.target.value}));}} placeholder="e.g. OX91" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                   </div>
+                   <div className="grid grid-cols-4 gap-3 mb-4">
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Cash Collected</label>
+                   <input type="number" min="0" step="0.01" value={addForm.amountCollected} onChange={function(e){setAddForm(Object.assign({},addForm,{amountCollected:e.target.value}));}} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Paid to Agent</label>
+                   <input type="number" min="0" step="0.01" value={addForm.amountPaid} onChange={function(e){setAddForm(Object.assign({},addForm,{amountPaid:e.target.value}));}} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Bank Transfer</label>
+                   <input type="number" min="0" step="0.01" value={addForm.bankAmount} onChange={function(e){setAddForm(Object.assign({},addForm,{bankAmount:e.target.value}));}} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
+                   <input type="text" value={addForm.notes} onChange={function(e){setAddForm(Object.assign({},addForm,{notes:e.target.value}));}} placeholder="Optional" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                   </div>
+                   <div className="flex gap-2">
+                  <button onClick={handleAddCollection} disabled={addSaving} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">{addSaving?'Saving...':'Save Collection'}</button>
+                  <button onClick={function(){setShowAddForm(false);}} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200">Cancel</button>
+                   </div>
+                  </div>
+                  )}
+
                   <div className="p-6">
                    {!reportData ? (
                   <div className="text-center py-16 text-gray-400"><Truck className="w-16 h-16 mx-auto mb-4 opacity-30" /><p>Select a date range and click Generate Report</p></div>
