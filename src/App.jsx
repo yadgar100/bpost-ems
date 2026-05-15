@@ -4387,13 +4387,17 @@ import React, { useState, useEffect } from 'react';
 
             const ExpenseForm = ({ onClose }) => {
                 const today = new Date().toISOString().split('T')[0];
-                const emptyForm = { date: today, category: '', description: '', amount: '', receiptNote: '', receiptImage: null };
+                const emptyForm = { date: today, category: '', receiptImage: null };
                 const [form, setForm] = useState(() => {
                   try {
                    const saved = JSON.parse(localStorage.getItem('bpost_pending_form') || 'null');
-                   return saved || emptyForm;
+                   return { date: saved ? saved.date || today : today, category: saved ? saved.category || '' : '', receiptImage: null };
                   } catch(e) { return emptyForm; }
                 });
+                // Text inputs as uncontrolled refs — no re-render on keystroke
+                const descriptionRef = React.useRef(null);
+                const amountRef = React.useRef(null);
+                const receiptNoteRef = React.useRef(null);
                 const [items, setItems] = useState(() => {
                   try { return JSON.parse(localStorage.getItem('bpost_pending_expenses') || '[]'); }
                   catch(e) { return []; }
@@ -4434,11 +4438,18 @@ import React, { useState, useEffect } from 'react';
                 };
 
                 const addItem = () => {
-                  if (!form.category || !form.amount) { alert('Category and amount are required'); return; }
-                  const isDuplicate = items.some(i => i.category === form.category && i.date === form.date && parseFloat(i.amount) === parseFloat(form.amount) && i.description === form.description);
+                  const desc = descriptionRef.current ? descriptionRef.current.value : '';
+                  const amt = amountRef.current ? amountRef.current.value : '';
+                  const rNote = receiptNoteRef.current ? receiptNoteRef.current.value : '';
+                  if (!form.category || !amt) { alert('Category and amount are required'); return; }
+                  const isDuplicate = items.some(i => i.category === form.category && i.date === form.date && parseFloat(i.amount) === parseFloat(amt) && i.description === desc);
                   if (isDuplicate) { alert('An identical item is already in your list.'); return; }
-                  setItems([...items, { ...form, amount: parseFloat(form.amount), id: Date.now() }]);
-                  const cleared = { date: today, category: '', description: '', amount: '', receiptNote: '', receiptImage: null };
+                  setItems([...items, { date: form.date, category: form.category, description: desc, amount: parseFloat(amt), receiptNote: rNote, receiptImage: form.receiptImage, id: Date.now() }]);
+                  // Clear refs and reset category/image
+                  if (descriptionRef.current) descriptionRef.current.value = '';
+                  if (amountRef.current) amountRef.current.value = '';
+                  if (receiptNoteRef.current) receiptNoteRef.current.value = '';
+                  const cleared = { date: form.date, category: '', receiptImage: null };
                   setForm(cleared);
                   localStorage.setItem('bpost_pending_form', JSON.stringify(cleared));
                 };
@@ -4506,12 +4517,12 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Description</label>
-                   <input value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="e.g. Fuel to Birmingham warehouse" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none" />
+                   <input ref={descriptionRef} defaultValue="" placeholder="e.g. Fuel to Birmingham warehouse" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none" />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Amount ({getCurrencySymbol(currentUser.currency || 'GBP')}) *</label>
-                  <input type="number" min="0.01" step="0.01" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} placeholder="0.00" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none" />
+                  <input type="number" min="0.01" step="0.01" ref={amountRef} defaultValue="" placeholder="0.00" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none" />
                    </div>
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Receipt Photo</label>
@@ -5230,40 +5241,56 @@ import React, { useState, useEffect } from 'react';
 
             const AgentCollectionForm = ({ onClose }) => {
                 const today = new Date().toISOString().split('T')[0];
-                const [form, setForm] = useState({ agentId: '', date: today, fromSuffix: '', toSuffix: '', amountCollected: '', amountPaid: '', bankAmount: '', notes: '' });
+                // Dropdowns/date as controlled (selection events only); text/number as uncontrolled refs
+                const [agentId, setAgentId] = useState('');
+                const [date, setDate] = useState(today);
+                const fromSuffixRef = React.useRef(null);
+                const toSuffixRef = React.useRef(null);
+                const amountCollectedRef = React.useRef(null);
+                const amountPaidRef = React.useRef(null);
+                const bankAmountRef = React.useRef(null);
+                const notesRef = React.useRef(null);
                 const [saving, setSaving] = useState(false);
                 const sym = getCurrencySymbol(currentUser.currency || 'GBP');
 
-                const selectedAgent = myAgents.find(function(a) { return a.id === parseInt(form.agentId); });
+                const selectedAgent = myAgents.find(function(a) { return a.id === parseInt(agentId); });
 
                 const todayCollections = agentCollections.filter(function(c) {
-                  return c.employeeId === currentUser.id && c.date === today;
+                  return c.employeeId === currentUser.id && c.date === date;
                 });
 
                 const handleSubmit = async function() {
-                  if (!form.agentId || !form.amountCollected) { alert('Agent and amount collected are required'); return; }
+                  const collected = amountCollectedRef.current ? amountCollectedRef.current.value : '';
+                  if (!agentId || !collected) { alert('Agent and amount collected are required'); return; }
                   setSaving(true);
                   try {
-                   const fromCode = selectedAgent ? selectedAgent.agentCode + (form.fromSuffix || '') : form.fromSuffix;
-                   const toCode = selectedAgent ? selectedAgent.agentCode + (form.toSuffix || '') : form.toSuffix;
+                   const fromSuffix = fromSuffixRef.current ? fromSuffixRef.current.value : '';
+                   const toSuffix = toSuffixRef.current ? toSuffixRef.current.value : '';
+                   const fromCode = selectedAgent ? selectedAgent.agentCode + fromSuffix : fromSuffix;
+                   const toCode = selectedAgent ? selectedAgent.agentCode + toSuffix : toSuffix;
                    const data = await apiCall(API_ENDPOINTS.agentCollections, {
                   method: 'POST',
                   body: JSON.stringify({
-                   agentId: parseInt(form.agentId),
-                   date: form.date,
+                   agentId: parseInt(agentId),
+                   date: date,
                    fromCode: fromCode,
                    toCode: toCode,
-                   amountCollected: parseFloat(form.amountCollected) || 0,
-                   amountPaid: parseFloat(form.amountPaid) || 0,
-                   bankAmount: parseFloat(form.bankAmount) || 0,
+                   amountCollected: parseFloat(collected) || 0,
+                   amountPaid: parseFloat(amountPaidRef.current ? amountPaidRef.current.value : '') || 0,
+                   bankAmount: parseFloat(bankAmountRef.current ? bankAmountRef.current.value : '') || 0,
                    boxesQty: 0,
                    currency: currentUser.currency || 'GBP',
-                   notes: form.notes
+                   notes: notesRef.current ? notesRef.current.value : ''
                   })
                    });
                    if (data.success) {
                   await loadAgentCollectionsFromAPI();
-                  setForm({ agentId: form.agentId, date: today, fromSuffix: '', toSuffix: '', amountCollected: '', amountPaid: '', bankAmount: '', notes: '' });
+                  if (fromSuffixRef.current) fromSuffixRef.current.value = '';
+                  if (toSuffixRef.current) toSuffixRef.current.value = '';
+                  if (amountCollectedRef.current) amountCollectedRef.current.value = '';
+                  if (amountPaidRef.current) amountPaidRef.current.value = '';
+                  if (bankAmountRef.current) bankAmountRef.current.value = '';
+                  if (notesRef.current) notesRef.current.value = '';
                   alert('Collection record saved');
                    } else alert('Error: ' + data.error);
                   } catch(e) { alert('Failed: ' + e.message); }
@@ -5292,14 +5319,14 @@ import React, { useState, useEffect } from 'react';
                   <div className="grid grid-cols-2 gap-3">
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Agent *</label>
-                  <select value={form.agentId} onChange={function(e) { setForm(Object.assign({}, form, {agentId: e.target.value})); }} className={fc + ' bg-white'}>
+                  <select value={agentId} onChange={function(e) { setAgentId(e.target.value); }} className={fc + ' bg-white'}>
                    <option value="">Select Agent</option>
                    {myAgents.map(function(a) { return <option key={a.id} value={a.id}>{a.agentCode} — {a.city}</option>; })}
                   </select>
                    </div>
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Date</label>
-                  <input type="date" value={form.date} onChange={function(e) { setForm(Object.assign({}, form, {date: e.target.value})); }} className={fc} />
+                  <input type="date" value={date} onChange={function(e) { setDate(e.target.value); }} className={fc} />
                    </div>
                   </div>
                   {selectedAgent && (
@@ -5308,14 +5335,14 @@ import React, { useState, useEffect } from 'react';
                    <label className="block text-xs font-semibold text-gray-600 mb-1">From Code</label>
                    <div className="flex items-center">
                   <span className="px-3 py-2 bg-orange-100 text-orange-700 font-bold rounded-l-lg border border-r-0 border-gray-300 text-sm whitespace-nowrap">{selectedAgent.agentCode}</span>
-                  <input value={form.fromSuffix} onChange={function(e) { setForm(Object.assign({}, form, {fromSuffix: e.target.value})); }} placeholder="33" className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                  <input ref={fromSuffixRef} defaultValue="" placeholder="33" className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
                    </div>
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">To Code</label>
                    <div className="flex items-center">
                   <span className="px-3 py-2 bg-orange-100 text-orange-700 font-bold rounded-l-lg border border-r-0 border-gray-300 text-sm whitespace-nowrap">{selectedAgent.agentCode}</span>
-                  <input value={form.toSuffix} onChange={function(e) { setForm(Object.assign({}, form, {toSuffix: e.target.value})); }} placeholder="38" className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                  <input ref={toSuffixRef} defaultValue="" placeholder="38" className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
                    </div>
                   </div>
                    </div>
@@ -5323,11 +5350,11 @@ import React, { useState, useEffect } from 'react';
                   <div className="grid grid-cols-2 gap-3">
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Collected Cash ({sym}) *</label>
-                  <input type="number" min="0" step="0.01" value={form.amountCollected} onChange={function(e) { setForm(Object.assign({}, form, {amountCollected: e.target.value})); }} placeholder="0.00" className={fc} />
+                  <input type="number" min="0" step="0.01" ref={amountCollectedRef} defaultValue="" placeholder="0.00" className={fc} />
                    </div>
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Paid to Agent ({sym})</label>
-                  <input type="number" min="0" step="0.01" value={form.amountPaid} onChange={function(e) { setForm(Object.assign({}, form, {amountPaid: e.target.value})); }} placeholder="0.00" className={fc} />
+                  <input type="number" min="0" step="0.01" ref={amountPaidRef} defaultValue="" placeholder="0.00" className={fc} />
                    </div>
                   </div>
                   <div>
@@ -5335,11 +5362,11 @@ import React, { useState, useEffect } from 'react';
                   Bank Transfer ({sym})
                   <span className="ml-1 text-blue-500 font-normal text-xs">— paid directly to company bank, not included in your cash accounting</span>
                    </label>
-                   <input type="number" min="0" step="0.01" value={form.bankAmount} onChange={function(e) { setForm(Object.assign({}, form, {bankAmount: e.target.value})); }} placeholder="0.00" className={fc} />
+                   <input type="number" min="0" step="0.01" ref={bankAmountRef} defaultValue="" placeholder="0.00" className={fc} />
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
-                   <input value={form.notes} onChange={function(e) { setForm(Object.assign({}, form, {notes: e.target.value})); }} className={fc} placeholder="Optional notes..." />
+                   <input ref={notesRef} defaultValue="" className={fc} placeholder="Optional notes..." />
                   </div>
                    </div>
                    <button onClick={handleSubmit} disabled={saving} className={'w-full py-3 rounded-xl font-bold transition mb-6 ' + (saving ? 'bg-gray-300 text-gray-500' : 'bg-orange-600 text-white hover:bg-orange-700')}>
