@@ -5477,7 +5477,16 @@ import React, { useState, useEffect } from 'react';
                 const showAddForm = persistedState ? persistedState.showAddForm : false;
                 const setShowAddForm = mk('showAddForm');
                 // addForm is LOCAL state — not persisted — so typing doesn't re-render parent
-                const [addForm, setAddForm] = useState({ employeeId:'', agentId:'', date: new Date().toISOString().split('T')[0], fromCode:'', toCode:'', amountCollected:'', amountPaid:'', bankAmount:'', boxesQty:'', notes:'' });
+                // Only dropdowns/date as controlled state — text/number as refs to avoid re-renders on keystroke
+                const [addEmpId, setAddEmpId] = useState('');
+                const [addAgentId, setAddAgentId] = useState('');
+                const [addDate, setAddDate] = useState(new Date().toISOString().split('T')[0]);
+                const addFromRef = React.useRef(null);
+                const addToRef = React.useRef(null);
+                const addCollectedRef = React.useRef(null);
+                const addPaidRef = React.useRef(null);
+                const addBankRef = React.useRef(null);
+                const addNotesRef = React.useRef(null);
                 const [addSaving, setAddSaving] = useState(false);
 
                 React.useEffect(function() {
@@ -5498,25 +5507,28 @@ import React, { useState, useEffect } from 'react';
                 };
 
                 const handleAddCollection = async function() {
-                  if (!addForm.employeeId || !addForm.agentId) { alert('Please select an employee and an agent'); return; }
-                  if (!addForm.date) { alert('Please select a date'); return; }
+                  if (!addEmpId || !addAgentId) { alert('Please select an employee and an agent'); return; }
+                  if (!addDate) { alert('Please select a date'); return; }
                   setAddSaving(true);
                   try {
                    const payload = {
-                  employeeId: parseInt(addForm.employeeId),
-                  agentId: parseInt(addForm.agentId),
-                  date: addForm.date,
-                  fromCode: addForm.fromCode || '',
-                  toCode: addForm.toCode || '',
-                  amountCollected: parseFloat(addForm.amountCollected) || 0,
-                  amountPaid: parseFloat(addForm.amountPaid) || 0,
-                  bankAmount: parseFloat(addForm.bankAmount) || 0,
-                  boxesQty: parseInt(addForm.boxesQty) || 0,
-                  notes: addForm.notes || ''
+                  employeeId: parseInt(addEmpId),
+                  agentId: parseInt(addAgentId),
+                  date: addDate,
+                  fromCode: addFromRef.current ? addFromRef.current.value : '',
+                  toCode: addToRef.current ? addToRef.current.value : '',
+                  amountCollected: parseFloat(addCollectedRef.current ? addCollectedRef.current.value : '') || 0,
+                  amountPaid: parseFloat(addPaidRef.current ? addPaidRef.current.value : '') || 0,
+                  bankAmount: parseFloat(addBankRef.current ? addBankRef.current.value : '') || 0,
+                  boxesQty: 0,
+                  notes: addNotesRef.current ? addNotesRef.current.value : ''
                    };
                    await apiCall(API_ENDPOINTS.agentCollections, { method: 'POST', body: JSON.stringify(payload) });
                    if (onRefresh) await onRefresh();
-                   setAddForm({ employeeId:'', agentId:'', date: new Date().toISOString().split('T')[0], fromCode:'', toCode:'', amountCollected:'', amountPaid:'', bankAmount:'', boxesQty:'', notes:'' });
+                   // Reset controlled fields
+                   setAddEmpId(''); setAddAgentId(''); setAddDate(new Date().toISOString().split('T')[0]);
+                   // Clear refs
+                   [addFromRef, addToRef, addCollectedRef, addPaidRef, addBankRef, addNotesRef].forEach(function(r){ if(r.current) r.current.value = ''; });
                    setShowAddForm(false);
                    generateReport();
                   } catch(e) { alert('Failed to add: ' + e.message); }
@@ -5632,14 +5644,14 @@ import React, { useState, useEffect } from 'react';
                    <div className="grid grid-cols-2 gap-3 mb-3">
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Employee *</label>
-                   <select value={addForm.employeeId} onChange={function(e){setAddForm(Object.assign({},addForm,{employeeId:e.target.value}));}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                   <select value={addEmpId} onChange={function(e){setAddEmpId(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                   <option value="">Select employee...</option>
                   {[...visEmp].filter(function(e){return !e.isAdmin;}).sort(function(a,b){return (a.firstName+a.lastName).localeCompare(b.firstName+b.lastName);}).map(function(e){return <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>;})}
                    </select>
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Agent *</label>
-                   <select value={addForm.agentId} onChange={function(e){setAddForm(Object.assign({},addForm,{agentId:e.target.value}));}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                   <select value={addAgentId} onChange={function(e){setAddAgentId(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                   <option value="">Select agent...</option>
                   {agents.map(function(a){return <option key={a.Id||a.id} value={a.Id||a.id}>{a.AgentCode||a.agentCode} — {a.City||a.city}</option>;})}
                    </select>
@@ -5648,33 +5660,33 @@ import React, { useState, useEffect } from 'react';
                    <div className="grid grid-cols-3 gap-3 mb-3">
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Date *</label>
-                   <input type="date" value={addForm.date} onChange={function(e){setAddForm(Object.assign({},addForm,{date:e.target.value}));}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   <input type="date" value={addDate} onChange={function(e){setAddDate(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">From Code</label>
-                   <input type="text" value={addForm.fromCode} onChange={function(e){setAddForm(Object.assign({},addForm,{fromCode:e.target.value}));}} placeholder="e.g. OX79" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   <input type="text" ref={addFromRef} defaultValue="" placeholder="e.g. OX79" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">To Code</label>
-                   <input type="text" value={addForm.toCode} onChange={function(e){setAddForm(Object.assign({},addForm,{toCode:e.target.value}));}} placeholder="e.g. OX91" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   <input type="text" ref={addToRef} defaultValue="" placeholder="e.g. OX91" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                    </div>
                    <div className="grid grid-cols-4 gap-3 mb-4">
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Cash Collected</label>
-                   <input type="number" min="0" step="0.01" value={addForm.amountCollected} onChange={function(e){setAddForm(Object.assign({},addForm,{amountCollected:e.target.value}));}} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   <input type="number" min="0" step="0.01" ref={addCollectedRef} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Paid to Agent</label>
-                   <input type="number" min="0" step="0.01" value={addForm.amountPaid} onChange={function(e){setAddForm(Object.assign({},addForm,{amountPaid:e.target.value}));}} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   <input type="number" min="0" step="0.01" ref={addPaidRef} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Bank Transfer</label>
-                   <input type="number" min="0" step="0.01" value={addForm.bankAmount} onChange={function(e){setAddForm(Object.assign({},addForm,{bankAmount:e.target.value}));}} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   <input type="number" min="0" step="0.01" ref={addBankRef} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
-                   <input type="text" value={addForm.notes} onChange={function(e){setAddForm(Object.assign({},addForm,{notes:e.target.value}));}} placeholder="Optional" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   <input type="text" ref={addNotesRef} defaultValue="" placeholder="Optional" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                    </div>
                    <div className="flex gap-2">
