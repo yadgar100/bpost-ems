@@ -546,7 +546,7 @@ import React, { useState, useEffect } from 'react';
             const [agentCollections, setAgentCollections] = useState([]);
             const [showAgentManager, setShowAgentManager] = useState(false);
             const [showAgentReport, setShowAgentReport] = useState(false);
-            const [agentReportState, setAgentReportState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], empFilter:'', branchFilter:'', countryFilter:'', reportData:null, showAddForm:false, addForm:{ employeeId:'', agentId:'', date: new Date().toISOString().split('T')[0], fromCode:'', toCode:'', amountCollected:'', amountPaid:'', bankAmount:'', boxesQty:'', notes:'' } });
+            const [agentReportState, setAgentReportState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], empFilter:'', branchFilter:'', countryFilter:'', reportData:null, showAddForm:false });
             const [showAgentCollectionForm, setShowAgentCollectionForm] = useState(false);
             const [showAccountCredit, setShowAccountCredit] = useState(false);
             const [accountCreditDate, setAccountCreditDate] = useState(new Date().toISOString().split('T')[0]);
@@ -5396,8 +5396,8 @@ import React, { useState, useEffect } from 'react';
                 const [savingId, setSavingId] = useState(null);
                 const showAddForm = persistedState ? persistedState.showAddForm : false;
                 const setShowAddForm = mk('showAddForm');
-                const addForm = persistedState ? persistedState.addForm : { employeeId:'', agentId:'', date: new Date().toISOString().split('T')[0], fromCode:'', toCode:'', amountCollected:'', amountPaid:'', bankAmount:'', boxesQty:'', notes:'' };
-                const setAddForm = mk('addForm');
+                // addForm is LOCAL state — not persisted — so typing doesn't re-render parent
+                const [addForm, setAddForm] = useState({ employeeId:'', agentId:'', date: new Date().toISOString().split('T')[0], fromCode:'', toCode:'', amountCollected:'', amountPaid:'', bankAmount:'', boxesQty:'', notes:'' });
                 const [addSaving, setAddSaving] = useState(false);
 
                 React.useEffect(function() {
