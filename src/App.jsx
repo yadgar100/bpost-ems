@@ -3426,8 +3426,9 @@ import React, { useState, useEffect } from 'react';
                    const totalOvertime = empTimesheets.reduce((sum, ts) => sum + (ts.overtimeHours || 0), 0);
                    const totalHours = totalRegular + totalOvertime;
 
+                   const empOtMult = (employee.overtimeRate != null && employee.overtimeRate !== '') ? parseFloat(employee.overtimeRate) : (payrollSettings.overtimeMultiplier || 1.5);
                    const regularPay = totalRegular * employee.hourlyRate;
-                   const overtimePay = totalOvertime * employee.hourlyRate * payrollSettings.overtimeMultiplier;
+                   const overtimePay = totalOvertime * employee.hourlyRate * empOtMult;
                    const basePay = regularPay + overtimePay;
 
                    const empAdjustments = financialAdjustments.filter(adj => {
