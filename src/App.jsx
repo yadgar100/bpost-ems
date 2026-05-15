@@ -2793,7 +2793,14 @@ import React, { useState, useEffect } from 'react';
             const AccountCreditsTab = ({ visEmp, financialAdjustments, visibleEmpIds, loadAdjustmentsFromAPI, apiCall, API_ENDPOINTS, getCurrencySymbol }) => {
                 const allCredits = financialAdjustments.filter(function(a){return a.type==='account_credit' && visibleEmpIds.has(a.employeeId);});
                 const [filterEmpId, setFilterEmpId] = useState('');
-                const filteredCredits = filterEmpId ? allCredits.filter(function(a){return a.employeeId === parseInt(filterEmpId);}) : allCredits;
+                const [filterFrom, setFilterFrom] = useState('');
+                const [filterTo, setFilterTo] = useState('');
+                const filteredCredits = allCredits.filter(function(a) {
+                  if (filterEmpId && a.employeeId !== parseInt(filterEmpId)) return false;
+                  if (filterFrom && a.date < filterFrom) return false;
+                  if (filterTo && a.date > filterTo) return false;
+                  return true;
+                });
                 const filteredTotal = filteredCredits.reduce(function(s,a){return s+(parseFloat(a.amount)||0);},0);
                 const [addingCredit, setAddingCredit] = useState(false);
                 const [creditEmpId, setCreditEmpId] = useState('');
@@ -2857,7 +2864,7 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   </div>
                    )}
-                   <div className="mb-3">
+                   <div className="mb-3 grid grid-cols-1 gap-2">
                   <select value={filterEmpId} onChange={function(e){setFilterEmpId(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
                    <option value="">All Employees</option>
                    {[...new Set(allCredits.map(function(a){return a.employeeId;}))].map(function(id){
@@ -2865,6 +2872,19 @@ import React, { useState, useEffect } from 'react';
                   return <option key={id} value={id}>{emp ? emp.employeeName : id}</option>;
                    })}
                   </select>
+                  <div className="grid grid-cols-2 gap-2">
+                   <div>
+                  <label className="block text-xs text-gray-500 mb-1">From Date</label>
+                  <input type="date" value={filterFrom} onChange={function(e){setFilterFrom(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   </div>
+                   <div>
+                  <label className="block text-xs text-gray-500 mb-1">To Date</label>
+                  <input type="date" value={filterTo} onChange={function(e){setFilterTo(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   </div>
+                  </div>
+                  {(filterEmpId || filterFrom || filterTo) && (
+                  <button onClick={function(){setFilterEmpId('');setFilterFrom('');setFilterTo('');}} className="text-xs text-indigo-600 hover:underline text-left">✕ Clear filters</button>
+                  )}
                   </div>
                   <div className="space-y-2 max-h-80 overflow-y-auto">
                   {filteredCredits.length === 0 && <p className="text-gray-400 text-sm py-4">No account credits found.</p>}
@@ -2883,7 +2903,7 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   {filteredCredits.length > 0 && (
                   <div className="mt-3 flex justify-between items-center bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3">
-                   <span className="text-sm font-semibold text-gray-700">{filterEmpId ? 'Employee Total' : 'Grand Total'} ({filteredCredits.length} record{filteredCredits.length!==1?'s':''})</span>
+                   <span className="text-sm font-semibold text-gray-700">{(filterEmpId || filterFrom || filterTo) ? 'Filtered Total' : 'Grand Total'} ({filteredCredits.length} record{filteredCredits.length!==1?'s':''})</span>
                    <span className="text-lg font-bold text-indigo-700">{getCurrencySymbol('GBP')}{filteredTotal.toFixed(2)}</span>
                   </div>
                   )}
