@@ -583,6 +583,7 @@ import React, { useState, useEffect } from 'react';
             const [showReportGenerator, setShowReportGenerator] = useState(false);
             const [reportGenState, setReportGenState] = useState({ startDate: (() => { const d=new Date(); d.setDate(d.getDate()-7); return d.toISOString().split('T')[0]; })(), endDate: new Date().toISOString().split('T')[0], selectedDepartment:'all', selectedEmployee:'all', selectedBranch:'all', selectedCountry:'all', reportType:'summary', generatedReport:null, expandedEmp:null });
             const [showFinancialManager, setShowFinancialManager] = useState(false);
+            const [financialMgrState, setFinancialMgrState] = useState({ activeTab: 'add', adjustmentType: 'bonus', adjustmentData: { employeeId:'', type:'bonus', amount:'', reason:'', date: new Date().toISOString().split('T')[0], hours:'' } });
             const [showEmployeeAccounting, setShowEmployeeAccounting] = useState(false);
             const [empAccountingState, setEmpAccountingState] = useState({ empId: '', fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], report: null });
             const [showCompanyAccounting, setShowCompanyAccounting] = useState(false);
@@ -2890,35 +2891,36 @@ import React, { useState, useEffect } from 'react';
                 );
             };
 
-            const FinancialManager = ({ onClose, visibleEmployees: visEmp }) => {
+            const FinancialManager = ({ onClose, visibleEmployees: visEmp, persistedState, onStateChange }) => {
                 const filteredByCountry = (visEmp || employees).filter(e => !e.isAdmin);
                 const visibleEmpIds = new Set(filteredByCountry.map(e => e.id));
                 const visibleAdjustments = financialAdjustments.filter(a => visibleEmpIds.has(a.employeeId));
-                const [activeTab, setActiveTab] = useState('add');
-                const [adjustmentType, setAdjustmentType] = useState('bonus');
-                // Account Credits tab state — must be at component level (no hooks in IIFEs)
+                const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
+                const adjAmountRef = React.useRef(null);
+                const adjHoursRef = React.useRef(null);
+                const adjReasonRef = React.useRef(null);
+                const activeTab = persistedState ? persistedState.activeTab : 'add'; const setActiveTab = mk('activeTab');
+                const adjustmentType = persistedState ? persistedState.adjustmentType : 'bonus'; const setAdjustmentType = mk('adjustmentType');
+                const adjustmentData = persistedState ? persistedState.adjustmentData : { employeeId:'', type:'bonus', amount:'', reason:'', date: new Date().toISOString().split('T')[0], hours:'' };
+                const setAdjustmentData = (v) => onStateChange && onStateChange(function(s){return{...s,adjustmentData:typeof v==='function'?v(s.adjustmentData):v};});
+                // Credits state stays local (inside AccountCreditsTab component)
                 const [addingCredit, setAddingCredit] = useState(false);
                 const [creditEmpId, setCreditEmpId] = useState('');
                 const [creditAmt, setCreditAmt] = useState('');
                 const [creditNote, setCreditNote] = useState('');
                 const [creditDate, setCreditDate] = useState(new Date().toISOString().split('T')[0]);
                 const [creditSaving, setCreditSaving] = useState(false);
-                const [adjustmentData, setAdjustmentData] = useState({
-                  employeeId: '',
-                  type: 'bonus',
-                  amount: '',
-                  reason: '',
-                  date: new Date().toISOString().split('T')[0],
-                  hours: ''
-                });
 
                 const handleAddAdjustment = async () => {
-                  if (!adjustmentData.employeeId || !adjustmentData.amount) {
+                  const amt = adjAmountRef.current ? adjAmountRef.current.value : adjustmentData.amount;
+                  const hrs = adjHoursRef.current ? adjHoursRef.current.value : adjustmentData.hours;
+                  const rsn = adjReasonRef.current ? adjReasonRef.current.value : adjustmentData.reason;
+                  if (!adjustmentData.employeeId || !amt) {
                    alert('Please select an employee and enter an amount');
                    return;
                   }
 
-                  if (adjustmentData.type === 'sick_pay' && !adjustmentData.hours) {
+                  if (adjustmentData.type === 'sick_pay' && !hrs) {
                    alert('Please enter hours for sick pay');
                    return;
                   }
@@ -2932,10 +2934,10 @@ import React, { useState, useEffect } from 'react';
                   body: JSON.stringify({
                    employeeId: parseInt(adjustmentData.employeeId),
                    type: adjustmentData.type,
-                   amount: parseFloat(adjustmentData.amount),
-                   reason: adjustmentData.reason,
+                   amount: parseFloat(amt),
+                   reason: rsn,
                    date: adjustmentData.date,
-                   hours: adjustmentData.hours ? parseFloat(adjustmentData.hours) : null
+                   hours: hrs ? parseFloat(hrs) : null
                   })
                    });
                    if (!result.success) throw new Error(result.error || 'API error');
@@ -2958,17 +2960,17 @@ import React, { useState, useEffect } from 'react';
                    return;
                   }
 
-                  if (adjustmentData.type === 'sick_pay' && adjustmentData.hours) {
+                  if (adjustmentData.type === 'sick_pay' && hrs) {
                    const sickTimesheet = {
                   id: timesheets.length + 1,
                   employeeId: parseInt(adjustmentData.employeeId),
                   date: adjustmentData.date,
                   startTime: '09:00',
                   finishTime: '17:00',
-                  regularHours: parseFloat(adjustmentData.hours),
+                  regularHours: parseFloat(hrs),
                   overtimeHours: 0,
                   status: 'approved',
-                  notes: `Sick Pay: ${adjustmentData.reason || 'Sick leave'}`,
+                  notes: `Sick Pay: ${rsn || 'Sick leave'}`,
                   locationId: null,
                   isSickPay: true,
                   checkInLocation: null,
@@ -2977,6 +2979,9 @@ import React, { useState, useEffect } from 'react';
                    setTimesheets([...timesheets, sickTimesheet]);
                   }
 
+                  if (adjAmountRef.current) adjAmountRef.current.value = '';
+                  if (adjHoursRef.current) adjHoursRef.current.value = '';
+                  if (adjReasonRef.current) adjReasonRef.current.value = '';
                   setAdjustmentData({
                    employeeId: '',
                    type: 'bonus',
@@ -3151,8 +3156,8 @@ import React, { useState, useEffect } from 'react';
                    <input
                   type="number"
                   step="0.01"
-                  value={adjustmentData.amount}
-                  onChange={(e) => setAdjustmentData({...adjustmentData, amount: e.target.value})}
+                  ref={adjAmountRef}
+                  defaultValue={adjustmentData.amount}
                   placeholder="0.00"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                    />
@@ -3175,8 +3180,8 @@ import React, { useState, useEffect } from 'react';
                    <input
                   type="number"
                   step="0.5"
-                  value={adjustmentData.hours}
-                  onChange={(e) => setAdjustmentData({...adjustmentData, hours: e.target.value})}
+                  ref={adjHoursRef}
+                  defaultValue={adjustmentData.hours}
                   placeholder="8.0"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                    />
@@ -3187,15 +3192,15 @@ import React, { useState, useEffect } from 'react';
                    <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Reason / Notes *</label>
                   <textarea
-                   value={adjustmentData.reason}
-                   onChange={(e) => setAdjustmentData({...adjustmentData, reason: e.target.value})}
+                   ref={adjReasonRef}
+                   defaultValue={adjustmentData.reason}
                    placeholder="Enter reason for this adjustment..."
                    rows="3"
                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                   />
                    </div>
 
-                   {adjustmentData.employeeId && adjustmentData.amount && (
+                   {adjustmentData.employeeId && (adjAmountRef.current ? adjAmountRef.current.value : adjustmentData.amount) && (
                   <div className="bg-gray-50 p-4 rounded-lg">
                    <h3 className="font-semibold text-gray-700 mb-2">Preview:</h3>
                    <div className="flex items-center justify-between">
@@ -3209,7 +3214,7 @@ import React, { useState, useEffect } from 'react';
                    {adjustmentData.type === 'advance' && '-'}
                    {adjustmentData.type === 'sick_pay' && '+'}
                    {(adjustmentData.type === 'payment' || adjustmentData.type === 'expense_pay') && '-'}
-                   {getEmployeeCurrency(parseInt(adjustmentData.employeeId))}{adjustmentData.amount}
+                   {getEmployeeCurrency(parseInt(adjustmentData.employeeId))}{adjAmountRef.current ? adjAmountRef.current.value : adjustmentData.amount}
                    {adjustmentData.type === 'sick_pay' && adjustmentData.hours && ` (${adjustmentData.hours}h)`}
                   </span>
                    </div>
@@ -3371,6 +3376,9 @@ import React, { useState, useEffect } from 'react';
             const ReportGenerator = ({ onClose, visibleEmployees: visEmp, persistedState, onStateChange }) => {
                 const filteredByCountry = visEmp || employees;
                 const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
+                const adjAmountRef = React.useRef(null);
+                const adjHoursRef = React.useRef(null);
+                const adjReasonRef = React.useRef(null);
                 const expandedEmp = persistedState ? persistedState.expandedEmp : null; const setExpandedEmp = mk('expandedEmp');
                 const reportType = persistedState ? persistedState.reportType : 'summary'; const setReportType = mk('reportType');
                 const startDate = persistedState ? persistedState.startDate : (() => { const d=new Date(); d.setDate(d.getDate()-7); return d.toISOString().split('T')[0]; })();
@@ -4910,6 +4918,9 @@ import React, { useState, useEffect } from 'react';
             const ExpenseReport = ({ onClose, visibleEmployees: visEmp, persistedState, onStateChange }) => {
                 const today = new Date().toISOString().split('T')[0];
                 const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
+                const adjAmountRef = React.useRef(null);
+                const adjHoursRef = React.useRef(null);
+                const adjReasonRef = React.useRef(null);
                 const fromDate = persistedState ? persistedState.fromDate : today.slice(0,8)+'01'; const setFromDate = mk('fromDate');
                 const toDate = persistedState ? persistedState.toDate : today; const setToDate = mk('toDate');
                 const empFilter = persistedState ? persistedState.empFilter : ''; const setEmpFilter = mk('empFilter');
@@ -5431,6 +5442,9 @@ import React, { useState, useEffect } from 'react';
             const AgentReport = ({ onClose, visibleEmployees: visEmp, onRefresh, persistedState, onStateChange }) => {
                 const today = new Date().toISOString().split('T')[0];
                 const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
+                const adjAmountRef = React.useRef(null);
+                const adjHoursRef = React.useRef(null);
+                const adjReasonRef = React.useRef(null);
                 const fromDate = persistedState ? persistedState.fromDate : today.slice(0,8)+'01'; const setFromDate = mk('fromDate');
                 const toDate = persistedState ? persistedState.toDate : today; const setToDate = mk('toDate');
                 const empFilter = persistedState ? persistedState.empFilter : ''; const setEmpFilter = mk('empFilter');
@@ -6154,6 +6168,9 @@ import React, { useState, useEffect } from 'react';
             const CompanyAccounting = ({ onClose, visibleEmployees: visEmp, persistedState, onStateChange }) => {
                 const today = new Date().toISOString().split('T')[0];
                 const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
+                const adjAmountRef = React.useRef(null);
+                const adjHoursRef = React.useRef(null);
+                const adjReasonRef = React.useRef(null);
                 const fromDate = persistedState ? persistedState.fromDate : today.slice(0,8)+'01'; const setFromDate = mk('fromDate');
                 const toDate = persistedState ? persistedState.toDate : today; const setToDate = mk('toDate');
                 const branchFilter = persistedState ? persistedState.branchFilter : ''; const setBranchFilter = mk('branchFilter');
@@ -8527,7 +8544,7 @@ import React, { useState, useEffect } from 'react';
                    )}
 
                    {showFinancialManager && (
-                  <FinancialManager onClose={() => setShowFinancialManager(false)} visibleEmployees={visibleEmployees} />
+                  <FinancialManager onClose={() => setShowFinancialManager(false)} visibleEmployees={visibleEmployees} persistedState={financialMgrState} onStateChange={setFinancialMgrState} />
                    )}
 
                    {showExpenseManager && (
