@@ -546,7 +546,7 @@ import React, { useState, useEffect } from 'react';
             const [agentCollections, setAgentCollections] = useState([]);
             const [showAgentManager, setShowAgentManager] = useState(false);
             const [showAgentReport, setShowAgentReport] = useState(false);
-            const [agentReportState, setAgentReportState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], empFilter:'', branchFilter:'', countryFilter:'', reportData:null });
+            const [agentReportState, setAgentReportState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], empFilter:'', branchFilter:'', countryFilter:'', reportData:null, showAddForm:false, addForm:{ employeeId:'', agentId:'', date: new Date().toISOString().split('T')[0], fromCode:'', toCode:'', amountCollected:'', amountPaid:'', bankAmount:'', boxesQty:'', notes:'' } });
             const [showAgentCollectionForm, setShowAgentCollectionForm] = useState(false);
             const [showAccountCredit, setShowAccountCredit] = useState(false);
             const [accountCreditDate, setAccountCreditDate] = useState(new Date().toISOString().split('T')[0]);
@@ -5394,8 +5394,10 @@ import React, { useState, useEffect } from 'react';
                 const [editingId, setEditingId] = useState(null);
                 const [editVals, setEditVals] = useState({});
                 const [savingId, setSavingId] = useState(null);
-                const [showAddForm, setShowAddForm] = useState(false);
-                const [addForm, setAddForm] = useState({ employeeId:'', agentId:'', date: new Date().toISOString().split('T')[0], fromCode:'', toCode:'', amountCollected:'', amountPaid:'', bankAmount:'', boxesQty:'', notes:'' });
+                const showAddForm = persistedState ? persistedState.showAddForm : false;
+                const setShowAddForm = mk('showAddForm');
+                const addForm = persistedState ? persistedState.addForm : { employeeId:'', agentId:'', date: new Date().toISOString().split('T')[0], fromCode:'', toCode:'', amountCollected:'', amountPaid:'', bankAmount:'', boxesQty:'', notes:'' };
+                const setAddForm = mk('addForm');
                 const [addSaving, setAddSaving] = useState(false);
 
                 React.useEffect(function() {
