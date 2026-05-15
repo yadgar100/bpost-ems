@@ -2791,6 +2791,9 @@ import React, { useState, useEffect } from 'react';
 
             const AccountCreditsTab = ({ visEmp, financialAdjustments, visibleEmpIds, loadAdjustmentsFromAPI, apiCall, API_ENDPOINTS, getCurrencySymbol }) => {
                 const allCredits = financialAdjustments.filter(function(a){return a.type==='account_credit' && visibleEmpIds.has(a.employeeId);});
+                const [filterEmpId, setFilterEmpId] = useState('');
+                const filteredCredits = filterEmpId ? allCredits.filter(function(a){return a.employeeId === parseInt(filterEmpId);}) : allCredits;
+                const filteredTotal = filteredCredits.reduce(function(s,a){return s+(parseFloat(a.amount)||0);},0);
                 const [addingCredit, setAddingCredit] = useState(false);
                 const [creditEmpId, setCreditEmpId] = useState('');
                 const [creditAmt, setCreditAmt] = useState('');
@@ -2853,9 +2856,18 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   </div>
                    )}
-                   <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {allCredits.length === 0 && <p className="text-gray-400 text-sm py-4">No account credits recorded yet.</p>}
-                  {[...allCredits].reverse().map(function(a) { return (
+                   <div className="mb-3">
+                  <select value={filterEmpId} onChange={function(e){setFilterEmpId(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                   <option value="">All Employees</option>
+                   {[...new Set(allCredits.map(function(a){return a.employeeId;}))].map(function(id){
+                  const emp = allCredits.find(function(a){return a.employeeId===id;});
+                  return <option key={id} value={id}>{emp ? emp.employeeName : id}</option>;
+                   })}
+                  </select>
+                  </div>
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {filteredCredits.length === 0 && <p className="text-gray-400 text-sm py-4">No account credits found.</p>}
+                  {[...filteredCredits].reverse().map(function(a) { return (
                    <div key={a.id} className="bg-white border border-gray-200 rounded-lg p-3 flex items-center justify-between">
                   <div>
                    <p className="text-sm font-semibold text-gray-800">{a.employeeName}</p>
@@ -2868,6 +2880,12 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   ); })}
                    </div>
+                  {filteredCredits.length > 0 && (
+                  <div className="mt-3 flex justify-between items-center bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3">
+                   <span className="text-sm font-semibold text-gray-700">{filterEmpId ? 'Employee Total' : 'Grand Total'} ({filteredCredits.length} record{filteredCredits.length!==1?'s':''})</span>
+                   <span className="text-lg font-bold text-indigo-700">{getCurrencySymbol('GBP')}{filteredTotal.toFixed(2)}</span>
+                  </div>
+                  )}
                   </div>
                 );
             };
