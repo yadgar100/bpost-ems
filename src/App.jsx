@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 
 /* global Html5QrcodeScanner, L */
 
-    <script type="text/babel">
 
         const API_BASE_URL = 'https://bpost-api-vercel-fixed.vercel.app';
         const API_ENDPOINTS = {
