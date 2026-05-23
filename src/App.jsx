@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 /* global Html5QrcodeScanner, L */
 
+    <script type="text/babel">
 
         const API_BASE_URL = 'https://bpost-api-vercel-fixed.vercel.app';
         const API_ENDPOINTS = {
@@ -15,6 +16,7 @@ import React, { useState, useEffect } from 'react';
             vehicles: `${API_BASE_URL}/api/vehicles`,
             agents: `${API_BASE_URL}/api/agents`,
             agentCollections: `${API_BASE_URL}/api/agent-collections`,
+                iraqPay: `${API_BASE_URL}/api/iraq-pay`,
             expenses: `${API_BASE_URL}/api/expenses`,
         };
 
@@ -396,6 +398,7 @@ import React, { useState, useEffect } from 'react';
                    loadVehiclesFromAPI();
                    loadExpensesFromAPI();
                    loadAgentsFromAPI();
+                   loadIraqPaymentsFromAPI();
                    loadAgentCollectionsFromAPI();
                    loadMyAgentsFromAPI();
                   } else {
@@ -546,6 +549,9 @@ import React, { useState, useEffect } from 'react';
             const [agentCollections, setAgentCollections] = useState([]);
             const [showAgentManager, setShowAgentManager] = useState(false);
             const [showAgentReport, setShowAgentReport] = useState(false);
+            const [showIraqPay, setShowIraqPay] = useState(false);
+            const [iraqPayments, setIraqPayments] = useState([]);
+            const [iraqPayState, setIraqPayState] = useState({ activeTab:'view', batchName:'', empId:'', filterEmp:'', filterStatus:'all', previewRows:[] });
             const [agentReportState, setAgentReportState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], empFilter:'', branchFilter:'', countryFilter:'', reportData:null, showAddForm:false });
             const [showAgentCollectionForm, setShowAgentCollectionForm] = useState(false);
             const [showAccountCredit, setShowAccountCredit] = useState(false);
@@ -702,6 +708,22 @@ import React, { useState, useEffect } from 'react';
                    }));
                   }
                 } catch(e) { console.error('Failed to load my agents:', e); }
+            };
+
+            const loadIraqPaymentsFromAPI = async () => {
+                try {
+                  const data = await apiCall(API_ENDPOINTS.iraqPay);
+                  if (data.success) setIraqPayments(data.payments.map(function(p){return{
+                   id:p.Id, batchName:p.BatchName, shipmentCode:p.ShipmentCode,
+                   employeeId:p.EmployeeId, employeeName:(p.FirstName?p.FirstName+' '+p.LastName:''),
+                   employeeCode:p.EmployeeCode,
+                   amountIQD:parseFloat(p.AmountIQD)||0, amountUSD:parseFloat(p.AmountUSD)||0,
+                   amountGBP:parseFloat(p.AmountGBP)||0, amountEUR:parseFloat(p.AmountEUR)||0,
+                   collectedIQD:parseFloat(p.CollectedIQD)||0, collectedUSD:parseFloat(p.CollectedUSD)||0,
+                   collectedGBP:parseFloat(p.CollectedGBP)||0, collectedEUR:parseFloat(p.CollectedEUR)||0,
+                   status:p.Status, notes:p.Notes, createdAt:p.CreatedAt, collectedAt:p.CollectedAt
+                  };}));
+                } catch(e) { console.error('loadIraqPay error:',e); }
             };
 
             const loadAgentCollectionsFromAPI = async () => {
@@ -2445,6 +2467,71 @@ import React, { useState, useEffect } from 'react';
                   </div>
 
                   {(() => {
+                   const myIraqPay = iraqPayments.filter(function(p){ return p.employeeId === currentUser.id && p.status !== 'collected'; });
+                   if (!myIraqPay.length) return null;
+                   const sym = getCurrencySymbol(currentUser.currency || 'GBP');
+                   return (
+                  <div className="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
+                   <h3 className="text-sm font-bold text-blue-800 mb-3 flex items-center gap-2"><span className="text-base">🇮🇶</span>Pay in Iraq — Pending Collections</h3>
+                   <div className="space-y-3">
+                  {myIraqPay.map(function(p) {
+                   const [saving, setSaving] = useState(false);
+                   const collIQD = React.useRef(null);
+                   const collUSD = React.useRef(null);
+                   const collGBP = React.useRef(null);
+                   const collEUR = React.useRef(null);
+                   const saveCollection = async function() {
+                  const payload = {
+                   collectedIQD: parseFloat(collIQD.current?collIQD.current.value:0)||0,
+                   collectedUSD: parseFloat(collUSD.current?collUSD.current.value:0)||0,
+                   collectedGBP: parseFloat(collGBP.current?collGBP.current.value:0)||0,
+                   collectedEUR: parseFloat(collEUR.current?collEUR.current.value:0)||0,
+                  };
+                  const anyCollected = payload.collectedIQD||payload.collectedUSD||payload.collectedGBP||payload.collectedEUR;
+                  if (!anyCollected) { alert('Please enter at least one collected amount'); return; }
+                  payload.status = 'collected';
+                  setSaving(true);
+                  try {
+                   await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method:'PUT', body: JSON.stringify(payload) });
+                   await loadIraqPaymentsFromAPI();
+                  } catch(e) { alert('Failed: ' + e.message); }
+                  setSaving(false);
+                   };
+                   return (
+                  <div key={p.id} className="bg-white rounded-xl border border-blue-100 p-4">
+                   <div className="flex items-center justify-between mb-3">
+                  <div>
+                   <p className="font-bold text-gray-900">{p.shipmentCode}</p>
+                   <p className="text-xs text-gray-400">{p.batchName}</p>
+                  </div>
+                  <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-xs font-semibold">{p.status}</span>
+                   </div>
+                   <p className="text-xs font-semibold text-gray-500 mb-2">Amount to collect:</p>
+                   <div className="grid grid-cols-2 gap-2 mb-3">
+                  {p.amountIQD>0 && <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm"><span className="text-gray-500 text-xs">IQD</span><br/><span className="font-bold">{p.amountIQD.toLocaleString()}</span></div>}
+                  {p.amountUSD>0 && <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm"><span className="text-gray-500 text-xs">USD</span><br/><span className="font-bold">${p.amountUSD.toFixed(2)}</span></div>}
+                  {p.amountGBP>0 && <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm"><span className="text-gray-500 text-xs">GBP</span><br/><span className="font-bold">£{p.amountGBP.toFixed(2)}</span></div>}
+                  {p.amountEUR>0 && <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm"><span className="text-gray-500 text-xs">EUR</span><br/><span className="font-bold">€{p.amountEUR.toFixed(2)}</span></div>}
+                   </div>
+                   <p className="text-xs font-semibold text-gray-500 mb-2">Mark as collected:</p>
+                   <div className="grid grid-cols-2 gap-2 mb-3">
+                  {p.amountIQD>0 && <div><label className="text-xs text-gray-400">IQD collected</label><input type="number" ref={collIQD} defaultValue="" placeholder="0" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
+                  {p.amountUSD>0 && <div><label className="text-xs text-gray-400">USD collected</label><input type="number" ref={collUSD} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
+                  {p.amountGBP>0 && <div><label className="text-xs text-gray-400">GBP collected</label><input type="number" ref={collGBP} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
+                  {p.amountEUR>0 && <div><label className="text-xs text-gray-400">EUR collected</label><input type="number" ref={collEUR} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
+                   </div>
+                   <button onClick={saveCollection} disabled={saving} className="w-full py-2 bg-blue-700 text-white rounded-lg font-semibold text-sm hover:bg-blue-800 disabled:opacity-50">
+                  {saving ? 'Saving...' : 'Mark Collected'}
+                   </button>
+                  </div>
+                   );
+                  })}
+                   </div>
+                  </div>
+                   );
+                   })()}
+
+                  {(() => {
                    const myCredits = financialAdjustments.filter(function(a){return a.employeeId===currentUser.id && a.type==='account_credit';}).sort(function(a,b){return a.date>b.date?-1:1;});
                    if (!myCredits.length) return null;
                    const sym2 = getCurrencySymbol(currentUser.currency||'GBP');
@@ -2789,6 +2876,241 @@ import React, { useState, useEffect } from 'react';
                   </div>
                 );
             };
+
+
+            /* ── IraqPay Admin Manager ─────────────────────────────────────────────── */
+            const IraqPayManager = ({ onClose, visibleEmployees: visEmp, iraqPayments, loadIraqPaymentsFromAPI, apiCall, API_ENDPOINTS, persistedState, onStateChange }) => {
+                const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
+                const activeTab = persistedState ? persistedState.activeTab : 'view'; const setActiveTab = mk('activeTab');
+                const filterEmp = persistedState ? persistedState.filterEmp : ''; const setFilterEmp = mk('filterEmp');
+                const filterStatus = persistedState ? persistedState.filterStatus : 'all'; const setFilterStatus = mk('filterStatus');
+
+                const [batchName, setBatchName] = useState('');
+                const [empId, setEmpId] = useState('');
+                const [previewRows, setPreviewRows] = useState([]);
+                const [uploading, setUploading] = useState(false);
+                const [editingId, setEditingId] = useState(null);
+                const [editVals, setEditVals] = useState({});
+
+                const currencies = ['IQD','USD','GBP','EUR'];
+
+                const handleFile = function(e) {
+                  const file = e.target.files[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = function(ev) {
+                   try {
+                  const wb = window.XLSX.read(ev.target.result, { type: 'binary' });
+                  const ws = wb.Sheets[wb.SheetNames[0]];
+                  const rows = window.XLSX.utils.sheet_to_json(ws, { defval: '' });
+                  // Map columns flexibly
+                  const mapped = rows.map(function(r, i) {
+                   const keys = Object.keys(r).map(function(k){return k.toLowerCase().replace(/[^a-z0-9]/g,'');});
+                   const get = function(pat) {
+                    const k = Object.keys(r).find(function(k){return k.toLowerCase().replace(/[^a-z0-9]/g,'').includes(pat);});
+                    return k ? r[k] : '';
+                   };
+                   return {
+                    shipmentCode: get('shipment') || get('code') || get('ref') || get('order') || String(r[Object.keys(r)[0]] || ''),
+                    amountIQD: parseFloat(String(get('iqd')).replace(/,/g,'')) || 0,
+                    amountUSD: parseFloat(String(get('usd') || get('dollar')).replace(/,/g,'')) || 0,
+                    amountGBP: parseFloat(String(get('gbp') || get('pound')).replace(/,/g,'')) || 0,
+                    amountEUR: parseFloat(String(get('eur') || get('euro')).replace(/,/g,'')) || 0,
+                    notes: get('note') || get('desc') || '',
+                   };
+                  }).filter(function(r){ return r.shipmentCode; });
+                  setPreviewRows(mapped);
+                   } catch(err) { alert('Could not parse file: ' + err.message); }
+                  };
+                  reader.readAsBinaryString(file);
+                };
+
+                const handleUpload = async function() {
+                  if (!batchName.trim()) { alert('Please enter a batch name'); return; }
+                  if (!empId) { alert('Please select an employee'); return; }
+                  if (!previewRows.length) { alert('No records to upload'); return; }
+                  setUploading(true);
+                  try {
+                   await apiCall(API_ENDPOINTS.iraqPay + '/batch', { method:'POST', body: JSON.stringify({ batchName: batchName.trim(), employeeId: parseInt(empId), records: previewRows }) });
+                   await loadIraqPaymentsFromAPI();
+                   setBatchName(''); setEmpId(''); setPreviewRows([]);
+                   setActiveTab('view');
+                   alert('Batch uploaded successfully!');
+                  } catch(e) { alert('Upload failed: ' + e.message); }
+                  setUploading(false);
+                };
+
+                const handleSaveEdit = async function(p) {
+                  try {
+                   await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method:'PUT', body: JSON.stringify(editVals) });
+                   await loadIraqPaymentsFromAPI();
+                   setEditingId(null); setEditVals({});
+                  } catch(e) { alert('Failed: ' + e.message); }
+                };
+
+                const handleDelete = async function(p) {
+                  if (!window.confirm('Delete shipment ' + p.shipmentCode + '?')) return;
+                  try { await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method:'DELETE' }); await loadIraqPaymentsFromAPI(); }
+                  catch(e) { alert('Failed: ' + e.message); }
+                };
+
+                const filtered = iraqPayments.filter(function(p){
+                  if (filterEmp && p.employeeId !== parseInt(filterEmp)) return false;
+                  if (filterStatus !== 'all' && p.status !== filterStatus) return false;
+                  return true;
+                });
+
+                const statusColor = {pending:'bg-yellow-100 text-yellow-800', partial:'bg-blue-100 text-blue-700', collected:'bg-green-100 text-green-700'};
+
+                return (
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl my-8">
+                   <div className="bg-gradient-to-r from-blue-700 to-indigo-700 rounded-t-2xl px-6 py-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                   <span className="text-2xl">🇮🇶</span>
+                   <h2 className="text-xl font-bold text-white">Pay in Iraq</h2>
+                  </div>
+                  <button onClick={onClose} className="bg-blue-800 hover:bg-blue-900 text-white px-4 py-2 rounded-lg font-semibold flex items-center gap-2"><X className="w-4 h-4"/>Close</button>
+                   </div>
+
+                   {/* Tabs */}
+                   <div className="flex border-b border-gray-200">
+                  {[['view','📋 View Payments'],['upload','📤 Upload Batch']].map(function([t,l]){return(
+                   <button key={t} onClick={function(){setActiveTab(t);}} className={'px-6 py-3 font-semibold text-sm transition ' + (activeTab===t?'border-b-2 border-blue-600 text-blue-600':'text-gray-500 hover:text-gray-700')}>{l}</button>
+                  );})}
+                   </div>
+
+                   <div className="p-6">
+
+                  {/* ── View Payments Tab ── */}
+                  {activeTab === 'view' && (
+                   <div>
+                  <div className="flex gap-3 mb-4 flex-wrap">
+                   <select value={filterEmp} onChange={function(e){setFilterEmp(e.target.value);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <option value="">All Employees</option>
+                  {[...new Set(iraqPayments.map(function(p){return p.employeeId;}))].map(function(id){
+                   const p = iraqPayments.find(function(x){return x.employeeId===id;});
+                   return <option key={id} value={id}>{p?p.employeeName:id}</option>;
+                  })}
+                   </select>
+                   <select value={filterStatus} onChange={function(e){setFilterStatus(e.target.value);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <option value="all">All Statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="partial">Partial</option>
+                  <option value="collected">Collected</option>
+                   </select>
+                   <span className="text-sm text-gray-500 self-center">{filtered.length} record{filtered.length!==1?'s':''}</span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                   <table className="w-full text-sm border-collapse">
+                  <thead><tr className="bg-blue-50">
+                   {['Employee','Batch','Shipment Code','IQD','USD','GBP','EUR','Collected','Status','Actions'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-blue-700 border-b border-blue-100">{h}</th>;})}
+                  </tr></thead>
+                  <tbody className="divide-y divide-gray-100">
+                  {filtered.length === 0 && <tr><td colSpan="10" className="text-center py-8 text-gray-400">No records found</td></tr>}
+                  {filtered.map(function(p){
+                   const isEditing = editingId === p.id;
+                   const inp = function(field, val) {
+                  return <input type="number" min="0" step="0.01" defaultValue={val} onChange={function(e){setEditVals(Object.assign({},editVals,{[field]:parseFloat(e.target.value)||0}));}} className="w-20 border border-gray-300 rounded px-1 py-0.5 text-xs" />;
+                   };
+                   return (
+                  <tr key={p.id} className={'hover:bg-gray-50 ' + (p.status==='collected'?'opacity-70':'')}>
+                   <td className="px-3 py-2 font-semibold text-gray-800 text-xs">{p.employeeName}<br/><span className="text-gray-400 font-normal">{p.employeeCode}</span></td>
+                   <td className="px-3 py-2 text-xs text-gray-500">{p.batchName}</td>
+                   <td className="px-3 py-2 font-bold text-gray-900">{p.shipmentCode}</td>
+                   <td className="px-3 py-2 text-xs">{isEditing ? inp('amountIQD',p.amountIQD) : (p.amountIQD>0?<span className="font-semibold">{p.amountIQD.toLocaleString()}</span>:'—')}</td>
+                   <td className="px-3 py-2 text-xs">{isEditing ? inp('amountUSD',p.amountUSD) : (p.amountUSD>0?<span className="font-semibold">${p.amountUSD.toFixed(2)}</span>:'—')}</td>
+                   <td className="px-3 py-2 text-xs">{isEditing ? inp('amountGBP',p.amountGBP) : (p.amountGBP>0?<span className="font-semibold">£{p.amountGBP.toFixed(2)}</span>:'—')}</td>
+                   <td className="px-3 py-2 text-xs">{isEditing ? inp('amountEUR',p.amountEUR) : (p.amountEUR>0?<span className="font-semibold">€{p.amountEUR.toFixed(2)}</span>:'—')}</td>
+                   <td className="px-3 py-2 text-xs">
+                  {p.collectedIQD>0 && <div className="text-green-700 font-semibold">IQD {p.collectedIQD.toLocaleString()}</div>}
+                  {p.collectedUSD>0 && <div className="text-green-700 font-semibold">${p.collectedUSD.toFixed(2)}</div>}
+                  {p.collectedGBP>0 && <div className="text-green-700 font-semibold">£{p.collectedGBP.toFixed(2)}</div>}
+                  {p.collectedEUR>0 && <div className="text-green-700 font-semibold">€{p.collectedEUR.toFixed(2)}</div>}
+                  {!p.collectedIQD&&!p.collectedUSD&&!p.collectedGBP&&!p.collectedEUR && <span className="text-gray-300">—</span>}
+                   </td>
+                   <td className="px-3 py-2"><span className={'px-2 py-0.5 rounded-full text-xs font-semibold ' + (statusColor[p.status]||'bg-gray-100 text-gray-600')}>{p.status}</span></td>
+                   <td className="px-3 py-2">
+                  {isEditing ? (
+                   <div className="flex gap-1">
+                  <button onClick={function(){handleSaveEdit(p);}} className="px-2 py-1 bg-green-600 text-white rounded text-xs">Save</button>
+                  <button onClick={function(){setEditingId(null);setEditVals({});}} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">Cancel</button>
+                   </div>
+                  ) : (
+                   <div className="flex gap-1">
+                  <button onClick={function(){setEditingId(p.id);setEditVals({amountIQD:p.amountIQD,amountUSD:p.amountUSD,amountGBP:p.amountGBP,amountEUR:p.amountEUR});}} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">Edit</button>
+                  <button onClick={function(){handleDelete(p);}} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">Delete</button>
+                   </div>
+                  )}
+                   </td>
+                  </tr>
+                   );})}
+                  </tbody>
+                   </table>
+                  </div>
+                   </div>
+                  )}
+
+                  {/* ── Upload Batch Tab ── */}
+                  {activeTab === 'upload' && (
+                   <div className="space-y-5 max-w-2xl">
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+                   <strong>Excel/CSV format:</strong> First column = Shipment Code, then columns named IQD, USD, GBP, EUR (any order). Column names are flexible — the system auto-detects them.
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Batch Name *</label>
+                  <input type="text" value={batchName} onChange={function(e){setBatchName(e.target.value);}} placeholder="e.g. May 2026 Batch 1" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   </div>
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Assign to Employee *</label>
+                  <select value={empId} onChange={function(e){setEmpId(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                   <option value="">Select employee...</option>
+                   {[...visEmp].filter(function(e){return !e.isAdmin;}).sort(function(a,b){return (a.firstName+a.lastName).localeCompare(b.firstName+b.lastName);}).map(function(e){return <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.employeeId})</option>;})}
+                  </select>
+                   </div>
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Upload Excel / CSV File</label>
+                   <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  {previewRows.length > 0 && (
+                   <div>
+                  <p className="text-sm font-semibold text-gray-700 mb-2">Preview — {previewRows.length} records</p>
+                  <div className="overflow-x-auto max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
+                   <table className="w-full text-xs">
+                  <thead className="bg-gray-50 sticky top-0"><tr>
+                   {['Shipment Code','IQD','USD','GBP','EUR','Notes'].map(function(h){return <th key={h} className="px-3 py-2 text-left font-semibold text-gray-600">{h}</th>;})}
+                  </tr></thead>
+                  <tbody className="divide-y divide-gray-100">
+                  {previewRows.map(function(r,i){return(
+                   <tr key={i} className="hover:bg-gray-50">
+                  <td className="px-3 py-1.5 font-semibold">{r.shipmentCode}</td>
+                  <td className="px-3 py-1.5">{r.amountIQD>0?r.amountIQD.toLocaleString():'—'}</td>
+                  <td className="px-3 py-1.5">{r.amountUSD>0?'$'+r.amountUSD.toFixed(2):'—'}</td>
+                  <td className="px-3 py-1.5">{r.amountGBP>0?'£'+r.amountGBP.toFixed(2):'—'}</td>
+                  <td className="px-3 py-1.5">{r.amountEUR>0?'€'+r.amountEUR.toFixed(2):'—'}</td>
+                  <td className="px-3 py-1.5 text-gray-400">{r.notes||'—'}</td>
+                   </tr>
+                  );})}
+                  </tbody>
+                   </table>
+                  </div>
+                  <button onClick={handleUpload} disabled={uploading} className="mt-3 px-6 py-2.5 bg-blue-700 text-white rounded-lg font-semibold hover:bg-blue-800 disabled:opacity-50">
+                   {uploading ? 'Uploading...' : 'Upload ' + previewRows.length + ' Records'}
+                  </button>
+                   </div>
+                  )}
+                   </div>
+                  )}
+
+                   </div>
+                  </div>
+                  </div>
+                );
+            };
+            /* ── End IraqPayManager ─────────────────────────────────────────────────── */
 
             const AccountCreditsTab = ({ visEmp, financialAdjustments, visibleEmpIds, loadAdjustmentsFromAPI, apiCall, API_ENDPOINTS, getCurrencySymbol }) => {
                 const allCredits = financialAdjustments.filter(function(a){return a.type==='account_credit' && visibleEmpIds.has(a.employeeId);});
@@ -8607,6 +8929,19 @@ import React, { useState, useEffect } from 'react';
                   <AgentManager onClose={() => setShowAgentManager(false)} visibleEmployees={visibleEmployees} />
                    )}
 
+                   {showIraqPay && (
+                  <IraqPayManager
+                   onClose={() => setShowIraqPay(false)}
+                   visibleEmployees={visibleEmployees}
+                   iraqPayments={iraqPayments}
+                   loadIraqPaymentsFromAPI={loadIraqPaymentsFromAPI}
+                   apiCall={apiCall}
+                   API_ENDPOINTS={API_ENDPOINTS}
+                   persistedState={iraqPayState}
+                   onStateChange={setIraqPayState}
+                  />
+                   )}
+
                    {showAgentReport && (
                   <AgentReport onClose={() => setShowAgentReport(false)} visibleEmployees={visibleEmployees} onRefresh={loadAgentCollectionsFromAPI} persistedState={agentReportState} onStateChange={setAgentReportState} />
                    )}
@@ -8658,6 +8993,7 @@ import React, { useState, useEffect } from 'react';
                   <div className="px-3 py-1.5 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50">Reports</div>
                   <button onClick={() => { setShowReportGenerator(true); setNavOpen(''); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-amber-50 flex items-center gap-3 text-gray-700"><FileText className="w-4 h-4 text-amber-600" />Payroll Report</button>
                   <button onClick={() => { setShowExpenseReport(true); setNavOpen(''); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-amber-50 flex items-center gap-3 text-gray-700"><Receipt className="w-4 h-4 text-teal-600" />Expense Report</button>
+                  <button onClick={() => { setShowIraqPay(true); setNavOpen(''); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 flex items-center gap-3 text-gray-700"><span className="text-base">🇮🇶</span>Pay in Iraq</button>
                   <button onClick={() => { setShowAgentReport(true); setNavOpen(''); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-amber-50 flex items-center gap-3 text-gray-700"><Truck className="w-4 h-4 text-orange-600" />Collection Report</button>
                   </div>
                   )}
