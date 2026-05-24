@@ -2469,64 +2469,16 @@ import React, { useState, useEffect } from 'react';
                    const myIraqPay = iraqPayments.filter(function(p){ return p.employeeId === currentUser.id && p.status !== 'collected'; });
                    if (!myIraqPay.length) return null;
                    const sym = getCurrencySymbol(currentUser.currency || 'GBP');
+                   const batches = [...new Set(myIraqPay.map(function(p){return p.batchName;}))];
                    return (
-                  <div className="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
-                   <h3 className="text-sm font-bold text-blue-800 mb-3 flex items-center gap-2"><span className="text-base">🇮🇶</span>Pay in Iraq — Pending Collections</h3>
-                   <div className="space-y-3">
-                  {myIraqPay.map(function(p) {
-                   const [saving, setSaving] = useState(false);
-                   const collIQD = React.useRef(null);
-                   const collUSD = React.useRef(null);
-                   const collGBP = React.useRef(null);
-                   const collEUR = React.useRef(null);
-                   const saveCollection = async function() {
-                  const payload = {
-                   collectedIQD: parseFloat(collIQD.current?collIQD.current.value:0)||0,
-                   collectedUSD: parseFloat(collUSD.current?collUSD.current.value:0)||0,
-                   collectedGBP: parseFloat(collGBP.current?collGBP.current.value:0)||0,
-                   collectedEUR: parseFloat(collEUR.current?collEUR.current.value:0)||0,
-                  };
-                  const anyCollected = payload.collectedIQD||payload.collectedUSD||payload.collectedGBP||payload.collectedEUR;
-                  if (!anyCollected) { alert('Please enter at least one collected amount'); return; }
-                  payload.status = 'collected';
-                  setSaving(true);
-                  try {
-                   await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method:'PUT', body: JSON.stringify(payload) });
-                   await loadIraqPaymentsFromAPI();
-                  } catch(e) { alert('Failed: ' + e.message); }
-                  setSaving(false);
-                   };
-                   return (
-                  <div key={p.id} className="bg-white rounded-xl border border-blue-100 p-4">
-                   <div className="flex items-center justify-between mb-3">
-                  <div>
-                   <p className="font-bold text-gray-900">{p.shipmentCode}</p>
-                   <p className="text-xs text-gray-400">{p.batchName}</p>
-                  </div>
-                  <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-xs font-semibold">{p.status}</span>
-                   </div>
-                   <p className="text-xs font-semibold text-gray-500 mb-2">Amount to collect:</p>
-                   <div className="grid grid-cols-2 gap-2 mb-3">
-                  {p.amountIQD>0 && <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm"><span className="text-gray-500 text-xs">IQD</span><br/><span className="font-bold">{p.amountIQD.toLocaleString()}</span></div>}
-                  {p.amountUSD>0 && <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm"><span className="text-gray-500 text-xs">USD</span><br/><span className="font-bold">${p.amountUSD.toFixed(2)}</span></div>}
-                  {p.amountGBP>0 && <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm"><span className="text-gray-500 text-xs">GBP</span><br/><span className="font-bold">£{p.amountGBP.toFixed(2)}</span></div>}
-                  {p.amountEUR>0 && <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm"><span className="text-gray-500 text-xs">EUR</span><br/><span className="font-bold">€{p.amountEUR.toFixed(2)}</span></div>}
-                   </div>
-                   <p className="text-xs font-semibold text-gray-500 mb-2">Mark as collected:</p>
-                   <div className="grid grid-cols-2 gap-2 mb-3">
-                  {p.amountIQD>0 && <div><label className="text-xs text-gray-400">IQD collected</label><input type="number" ref={collIQD} defaultValue="" placeholder="0" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
-                  {p.amountUSD>0 && <div><label className="text-xs text-gray-400">USD collected</label><input type="number" ref={collUSD} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
-                  {p.amountGBP>0 && <div><label className="text-xs text-gray-400">GBP collected</label><input type="number" ref={collGBP} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
-                  {p.amountEUR>0 && <div><label className="text-xs text-gray-400">EUR collected</label><input type="number" ref={collEUR} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
-                   </div>
-                   <button onClick={saveCollection} disabled={saving} className="w-full py-2 bg-blue-700 text-white rounded-lg font-semibold text-sm hover:bg-blue-800 disabled:opacity-50">
-                  {saving ? 'Saving...' : 'Mark Collected'}
-                   </button>
-                  </div>
-                   );
-                  })}
-                   </div>
-                  </div>
+                  <IraqPaySection
+                   myIraqPay={myIraqPay}
+                   batches={batches}
+                   sym={sym}
+                   apiCall={apiCall}
+                   API_ENDPOINTS={API_ENDPOINTS}
+                   loadIraqPaymentsFromAPI={loadIraqPaymentsFromAPI}
+                  />
                    );
                    })()}
 
@@ -2877,6 +2829,101 @@ import React, { useState, useEffect } from 'react';
             };
 
 
+
+
+            /* ── IraqPaySection — employee portal section with batch dropdown ─────── */
+            const IraqPaySection = ({ myIraqPay, batches, sym, apiCall, API_ENDPOINTS, loadIraqPaymentsFromAPI }) => {
+                const [selectedBatch, setSelectedBatch] = useState(batches[0] || '');
+                const shown = selectedBatch ? myIraqPay.filter(function(p){return p.batchName === selectedBatch;}) : myIraqPay;
+                return (
+                  <div className="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <h3 className="text-sm font-bold text-blue-800 mb-3 flex items-center gap-2"><span className="text-base">🇮🇶</span>Pay in Iraq — Pending Collections</h3>
+                  {batches.length > 1 && (
+                   <div className="mb-4">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Select Batch</label>
+                  <select value={selectedBatch} onChange={function(e){setSelectedBatch(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                   <option value="">All Batches ({myIraqPay.length} shipments)</option>
+                   {batches.map(function(b){
+                  const count = myIraqPay.filter(function(p){return p.batchName===b;}).length;
+                  return <option key={b} value={b}>{b} ({count} shipments)</option>;
+                   })}
+                  </select>
+                   </div>
+                  )}
+                  <p className="text-xs text-gray-500 mb-3">{shown.length} shipment{shown.length!==1?'s':''} pending</p>
+                  <div className="space-y-3">
+                   {shown.map(function(p){
+                  return <IraqPayCard key={p.id} p={p} apiCall={apiCall} API_ENDPOINTS={API_ENDPOINTS} loadIraqPaymentsFromAPI={loadIraqPaymentsFromAPI} sym={sym} />;
+                   })}
+                  </div>
+                  </div>
+                );
+            };
+            /* ── End IraqPaySection ───────────────────────────────────────────────── */
+
+            /* ── IraqPayCard — employee collection card (hooks must be in component) ── */
+            const IraqPayCard = ({ p, apiCall, API_ENDPOINTS, loadIraqPaymentsFromAPI, sym }) => {
+                const [saving, setSaving] = useState(false);
+                const [recorded, setRecorded] = useState(false);
+                const collIQD = React.useRef(null);
+                const collUSD = React.useRef(null);
+                const collGBP = React.useRef(null);
+                const collEUR = React.useRef(null);
+                const saveCollection = async function() {
+                  const payload = {
+                   collectedIQD: parseFloat(collIQD.current?collIQD.current.value:0)||0,
+                   collectedUSD: parseFloat(collUSD.current?collUSD.current.value:0)||0,
+                   collectedGBP: parseFloat(collGBP.current?collGBP.current.value:0)||0,
+                   collectedEUR: parseFloat(collEUR.current?collEUR.current.value:0)||0,
+                  };
+                  const anyCollected = payload.collectedIQD||payload.collectedUSD||payload.collectedGBP||payload.collectedEUR;
+                  if (!anyCollected) { alert('Please enter at least one collected amount'); return; }
+                  payload.status = (
+                   (p.amountIQD>0 && payload.collectedIQD<p.amountIQD) ||
+                   (p.amountUSD>0 && payload.collectedUSD<p.amountUSD) ||
+                   (p.amountGBP>0 && payload.collectedGBP<p.amountGBP) ||
+                   (p.amountEUR>0 && payload.collectedEUR<p.amountEUR)
+                  ) ? 'partial' : 'collected';
+                  setSaving(true);
+                  try {
+                   await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method:'PUT', body: JSON.stringify(payload) });
+                   await loadIraqPaymentsFromAPI();
+                   setRecorded(true);
+                  } catch(e) { alert('Failed: ' + e.message); }
+                  setSaving(false);
+                };
+                if (recorded) return null;
+                return (
+                  <div className="bg-white rounded-xl border border-blue-100 p-4">
+                  <div className="flex items-center justify-between mb-2">
+                   <div>
+                  <p className="font-bold text-gray-900">{p.shipmentCode}</p>
+                  {p.receiver && <p className="text-xs text-gray-500">{p.receiver}</p>}
+                  <p className="text-xs text-gray-400">{p.batchName}</p>
+                   </div>
+                   <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-xs font-semibold">{p.status}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                   {p.amountGBP>0 && <div className="bg-gray-50 rounded-lg px-3 py-2"><p className="text-xs text-gray-400">GBP</p><p className="font-bold text-sm">£{p.amountGBP.toFixed(2)}</p></div>}
+                   {p.amountUSD>0 && <div className="bg-gray-50 rounded-lg px-3 py-2"><p className="text-xs text-gray-400">USD</p><p className="font-bold text-sm">${p.amountUSD.toFixed(2)}</p></div>}
+                   {p.amountIQD>0 && <div className="bg-gray-50 rounded-lg px-3 py-2"><p className="text-xs text-gray-400">IQD</p><p className="font-bold text-sm">{p.amountIQD.toLocaleString()}</p></div>}
+                   {p.amountEUR>0 && <div className="bg-gray-50 rounded-lg px-3 py-2"><p className="text-xs text-gray-400">EUR</p><p className="font-bold text-sm">€{p.amountEUR.toFixed(2)}</p></div>}
+                  </div>
+                  <p className="text-xs font-semibold text-gray-500 mb-2">Enter collected amount:</p>
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                   {p.amountGBP>0 && <div><label className="text-xs text-gray-400">GBP collected</label><input type="number" ref={collGBP} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
+                   {p.amountUSD>0 && <div><label className="text-xs text-gray-400">USD collected</label><input type="number" ref={collUSD} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
+                   {p.amountIQD>0 && <div><label className="text-xs text-gray-400">IQD collected</label><input type="number" ref={collIQD} defaultValue="" placeholder="0" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
+                   {p.amountEUR>0 && <div><label className="text-xs text-gray-400">EUR collected</label><input type="number" ref={collEUR} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
+                  </div>
+                  <button onClick={saveCollection} disabled={saving} className="w-full py-2 bg-blue-700 text-white rounded-lg font-semibold text-sm hover:bg-blue-800 disabled:opacity-50">
+                   {saving ? 'Saving...' : 'Mark Collected'}
+                  </button>
+                  </div>
+                );
+            };
+            /* ── End IraqPayCard ──────────────────────────────────────────────────────── */
+
             /* ── IraqPay Admin Manager ─────────────────────────────────────────────── */
             const IraqPayManager = ({ onClose, visibleEmployees: visEmp, iraqPayments, loadIraqPaymentsFromAPI, apiCall, API_ENDPOINTS, persistedState, onStateChange }) => {
                 const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
@@ -2901,32 +2948,50 @@ import React, { useState, useEffect } from 'react';
                    try {
                   const wb = window.XLSX.read(ev.target.result, { type: 'binary' });
                   const ws = wb.Sheets[wb.SheetNames[0]];
-                  // Get raw array of arrays to find header row
                   const raw = window.XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
-                  // Find the row that looks like the data header (contains shipment code + currency columns)
-                  let headerRowIdx = 0;
-                  for (let i = 0; i < Math.min(raw.length, 20); i++) {
+                  // Find header row: must contain BOTH a shipment-like term AND a currency term
+                  let headerRowIdx = -1;
+                  for (let i = 0; i < Math.min(raw.length, 30); i++) {
                    const rowStr = raw[i].join(' ').toLowerCase();
-                   if (rowStr.includes('shipment') || rowStr.includes('code') || rowStr.includes('iqd') || rowStr.includes('usd')) {
-                    headerRowIdx = i;
-                    break;
+                   const hasShipment = rowStr.includes('shipment code') || (rowStr.includes('shipment') && !rowStr.includes('shipments'));
+                   const hasCurrency = rowStr.includes(' iqd') || rowStr.includes('usd') || rowStr.includes('total') || rowStr.includes('gbp');
+                   if (hasShipment && hasCurrency) { headerRowIdx = i; break; }
+                  }
+                  if (headerRowIdx < 0) {
+                   // Fallback: find row where first non-empty cell looks like a column header (text, not a number)
+                   for (let i = 0; i < Math.min(raw.length, 30); i++) {
+                    const first = String(raw[i][0]||'').trim();
+                    if (first && isNaN(first) && !/^\d{2}\//.test(first) && raw[i].length > 3) {
+                     const rowStr = raw[i].join(' ').toLowerCase();
+                     if (rowStr.includes('iqd') || rowStr.includes('usd') || rowStr.includes('total')) {
+                      headerRowIdx = i; break;
+                     }
+                    }
                    }
                   }
-                  const headerRow = raw[headerRowIdx].map(function(h){ return String(h||'').toLowerCase().replace(/[^a-z0-9]/g,''); });
-                  const getColIdx = function(pat) {
-                   return headerRow.findIndex(function(h){ return h.includes(pat); });
+                  if (headerRowIdx < 0) headerRowIdx = 0;
+                  const headerRow = raw[headerRowIdx].map(function(h){ return String(h||'').toLowerCase().replace(/[^a-z0-9£$]/g,''); });
+                  const getColIdx = function(...pats) {
+                   for (const pat of pats) {
+                    const idx = headerRow.findIndex(function(h){ return h.includes(pat); });
+                    if (idx >= 0) return idx;
+                   }
+                   return -1;
                   };
-                  const shipIdx  = getColIdx('shipment') >= 0 ? getColIdx('shipment') : getColIdx('code') >= 0 ? getColIdx('code') : 0;
-                  const iqdIdx   = getColIdx('iqd');
-                  const usdIdx   = getColIdx('usd') >= 0 ? getColIdx('usd') : getColIdx('dollar');
-                  const gbpIdx   = getColIdx('gbp') >= 0 ? getColIdx('gbp') : getColIdx('pound');
-                  const eurIdx   = getColIdx('eur') >= 0 ? getColIdx('eur') : getColIdx('euro');
-                  const noteIdx  = getColIdx('note') >= 0 ? getColIdx('note') : getColIdx('desc');
+                  // Column detection — "Total (£)" normalises to "total" so check £ first, then total
+                  const shipIdx = getColIdx('shipmentcode', 'shipment', 'code');
+                  const iqdIdx  = getColIdx('iqd');
+                  const usdIdx  = getColIdx('usd$', 'usd', 'dollar', '$');
+                  const gbpIdx  = getColIdx('£', 'gbp', 'total', 'pound');
+                  const eurIdx  = getColIdx('eur', 'euro');
+                  const recvIdx = getColIdx('receiver', 'recipient', 'customer');
+                  const noteIdx = getColIdx('note', 'status', 'desc');
                   const pn = function(v){ return parseFloat(String(v||'').replace(/,/g,'').replace(/[^0-9.]/g,'')) || 0; };
                   const mapped = raw.slice(headerRowIdx + 1).map(function(row) {
-                   const code = String(row[shipIdx]||'').trim();
+                   const code = String(row[shipIdx >= 0 ? shipIdx : 0]||'').trim();
                    return {
                     shipmentCode: code,
+                    receiver: recvIdx >= 0 ? String(row[recvIdx]||'').trim() : '',
                     amountIQD: iqdIdx >= 0 ? pn(row[iqdIdx]) : 0,
                     amountUSD: usdIdx >= 0 ? pn(row[usdIdx]) : 0,
                     amountGBP: gbpIdx >= 0 ? pn(row[gbpIdx]) : 0,
@@ -2934,9 +2999,10 @@ import React, { useState, useEffect } from 'react';
                     notes: noteIdx >= 0 ? String(row[noteIdx]||'') : '',
                    };
                   }).filter(function(r){
-                   // Only keep rows with a real shipment code (skip empty, totals, headers)
-                   return r.shipmentCode && r.shipmentCode.length > 1 && !/^(total|sum|grand|note|shipment|code)/i.test(r.shipmentCode);
-                  });
+                   return r.shipmentCode && r.shipmentCode.length >= 2
+                    && !/^(total|sum|grand|shipment code|code|note|receiver)/i.test(r.shipmentCode)
+                    && isNaN(r.shipmentCode) === false || /^[A-Za-z]{1,3}[0-9]/.test(r.shipmentCode);
+                  }).filter(function(r){ return /[A-Za-z]/.test(r.shipmentCode); });
                   setPreviewRows(mapped);
                    } catch(err) { alert('Could not parse file: ' + err.message); }
                   };
@@ -3099,12 +3165,13 @@ import React, { useState, useEffect } from 'react';
                   <div className="overflow-x-auto max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
                    <table className="w-full text-xs">
                   <thead className="bg-gray-50 sticky top-0"><tr>
-                   {['Shipment Code','IQD','USD','GBP','EUR','Notes'].map(function(h){return <th key={h} className="px-3 py-2 text-left font-semibold text-gray-600">{h}</th>;})}
+                   {['Shipment Code','Receiver','IQD','USD','GBP','EUR','Notes'].map(function(h){return <th key={h} className="px-3 py-2 text-left font-semibold text-gray-600">{h}</th>;})}
                   </tr></thead>
                   <tbody className="divide-y divide-gray-100">
                   {previewRows.map(function(r,i){return(
                    <tr key={i} className="hover:bg-gray-50">
                   <td className="px-3 py-1.5 font-semibold">{r.shipmentCode}</td>
+                  <td className="px-3 py-1.5 text-gray-500">{r.receiver||'—'}</td>
                   <td className="px-3 py-1.5">{r.amountIQD>0?r.amountIQD.toLocaleString():'—'}</td>
                   <td className="px-3 py-1.5">{r.amountUSD>0?'$'+r.amountUSD.toFixed(2):'—'}</td>
                   <td className="px-3 py-1.5">{r.amountGBP>0?'£'+r.amountGBP.toFixed(2):'—'}</td>
