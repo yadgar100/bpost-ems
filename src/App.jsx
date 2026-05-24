@@ -3571,6 +3571,7 @@ import React, { useState, useEffect } from 'react';
                   <button onClick={function(){setShowMoveBatch(false);setMoveBatchDone(false);}} className={(moveBatchDone ? 'bg-green-700 hover:bg-green-800' : 'bg-orange-600 hover:bg-orange-700') + ' text-white px-4 py-1.5 rounded-lg font-semibold text-sm flex items-center gap-1'}><X className="w-3 h-3"/>Close</button>
                    </div>
 
+                   <div className="p-6">
                   {/* From → To inputs + export buttons */}
                   <div className="flex flex-wrap gap-4 items-end mb-5">
                    <div>
