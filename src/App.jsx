@@ -359,7 +359,9 @@ import React, { useState, useEffect } from 'react';
                    canViewCompanyAccounting: true,
                    canDeleteEmployees: true,
                    canAddEmployeeHours: true,
-                   canDeleteAgentCollections: true
+                   canDeleteAgentCollections: true,
+                   canViewIraqPay: true,
+                   canEditIraqPay: true
                   }
                 }
             ];
@@ -3164,11 +3166,22 @@ import React, { useState, useEffect } from 'react';
                    <td className="px-3 py-2 text-xs">{isEditing ? inp('amountGBP',p.amountGBP) : (p.amountGBP>0?<span className="font-semibold">£{p.amountGBP.toFixed(2)}</span>:'—')}</td>
                    <td className="px-3 py-2 text-xs">{isEditing ? inp('amountEUR',p.amountEUR) : (p.amountEUR>0?<span className="font-semibold">€{p.amountEUR.toFixed(2)}</span>:'—')}</td>
                    <td className="px-3 py-2 text-xs">
+                  {isEditing ? (
+                   <div className="space-y-1">
+                  {p.amountIQD>0 && <div><label className="text-gray-400 text-xs">IQD</label>{inp('collectedIQD', p.collectedIQD)}</div>}
+                  {p.amountUSD>0 && <div><label className="text-gray-400 text-xs">USD</label>{inp('collectedUSD', p.collectedUSD)}</div>}
+                  {p.amountGBP>0 && <div><label className="text-gray-400 text-xs">GBP</label>{inp('collectedGBP', p.collectedGBP)}</div>}
+                  {p.amountEUR>0 && <div><label className="text-gray-400 text-xs">EUR</label>{inp('collectedEUR', p.collectedEUR)}</div>}
+                   </div>
+                  ) : (
+                   <div>
                   {p.collectedIQD>0 && <div className="text-green-700 font-semibold">IQD {p.collectedIQD.toLocaleString()}</div>}
                   {p.collectedUSD>0 && <div className="text-green-700 font-semibold">${p.collectedUSD.toFixed(2)}</div>}
                   {p.collectedGBP>0 && <div className="text-green-700 font-semibold">£{p.collectedGBP.toFixed(2)}</div>}
                   {p.collectedEUR>0 && <div className="text-green-700 font-semibold">€{p.collectedEUR.toFixed(2)}</div>}
                   {!p.collectedIQD&&!p.collectedUSD&&!p.collectedGBP&&!p.collectedEUR && <span className="text-gray-300">—</span>}
+                   </div>
+                  )}
                    </td>
                    <td className="px-3 py-2"><span className={'px-2 py-0.5 rounded-full text-xs font-semibold ' + (statusColor[p.status]||'bg-gray-100 text-gray-600')}>{p.status}</span></td>
                    <td className="px-3 py-2">
@@ -3179,8 +3192,8 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   ) : (
                    <div className="flex gap-1">
-                  <button onClick={function(){setEditingId(p.id);setEditVals({amountIQD:p.amountIQD,amountUSD:p.amountUSD,amountGBP:p.amountGBP,amountEUR:p.amountEUR});}} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">Edit</button>
-                  <button onClick={function(){handleDelete(p);}} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">Delete</button>
+                  {hasPermission('canEditIraqPay') && <button onClick={function(){setEditingId(p.id);setEditVals({amountIQD:p.amountIQD,amountUSD:p.amountUSD,amountGBP:p.amountGBP,amountEUR:p.amountEUR,collectedIQD:p.collectedIQD,collectedUSD:p.collectedUSD,collectedGBP:p.collectedGBP,collectedEUR:p.collectedEUR});}} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">Edit</button>}
+                  {hasPermission('canEditIraqPay') && <button onClick={function(){handleDelete(p);}} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">Delete</button>}
                    </div>
                   )}
                    </td>
@@ -7544,7 +7557,7 @@ import React, { useState, useEffect } from 'react';
                   }
                   await handleCreateAdmin(newAdminData, newAdminPermissions);
                   setNewAdminData({ firstName: '', lastName: '', email: '', department: 'Administration', position: '', password: '', hourlyRate: '0' });
-                  setNewAdminPermissions({ canManageEmployees: false, canApproveTimesheets: false, canManageLocations: false, canSetRates: false, canCreateAdmins: false, canManageAdminPermissions: false, canViewPayroll: false, canDeleteEmployees: false, canAddEmployeeHours: false, canViewCountryOnly: false, canViewBranchOnly: false, canDeleteAgentCollections: false });
+                  setNewAdminPermissions({ canManageEmployees: false, canApproveTimesheets: false, canManageLocations: false, canSetRates: false, canCreateAdmins: false, canManageAdminPermissions: false, canViewPayroll: false, canDeleteEmployees: false, canAddEmployeeHours: false, canViewCountryOnly: false, canViewBranchOnly: false, canDeleteAgentCollections: false, canViewIraqPay: false, canEditIraqPay: false });
                   alert('Admin account created successfully!');
                   setActiveTab('list');
                 };
@@ -7591,6 +7604,8 @@ import React, { useState, useEffect } from 'react';
                   canViewPayroll: 'View Payroll Data',
                   canDeleteEmployees: 'Delete Employees',
                   canDeleteAgentCollections: 'Delete Agent Collections',
+                  canViewIraqPay: 'View Pay in Iraq',
+                  canEditIraqPay: 'Edit Pay in Iraq Collections',
                   canAddEmployeeHours: 'Manually Add Employee Hours',
                   canManageAgentCollections: 'Edit Agent Collection Records',
                   canManageAgents: 'Manage Agents',
@@ -9167,7 +9182,7 @@ import React, { useState, useEffect } from 'react';
                   <div className="px-3 py-1.5 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50">Reports</div>
                   <button onClick={() => { setShowReportGenerator(true); setNavOpen(''); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-amber-50 flex items-center gap-3 text-gray-700"><FileText className="w-4 h-4 text-amber-600" />Payroll Report</button>
                   <button onClick={() => { setShowExpenseReport(true); setNavOpen(''); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-amber-50 flex items-center gap-3 text-gray-700"><Receipt className="w-4 h-4 text-teal-600" />Expense Report</button>
-                  <button onClick={() => { setShowIraqPay(true); setNavOpen(''); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 flex items-center gap-3 text-gray-700"><span className="text-base">🇮🇶</span>Pay in Iraq</button>
+                  {hasPermission('canViewIraqPay') && <button onClick={() => { setShowIraqPay(true); setNavOpen(''); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 flex items-center gap-3 text-gray-700"><span className="text-base">🇮🇶</span>Pay in Iraq</button>}
                   <button onClick={() => { setShowAgentReport(true); setNavOpen(''); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-amber-50 flex items-center gap-3 text-gray-700"><Truck className="w-4 h-4 text-orange-600" />Collection Report</button>
                   </div>
                   )}
