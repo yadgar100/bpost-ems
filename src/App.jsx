@@ -3002,30 +3002,35 @@ import React, { useState, useEffect } from 'react';
                    return -1;
                   };
                   // Column detection — "Total (£)" normalises to "total" so check £ first, then total
-                  const shipIdx = getColIdx('shipmentcode', 'shipment', 'code');
-                  const iqdIdx  = getColIdx('iqd');
-                  const usdIdx  = getColIdx('usd$', 'usd', 'dollar', '$');
-                  const gbpIdx  = getColIdx('£', 'gbp', 'total', 'pound');
-                  const eurIdx  = getColIdx('eur', 'euro');
-                  const recvIdx   = getColIdx('receiver', 'recipient', 'customer');
+                  const shipIdx   = getColIdx('shipmentcode', 'shipment', 'code');
+                  const iqdIdx    = getColIdx('iqd');
+                  const usdIdx    = getColIdx('usd$', 'usd', 'dollar', '$');
+                  const gbpIdx    = getColIdx('£', 'gbp', 'total', 'pound');
+                  const eurIdx    = getColIdx('eur', 'euro');
+                  const recvIdx   = getColIdx('receivername', 'receiver', 'recipient', 'customer');
+                  const mobileIdx = getColIdx('receivermobile', 'mobile', 'phone', 'tel', 'contact', 'phonenumber');
                   const officeIdx = getColIdx('tooffice', 'office', 'destination', 'city');
-                  const noteIdx = getColIdx('note', 'status', 'desc');
+                  const noteIdx   = getColIdx('note', 'status', 'desc');
                   const pn = function(v){ return parseFloat(String(v||'').replace(/,/g,'').replace(/[^0-9.]/g,'')) || 0; };
                   const mapped = raw.slice(headerRowIdx + 1).map(function(row) {
-                   const code = String(row[shipIdx >= 0 ? shipIdx : 0]||'').trim();
+                   const code     = String(row[shipIdx >= 0 ? shipIdx : 0]||'').trim();
                    const toOffice = officeIdx >= 0 ? String(row[officeIdx]||'').trim() : '';
-                   const receiver = recvIdx >= 0 ? String(row[recvIdx]||'').trim() : '';
+                   const receiver = recvIdx   >= 0 ? String(row[recvIdx]||'').trim()   : '';
+                   const mobile   = mobileIdx >= 0 ? String(row[mobileIdx]||'').trim() : '';
+                   // Combine receiver name and mobile into one contact field (e.g. "Jamal Abdula | 7730516002")
+                   const receiverContact = [receiver, mobile].filter(Boolean).join(' | ');
                    const excelNote = noteIdx >= 0 ? String(row[noteIdx]||'').trim() : '';
-                   // Always store office in notes field prefixed with "Office: "
+                   // Store office in notes field prefixed with "Office: "
                    const combinedNotes = (toOffice ? 'Office: '+toOffice : '') + (excelNote ? (toOffice ? ' | ' : '') + excelNote : '');
                    return {
-                    shipmentCode: code,
-                    receiver: receiver,
-                    toOffice: toOffice,
-                    amountIQD: iqdIdx >= 0 ? pn(row[iqdIdx]) : 0,
-                    amountUSD: usdIdx >= 0 ? pn(row[usdIdx]) : 0,
-                    amountGBP: gbpIdx >= 0 ? pn(row[gbpIdx]) : 0,
-                    amountEUR: eurIdx >= 0 ? pn(row[eurIdx]) : 0,
+                    shipmentCode:    code,
+                    receiver:        receiver,
+                    receiverContact: receiverContact,
+                    toOffice:        toOffice,
+                    amountIQD: iqdIdx    >= 0 ? pn(row[iqdIdx])    : 0,
+                    amountUSD: usdIdx    >= 0 ? pn(row[usdIdx])    : 0,
+                    amountGBP: gbpIdx    >= 0 ? pn(row[gbpIdx])    : 0,
+                    amountEUR: eurIdx    >= 0 ? pn(row[eurIdx])    : 0,
                     notes: combinedNotes,
                    };
                   }).filter(function(r){
@@ -3131,18 +3136,21 @@ import React, { useState, useEffect } from 'react';
                    ['Employee:', filterEmp ? (iraqPayments.find(function(p){return p.employeeId===parseInt(filterEmp);})||{}).employeeName||'' : 'All'],
                    ['Records to move:', moveBatchRecords.length, '', 'Generated:', new Date().toLocaleString()],
                    [],
-                   ['Employee','EMP Code','Old Batch','Shipment Code','New Batch','To Office','Contact','IQD','USD','GBP','EUR','Status'],
+                   ['Employee','EMP Code','Old Batch','Shipment Code','New Batch','To Office','Receiver Name','Mobile','IQD','USD','GBP','EUR','Status'],
                   ];
                   const dataRows = moveBatchRecords.map(function(p){
+                   const parts = (p.receiverContact||'').split(' | ');
+                   const recvName   = parts[0] || '';
+                   const recvMobile = parts[1] || '';
                    return [
                     p.employeeName||'', p.employeeCode||'', p.batchName||'', p.shipmentCode||'',
                     moveBatchName||'(pending)', (p.notes||'').replace('Office:','').trim().split('|')[0].trim(),
-                    p.receiverContact||'',
+                    recvName, recvMobile,
                     p.amountIQD||0, p.amountUSD||0, p.amountGBP||0, p.amountEUR||0, p.status||''
                    ];
                   });
                   const ws = window.XLSX.utils.aoa_to_sheet([...headerRows, ...dataRows]);
-                  ws['!cols'] = [{wch:20},{wch:10},{wch:18},{wch:14},{wch:18},{wch:25},{wch:16},{wch:12},{wch:12},{wch:12},{wch:12},{wch:12}];
+                  ws['!cols'] = [{wch:20},{wch:10},{wch:18},{wch:14},{wch:18},{wch:25},{wch:20},{wch:16},{wch:12},{wch:12},{wch:12},{wch:12},{wch:12}];
                   window.XLSX.utils.book_append_sheet(wb, ws, 'Move Batch');
                   window.XLSX.writeFile(wb, 'MoveBatch_' + (moveBatchName||filterBatch) + '_' + new Date().toISOString().slice(0,10) + '.xlsx');
                 };
@@ -3155,6 +3163,9 @@ import React, { useState, useEffect } from 'react';
                   const totEUR = moveBatchRecords.reduce(function(s,p){return s+(p.amountEUR||0);},0);
                   const rows = moveBatchRecords.map(function(p){
                     const off = (p.notes||'').replace('Office:','').trim().split('|')[0].trim() || '—';
+                    const contactParts = (p.receiverContact||'').split(' | ');
+                    const recvName   = contactParts[0] || '—';
+                    const recvMobile = contactParts[1] || '—';
                     return [
                       '<tr style="border-bottom:1px solid #e5e7eb">',
                       '<td style="padding:5px 8px;font-size:11px">'+p.employeeName+'<br><span style="color:#9ca3af;font-size:10px">'+p.employeeCode+'</span></td>',
@@ -3162,7 +3173,8 @@ import React, { useState, useEffect } from 'react';
                       '<td style="padding:5px 8px;font-size:12px;font-weight:700">'+p.shipmentCode+'</td>',
                       '<td style="padding:5px 8px;font-size:11px;color:#16a34a;font-weight:600">'+(moveBatchName||'—')+'</td>',
                       '<td style="padding:5px 8px;font-size:11px">'+off+'</td>',
-                      '<td style="padding:5px 8px;font-size:11px">'+(p.receiverContact||'—')+'</td>',
+                      '<td style="padding:5px 8px;font-size:11px">'+recvName+'</td>',
+                      '<td style="padding:5px 8px;font-size:11px;color:#2563eb;font-weight:500">'+recvMobile+'</td>',
                       '<td style="padding:5px 8px;font-size:11px;text-align:right">'+fmt(p.amountIQD,'IQD ')+'</td>',
                       '<td style="padding:5px 8px;font-size:11px;text-align:right">'+fmt(p.amountUSD,'$')+'</td>',
                       '<td style="padding:5px 8px;font-size:11px;text-align:right">'+fmt(p.amountGBP,'£')+'</td>',
@@ -3195,7 +3207,7 @@ import React, { useState, useEffect } from 'react';
                     '</div>',
                     '<table><thead><tr>',
                     '<th>Employee</th><th>Old Batch</th><th>Shipment Code</th><th>New Batch</th>',
-                    '<th>To Office</th><th>Contact</th><th>IQD</th><th>USD</th><th>GBP</th><th>EUR</th><th>Status</th>',
+                    '<th>To Office</th><th>Receiver Name</th><th>Mobile</th><th>IQD</th><th>USD</th><th>GBP</th><th>EUR</th><th>Status</th>',
                     '</tr></thead><tbody>'+rows+'</tbody></table>',
                     '</body></html>'
                   ].join('');
@@ -3571,7 +3583,7 @@ import React, { useState, useEffect } from 'react';
                   <table className="w-full text-sm border-collapse">
                    <thead>
                   <tr className="bg-blue-900 text-white">
-                   {['Employee','Old Batch','Shipment Code','New Batch','To Office','Contact','IQD','USD','GBP','EUR','Status'].map(function(h){
+                   {['Employee','Old Batch','Shipment Code','New Batch','To Office','Receiver / Mobile','IQD','USD','GBP','EUR','Status'].map(function(h){
                   return <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold whitespace-nowrap">{h}</th>;
                    })}
                   </tr>
@@ -3589,7 +3601,7 @@ import React, { useState, useEffect } from 'react';
                    <td className="px-3 py-2 text-sm font-bold text-gray-900">{p.shipmentCode}</td>
                    <td className="px-3 py-2 text-xs font-semibold text-green-600">{moveBatchName || <span className="text-gray-300 font-normal">not set</span>}</td>
                    <td className="px-3 py-2 text-xs text-gray-600">{off}</td>
-                   <td className="px-3 py-2 text-xs text-gray-600">{p.receiverContact||'—'}</td>
+                   <td className="px-3 py-2 text-xs text-gray-600">{p.receiverContact ? (() => { const parts = p.receiverContact.split(' | '); return <span>{parts[0]}{parts[1] && <><br/><span className="text-blue-600 font-medium">{parts[1]}</span></>}</span>; })() : '—'}</td>
                    <td className="px-3 py-2 text-xs">{p.amountIQD>0?<span className="font-semibold">{p.amountIQD.toLocaleString()}</span>:'—'}</td>
                    <td className="px-3 py-2 text-xs">{p.amountUSD>0?<span className="font-semibold">${p.amountUSD.toFixed(2)}</span>:'—'}</td>
                    <td className="px-3 py-2 text-xs">{p.amountGBP>0?<span className="font-semibold">£{p.amountGBP.toFixed(2)}</span>:'—'}</td>
