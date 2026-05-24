@@ -2999,10 +2999,10 @@ import React, { useState, useEffect } from 'react';
                     notes: noteIdx >= 0 ? String(row[noteIdx]||'') : '',
                    };
                   }).filter(function(r){
-                   return r.shipmentCode && r.shipmentCode.length >= 2
-                    && !/^(total|sum|grand|shipment code|code|note|receiver)/i.test(r.shipmentCode)
-                    && isNaN(r.shipmentCode) === false || /^[A-Za-z]{1,3}[0-9]/.test(r.shipmentCode);
-                  }).filter(function(r){ return /[A-Za-z]/.test(r.shipmentCode); });
+                   // Only keep rows where shipment code matches pattern: 1-5 letters followed by 2+ digits
+                   // e.g. B230, GM207, JF376, LM159, BK1234 — NOT receiver names like "hsain", "Aran Marewan"
+                   return r.shipmentCode && /^[A-Za-z]{1,5}[0-9]{2,}/.test(r.shipmentCode.trim());
+                  });
                   setPreviewRows(mapped);
                    } catch(err) { alert('Could not parse file: ' + err.message); }
                   };
