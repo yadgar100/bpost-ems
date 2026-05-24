@@ -3097,13 +3097,18 @@ import React, { useState, useEffect } from 'react';
                 const [moveBatchRecords, setMoveBatchRecords] = useState([]);
                 const [moveBatchLoading, setMoveBatchLoading] = useState(false);
                 const [moveBatchConfirming, setMoveBatchConfirming] = useState(false);
+                const [moveBatchDone, setMoveBatchDone] = useState(false);
+                const [moveBatchAssignEmp, setMoveBatchAssignEmp] = useState('');
+                const [moveBatchAssignedEmpName, setMoveBatchAssignedEmpName] = useState('');
 
                 const openMoveBatchModal = async function() {
                   if (!filterBatch) { alert('Please select a batch first'); return; }
                   setMoveBatchName('');
+                  setMoveBatchDone(false);
+                  setMoveBatchAssignEmp('');
+                  setMoveBatchAssignedEmpName('');
                   setMoveBatchLoading(true);
                   setShowMoveBatch(true);
-                  // Pending records matching current employee + batch filters
                   const pending = iraqPayments.filter(function(p) {
                    if (p.batchName !== filterBatch) return false;
                    if (filterEmp && p.employeeId !== parseInt(filterEmp)) return false;
@@ -3115,18 +3120,31 @@ import React, { useState, useEffect } from 'react';
 
                 const confirmMoveBatch = async function() {
                   if (!moveBatchName.trim()) { alert('Please enter a new batch name.'); return; }
+                  if (!moveBatchAssignEmp) { alert('Please assign the new batch to an employee.'); return; }
                   if (!moveBatchRecords.length) { alert('No pending records to move.'); return; }
                   setMoveBatchConfirming(true);
                   try {
-                   const body = { fromBatch: filterBatch, newBatchName: moveBatchName.trim() };
+                   const body = {
+                    fromBatch:     filterBatch,
+                    newBatchName:  moveBatchName.trim(),
+                    newEmployeeId: parseInt(moveBatchAssignEmp),
+                   };
                    if (filterEmp) body.employeeId = parseInt(filterEmp);
-                   const data = await apiCall(API_ENDPOINTS.iraqPay + '/move-batch', { method:'PUT', body: JSON.stringify(body) });
-                   alert('✅ Moved ' + (data.moved||moveBatchRecords.length) + ' records to batch "' + moveBatchName.trim() + '"');
-                   setShowMoveBatch(false);
+                   await apiCall(API_ENDPOINTS.iraqPay + '/move-batch', { method:'PUT', body: JSON.stringify(body) });
+                   const assignedEmp = visEmp.find(function(e){ return e.id === parseInt(moveBatchAssignEmp); });
+                   const assignedName = assignedEmp ? (assignedEmp.firstName + ' ' + assignedEmp.lastName) : '';
+                   setMoveBatchAssignedEmpName(assignedName);
+                   setMoveBatchRecords(function(prev){
+                    return prev.map(function(r){
+                     return Object.assign({}, r, { oldBatchName: r.batchName, batchName: moveBatchName.trim(), employeeName: assignedName, employeeId: parseInt(moveBatchAssignEmp) });
+                    });
+                   });
+                   setMoveBatchDone(true);
                    await loadIraqPaymentsFromAPI();
                   } catch(e) { alert('Move failed: ' + e.message); }
                   setMoveBatchConfirming(false);
                 };
+
 
                 const exportMoveBatchExcel = function() {
                   const wb = window.XLSX.utils.book_new();
@@ -3537,16 +3555,18 @@ import React, { useState, useEffect } from 'react';
                   {showMoveBatch && (
                    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
                   <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-screen overflow-y-auto">
-                   {/* Header */}
-                   <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-t-2xl px-6 py-4 flex items-center justify-between">
+                   {/* Header — changes to green after move is confirmed */}
+                   <div className={`bg-gradient-to-r ${moveBatchDone ? 'from-green-600 to-emerald-600' : 'from-amber-500 to-orange-500'} rounded-t-2xl px-6 py-4 flex items-center justify-between`}>
                   <div className="flex items-center gap-3">
-                   <span className="text-2xl">📦</span>
-                   <h3 className="text-lg font-bold text-white">Move Pending to New Batch</h3>
+                   <span className="text-2xl">{moveBatchDone ? '✅' : '📦'}</span>
+                   <div>
+                  <h3 className="text-lg font-bold text-white">{moveBatchDone ? 'Move Completed' : 'Move Pending to New Batch'}</h3>
+                  {moveBatchDone && <p className="text-green-100 text-xs mt-0.5">{moveBatchRecords.length} records moved to <b>{moveBatchName}</b>{moveBatchAssignedEmpName ? ' · Assigned to ' + moveBatchAssignedEmpName : ''}</p>}
+                   </div>
                   </div>
-                  <button onClick={function(){setShowMoveBatch(false);}} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-1.5 rounded-lg font-semibold text-sm flex items-center gap-1"><X className="w-3 h-3"/>Close</button>
+                  <button onClick={function(){setShowMoveBatch(false);setMoveBatchDone(false);}} className={`${moveBatchDone ? 'bg-green-700 hover:bg-green-800' : 'bg-orange-600 hover:bg-orange-700'} text-white px-4 py-1.5 rounded-lg font-semibold text-sm flex items-center gap-1`}><X className="w-3 h-3"/>Close</button>
                    </div>
 
-                   <div className="p-6">
                   {/* From → To inputs + export buttons */}
                   <div className="flex flex-wrap gap-4 items-end mb-5">
                    <div>
@@ -3559,10 +3579,23 @@ import React, { useState, useEffect } from 'react';
                   <input
                    type="text"
                    value={moveBatchName}
-                   onChange={function(e){setMoveBatchName(e.target.value);}}
+                   onChange={function(e){ if (!moveBatchDone) setMoveBatchName(e.target.value); }}
+                   readOnly={moveBatchDone}
                    placeholder="e.g. 428-Slemani"
-                   className="border-2 border-amber-400 focus:border-amber-600 rounded-lg px-3 py-2 text-sm font-semibold min-w-52 outline-none"
+                   className={`border-2 ${moveBatchDone ? 'border-green-400 bg-green-50 text-green-700' : 'border-amber-400 focus:border-amber-600'} rounded-lg px-3 py-2 text-sm font-semibold min-w-52 outline-none`}
                   />
+                   </div>
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">Assign to Employee *</label>
+                  <select
+                   value={moveBatchAssignEmp}
+                   onChange={function(e){ if (!moveBatchDone) setMoveBatchAssignEmp(e.target.value); }}
+                   disabled={moveBatchDone}
+                   className={`border-2 ${moveBatchDone ? 'border-green-400 bg-green-50 text-green-700' : 'border-blue-400 focus:border-blue-600'} rounded-lg px-3 py-2 text-sm font-semibold min-w-52 outline-none`}
+                  >
+                   <option value="">Select employee…</option>
+                   {[...visEmp].filter(function(e){return !e.isAdmin;}).sort(function(a,b){return (a.firstName+a.lastName).localeCompare(b.firstName+b.lastName);}).map(function(e){return <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.employeeId})</option>;})}
+                  </select>
                    </div>
                    <div className="flex gap-2 ml-auto">
                   <button onClick={exportMoveBatchExcel} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 flex items-center gap-1">📊 Excel</button>
@@ -3571,9 +3604,19 @@ import React, { useState, useEffect } from 'react';
                   </div>
 
                   {/* Summary */}
-                  <p className="text-sm text-gray-500 mb-3">
-                   <span className="font-bold text-gray-800">{moveBatchRecords.length}</span> pending record{moveBatchRecords.length!==1?'s':''} will be moved.
-                  </p>
+                  {moveBatchDone ? (
+                   <div className="flex items-center gap-3 bg-green-50 border border-green-300 rounded-xl px-4 py-3 mb-3">
+                  <span className="text-xl">✅</span>
+                  <div>
+                   <p className="text-sm font-bold text-green-800">{moveBatchRecords.length} records successfully moved to batch <span className="font-extrabold">"{moveBatchName}"</span></p>
+                   {moveBatchAssignedEmpName && <p className="text-xs text-green-600 mt-0.5">Assigned to <b>{moveBatchAssignedEmpName}</b> — visible in their employee portal.</p>}
+                  </div>
+                   </div>
+                  ) : (
+                   <p className="text-sm text-gray-500 mb-3">
+                  <span className="font-bold text-gray-800">{moveBatchRecords.length}</span> pending record{moveBatchRecords.length!==1?'s':''} will be moved.
+                   </p>
+                  )}
 
                   {/* Preview table */}
                   {moveBatchLoading ? (
@@ -3631,16 +3674,24 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   )}
 
-                  {/* Confirm / Cancel */}
+                  {/* Confirm / Cancel — hidden after move is done */}
                   <div className="flex justify-end gap-3 mt-5">
-                   <button onClick={function(){setShowMoveBatch(false);}} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 text-sm">Cancel</button>
-                   <button
-                  onClick={confirmMoveBatch}
-                  disabled={moveBatchConfirming || !moveBatchName.trim() || !moveBatchRecords.length}
-                  className={'px-6 py-2.5 rounded-lg font-bold text-white text-sm ' + (moveBatchName.trim() && moveBatchRecords.length ? 'bg-amber-500 hover:bg-amber-600 cursor-pointer' : 'bg-gray-300 cursor-not-allowed')}
-                   >
-                  {moveBatchConfirming ? 'Moving…' : '✅ Confirm Move (' + moveBatchRecords.length + ' records)'}
-                   </button>
+                   {!moveBatchDone && (
+                  <button onClick={function(){setShowMoveBatch(false);setMoveBatchDone(false);}} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 text-sm">Cancel</button>
+                   )}
+                   {!moveBatchDone ? (
+                  <button
+                   onClick={confirmMoveBatch}
+                   disabled={moveBatchConfirming || !moveBatchName.trim() || !moveBatchAssignEmp || !moveBatchRecords.length}
+                   className={'px-6 py-2.5 rounded-lg font-bold text-white text-sm ' + (moveBatchName.trim() && moveBatchAssignEmp && moveBatchRecords.length ? 'bg-amber-500 hover:bg-amber-600 cursor-pointer' : 'bg-gray-300 cursor-not-allowed')}
+                  >
+                   {moveBatchConfirming ? 'Moving…' : '✅ Confirm Move (' + moveBatchRecords.length + ' records)'}
+                  </button>
+                   ) : (
+                  <button onClick={function(){setShowMoveBatch(false);setMoveBatchDone(false);}} className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold text-sm flex items-center gap-2">
+                   <X className="w-4 h-4"/>Close Report
+                  </button>
+                   )}
                   </div>
                    </div>
                   </div>
