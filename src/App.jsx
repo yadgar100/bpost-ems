@@ -3148,51 +3148,58 @@ import React, { useState, useEffect } from 'react';
                 };
 
                 const printMoveBatchPDF = function() {
-                  const fmt = function(v, sym){ return v > 0 ? sym + (sym==='IQD ' ? Number(v).toLocaleString() : Number(v).toFixed(2)) : '—'; };
-                  const rows = moveBatchRecords.map(function(p){
-                   const off = (p.notes||'').replace('Office:','').trim().split('|')[0].trim();
-                   return '<tr style="border-bottom:1px solid #e5e7eb">'\
-                    +'<td style="padding:5px 8px;font-size:11px">'+p.employeeName+'<br><span style="color:#9ca3af;font-size:10px">'+p.employeeCode+'</span></td>'\
-                    +'<td style="padding:5px 8px;font-size:11px;color:#d97706;font-weight:600">'+p.batchName+'</td>'\
-                    +'<td style="padding:5px 8px;font-size:12px;font-weight:700">'+p.shipmentCode+'</td>'\
-                    +'<td style="padding:5px 8px;font-size:11px;color:#16a34a;font-weight:600">'+(moveBatchName||'—')+'</td>'\
-                    +'<td style="padding:5px 8px;font-size:11px">'+off+'</td>'\
-                    +'<td style="padding:5px 8px;font-size:11px">'+( p.receiverContact||'—')+'</td>'\
-                    +'<td style="padding:5px 8px;font-size:11px;text-align:right">'+fmt(p.amountIQD,'IQD ')+'</td>'\
-                    +'<td style="padding:5px 8px;font-size:11px;text-align:right">'+fmt(p.amountUSD,'$')+'</td>'\
-                    +'<td style="padding:5px 8px;font-size:11px;text-align:right">'+fmt(p.amountGBP,'£')+'</td>'\
-                    +'<td style="padding:5px 8px;font-size:11px;text-align:right">'+fmt(p.amountEUR,'€')+'</td>'\
-                    +'<td style="padding:5px 8px;font-size:11px;text-align:center"><span style="padding:2px 8px;border-radius:9999px;background:#fef3c7;color:#92400e;font-size:10px">'+p.status+'</span></td>'\
-                    +'</tr>';
-                  }).join('');
+                  const fmt = function(v, sym){ return v > 0 ? sym + (sym === 'IQD ' ? Number(v).toLocaleString() : Number(v).toFixed(2)) : '—'; };
                   const totIQD = moveBatchRecords.reduce(function(s,p){return s+(p.amountIQD||0);},0);
                   const totUSD = moveBatchRecords.reduce(function(s,p){return s+(p.amountUSD||0);},0);
                   const totGBP = moveBatchRecords.reduce(function(s,p){return s+(p.amountGBP||0);},0);
                   const totEUR = moveBatchRecords.reduce(function(s,p){return s+(p.amountEUR||0);},0);
-                  const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Move Batch Report</title>'\
-                   +'<style>body{font-family:Arial,sans-serif;padding:24px;color:#1f2937}'\
-                   +'table{width:100%;border-collapse:collapse}'\
-                   +'th{background:#1e3a8a;color:#fff;padding:7px 8px;text-align:left;font-size:11px}'\
-                   +'tr:nth-child(even) td{background:#f8faff}</style></head><body>'\
-                   +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">'\
-                   +'<span style="font-size:28px">🇮🇶</span>'\
-                   +'<h1 style="margin:0;font-size:20px;color:#1e3a8a">Pay in Iraq — Move Batch Report</h1></div>'\
-                   +'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">'\
-                   +'<div><b>From Batch:</b> <span style="color:#d97706">'+filterBatch+'</span></div>'\
-                   +'<div><b>New Batch:</b> <span style="color:#16a34a;font-weight:700">'+(moveBatchName||'—')+'</span></div>'\
-                   +'<div><b>Records:</b> '+moveBatchRecords.length+'</div>'\
-                   +'<div><b>Generated:</b> '+new Date().toLocaleString()+'</div>'\
-                   +(totGBP>0?'<div><b>Total GBP:</b> £'+totGBP.toFixed(2)+'</div>':'')\
-                   +(totUSD>0?'<div><b>Total USD:</b> $'+totUSD.toFixed(2)+'</div>':'')\
-                   +(totIQD>0?'<div><b>Total IQD:</b> '+totIQD.toLocaleString()+'</div>':'')\
-                   +(totEUR>0?'<div><b>Total EUR:</b> €'+totEUR.toFixed(2)+'</div>':'')\
-                   +'</div>'\
-                   +'<table><thead><tr>'\
-                   +'<th>Employee</th><th>Old Batch</th><th>Shipment Code</th><th>New Batch</th>'\
-                   +'<th>To Office</th><th>Contact</th><th>IQD</th><th>USD</th><th>GBP</th><th>EUR</th><th>Status</th>'\
-                   +'</tr></thead><tbody>'+rows+'</tbody></table>'\
-                   +'</body></html>';
-                  const w = window.open('','_blank');
+                  const rows = moveBatchRecords.map(function(p){
+                    const off = (p.notes||'').replace('Office:','').trim().split('|')[0].trim() || '—';
+                    return [
+                      '<tr style="border-bottom:1px solid #e5e7eb">',
+                      '<td style="padding:5px 8px;font-size:11px">'+p.employeeName+'<br><span style="color:#9ca3af;font-size:10px">'+p.employeeCode+'</span></td>',
+                      '<td style="padding:5px 8px;font-size:11px;color:#d97706;font-weight:600">'+p.batchName+'</td>',
+                      '<td style="padding:5px 8px;font-size:12px;font-weight:700">'+p.shipmentCode+'</td>',
+                      '<td style="padding:5px 8px;font-size:11px;color:#16a34a;font-weight:600">'+(moveBatchName||'—')+'</td>',
+                      '<td style="padding:5px 8px;font-size:11px">'+off+'</td>',
+                      '<td style="padding:5px 8px;font-size:11px">'+(p.receiverContact||'—')+'</td>',
+                      '<td style="padding:5px 8px;font-size:11px;text-align:right">'+fmt(p.amountIQD,'IQD ')+'</td>',
+                      '<td style="padding:5px 8px;font-size:11px;text-align:right">'+fmt(p.amountUSD,'$')+'</td>',
+                      '<td style="padding:5px 8px;font-size:11px;text-align:right">'+fmt(p.amountGBP,'£')+'</td>',
+                      '<td style="padding:5px 8px;font-size:11px;text-align:right">'+fmt(p.amountEUR,'€')+'</td>',
+                      '<td style="padding:5px 8px;font-size:11px;text-align:center"><span style="padding:2px 8px;border-radius:9999px;background:#fef3c7;color:#92400e;font-size:10px">'+p.status+'</span></td>',
+                      '</tr>'
+                    ].join('');
+                  }).join('');
+                  const summaryRows = [
+                    totGBP>0 ? '<div><b>Total GBP:</b> £'+totGBP.toFixed(2)+'</div>' : '',
+                    totUSD>0 ? '<div><b>Total USD:</b> $'+totUSD.toFixed(2)+'</div>' : '',
+                    totIQD>0 ? '<div><b>Total IQD:</b> '+totIQD.toLocaleString()+'</div>' : '',
+                    totEUR>0 ? '<div><b>Total EUR:</b> €'+totEUR.toFixed(2)+'</div>' : ''
+                  ].join('');
+                  const html = [
+                    '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Move Batch Report</title>',
+                    '<style>body{font-family:Arial,sans-serif;padding:24px;color:#1f2937}',
+                    'table{width:100%;border-collapse:collapse}',
+                    'th{background:#1e3a8a;color:#fff;padding:7px 8px;text-align:left;font-size:11px}',
+                    'tr:nth-child(even) td{background:#f8faff}</style></head><body>',
+                    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">',
+                    '<span style="font-size:28px">🇮🇶</span>',
+                    '<h1 style="margin:0;font-size:20px;color:#1e3a8a">Pay in Iraq — Move Batch Report</h1></div>',
+                    '<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">',
+                    '<div><b>From Batch:</b> <span style="color:#d97706">'+filterBatch+'</span></div>',
+                    '<div><b>New Batch:</b> <span style="color:#16a34a;font-weight:700">'+(moveBatchName||'—')+'</span></div>',
+                    '<div><b>Records:</b> '+moveBatchRecords.length+'</div>',
+                    '<div><b>Generated:</b> '+new Date().toLocaleString()+'</div>',
+                    summaryRows,
+                    '</div>',
+                    '<table><thead><tr>',
+                    '<th>Employee</th><th>Old Batch</th><th>Shipment Code</th><th>New Batch</th>',
+                    '<th>To Office</th><th>Contact</th><th>IQD</th><th>USD</th><th>GBP</th><th>EUR</th><th>Status</th>',
+                    '</tr></thead><tbody>'+rows+'</tbody></table>',
+                    '</body></html>'
+                  ].join('');
+                  const w = window.open('', '_blank');
                   w.document.write(html);
                   w.document.close();
                   setTimeout(function(){ w.print(); }, 600);
