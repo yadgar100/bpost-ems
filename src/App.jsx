@@ -3116,6 +3116,100 @@ import React, { useState, useEffect } from 'react';
 
                 const statusColor = {pending:'bg-yellow-100 text-yellow-800', partial:'bg-blue-100 text-blue-700', collected:'bg-green-100 text-green-700'};
 
+                /* ── Export helpers ── */
+                const getReportMeta = function() {
+                  const batches = filterBatch ? filterBatch : [...new Set(filtered.map(function(p){return p.batchName;}))].join(', ') || 'All Batches';
+                  const emp = filterEmp ? (iraqPayments.find(function(p){return p.employeeId===parseInt(filterEmp);}) || {}).employeeName || '' : 'All Employees';
+                  const totIQD = filtered.reduce(function(s,p){return s+(p.amountIQD||0);},0);
+                  const totUSD = filtered.reduce(function(s,p){return s+(p.amountUSD||0);},0);
+                  const totGBP = filtered.reduce(function(s,p){return s+(p.amountGBP||0);},0);
+                  const totEUR = filtered.reduce(function(s,p){return s+(p.amountEUR||0);},0);
+                  const colIQD = filtered.reduce(function(s,p){return s+(p.collectedIQD||0);},0);
+                  const colUSD = filtered.reduce(function(s,p){return s+(p.collectedUSD||0);},0);
+                  const colGBP = filtered.reduce(function(s,p){return s+(p.collectedGBP||0);},0);
+                  const colEUR = filtered.reduce(function(s,p){return s+(p.collectedEUR||0);},0);
+                  const dateRange = (filterFrom || filterTo) ? ((filterFrom||'?')+' → '+(filterTo||'?')) : 'All Dates';
+                  return { batches, emp, totIQD, totUSD, totGBP, totEUR, colIQD, colUSD, colGBP, colEUR, dateRange, qty: filtered.length, collected: filtered.filter(function(p){return p.status==='collected';}).length };
+                };
+
+                const exportExcel = function() {
+                  const meta = getReportMeta();
+                  const wb = window.XLSX.utils.book_new();
+                  // Header rows
+                  const headerRows = [
+                   ['Pay in Iraq — Collection Report'],
+                   ['Batch:', meta.batches],
+                   ['Employee:', meta.emp],
+                   ['Date Range:', meta.dateRange],
+                   ['Total Records:', meta.qty, '', 'Fully Collected:', meta.collected],
+                   ['Total IQD Due:', meta.totIQD, 'Collected IQD:', meta.colIQD],
+                   ['Total USD Due:', '$'+meta.totUSD.toFixed(2), 'Collected USD:', '$'+meta.colUSD.toFixed(2)],
+                   ['Total GBP Due:', '£'+meta.totGBP.toFixed(2), 'Collected GBP:', '£'+meta.colGBP.toFixed(2)],
+                   meta.totEUR ? ['Total EUR Due:', '€'+meta.totEUR.toFixed(2), 'Collected EUR:', '€'+meta.colEUR.toFixed(2)] : [],
+                   [],
+                   ['Employee','Batch','Shipment Code','To Office','IQD Due','USD Due','GBP Due','EUR Due','Collected IQD','Collected USD','Collected GBP','Collected EUR','Status'],
+                  ];
+                  const dataRows = filtered.map(function(p){
+                   return [p.employeeName||'', p.batchName||'', p.shipmentCode||'', (p.notes||'').replace('Office:','').trim().split('|')[0].trim(),
+                   p.amountIQD||0, p.amountUSD||0, p.amountGBP||0, p.amountEUR||0,
+                   p.collectedIQD||0, p.collectedUSD||0, p.collectedGBP||0, p.collectedEUR||0, p.status||''];
+                  });
+                  const ws = window.XLSX.utils.aoa_to_sheet([...headerRows, ...dataRows]);
+                  // Style header cols width
+                  ws['!cols'] = [{wch:20},{wch:20},{wch:15},{wch:25},{wch:12},{wch:12},{wch:12},{wch:12},{wch:14},{wch:14},{wch:14},{wch:14},{wch:12}];
+                  window.XLSX.utils.book_append_sheet(wb, ws, 'Pay in Iraq');
+                  window.XLSX.writeFile(wb, 'PayInIraq_Report_' + new Date().toISOString().slice(0,10) + '.xlsx');
+                };
+
+                const exportPDF = function() {
+                  const meta = getReportMeta();
+                  const fmt = function(v, sym){ return v > 0 ? sym + (sym==='IQD ' ? v.toLocaleString() : v.toFixed(2)) : '—'; };
+                  const rows = filtered.map(function(p){
+                   const off = (p.notes||'').replace('Office:','').trim().split('|')[0].trim();
+                   return '<tr style="border-bottom:1px solid #e5e7eb">'
+                    +'<td style="padding:4px 8px;font-size:11px">'+p.shipmentCode+'</td>'
+                    +'<td style="padding:4px 8px;font-size:11px;color:#6b7280">'+off+'</td>'
+                    +'<td style="padding:4px 8px;font-size:11px;text-align:right">'+fmt(p.amountIQD,'IQD ')+'</td>'
+                    +'<td style="padding:4px 8px;font-size:11px;text-align:right">'+fmt(p.amountUSD,'$')+'</td>'
+                    +'<td style="padding:4px 8px;font-size:11px;text-align:right">'+fmt(p.amountGBP,'£')+'</td>'
+                    +'<td style="padding:4px 8px;font-size:11px;text-align:right;color:'+(p.collectedIQD||p.collectedUSD||p.collectedGBP||p.collectedEUR?'#16a34a':'#d1d5db')+'">'+
+                    [fmt(p.collectedIQD,'IQD '),fmt(p.collectedUSD,'$'),fmt(p.collectedGBP,'£')].filter(function(x){return x!=='—';}).join(' / ')||'—'
+                    +'</td>'
+                    +'<td style="padding:4px 8px;font-size:11px;text-align:center"><span style="padding:2px 8px;border-radius:9999px;font-size:10px;background:'+(p.status==='collected'?'#dcfce7':'#fef9c3')+';color:'+(p.status==='collected'?'#16a34a':'#854d0e')+'">'+p.status+'</span></td>'
+                    +'</tr>';
+                  }).join('');
+                  const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pay in Iraq Report</title></head><body style="font-family:Arial,sans-serif;padding:24px;color:#1f2937">'
+                   +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">'
+                   +'<span style="font-size:28px">🇮🇶</span>'
+                   +'<h1 style="margin:0;font-size:20px;color:#1e3a8a">Pay in Iraq — Collection Report</h1></div>'
+                   +'<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+                   +'<div><b>Batch:</b> '+meta.batches+'</div>'
+                   +'<div><b>Employee:</b> '+meta.emp+'</div>'
+                   +'<div><b>Date Range:</b> '+meta.dateRange+'</div>'
+                   +'<div><b>Records:</b> '+meta.qty+' total · '+meta.collected+' collected</div>'
+                   +'<div><b>Total IQD Due:</b> '+meta.totIQD.toLocaleString()+' &nbsp;|&nbsp; <b>Collected:</b> '+meta.colIQD.toLocaleString()+'</div>'
+                   +'<div><b>Total GBP Due:</b> £'+meta.totGBP.toFixed(2)+' &nbsp;|&nbsp; <b>Collected:</b> £'+meta.colGBP.toFixed(2)+'</div>'
+                   +'<div><b>Total USD Due:</b> $'+meta.totUSD.toFixed(2)+' &nbsp;|&nbsp; <b>Collected:</b> $'+meta.colUSD.toFixed(2)+'</div>'
+                   +(meta.totEUR?'<div><b>Total EUR Due:</b> €'+meta.totEUR.toFixed(2)+' &nbsp;|&nbsp; <b>Collected:</b> €'+meta.colEUR.toFixed(2)+'</div>':'')
+                   +'</div>'
+                   +'<table style="width:100%;border-collapse:collapse">'
+                   +'<thead><tr style="background:#1e3a8a;color:white">'
+                   +'<th style="padding:6px 8px;text-align:left;font-size:11px">Shipment Code</th>'
+                   +'<th style="padding:6px 8px;text-align:left;font-size:11px">To Office</th>'
+                   +'<th style="padding:6px 8px;text-align:right;font-size:11px">IQD</th>'
+                   +'<th style="padding:6px 8px;text-align:right;font-size:11px">USD</th>'
+                   +'<th style="padding:6px 8px;text-align:right;font-size:11px">GBP</th>'
+                   +'<th style="padding:6px 8px;text-align:right;font-size:11px">Collected</th>'
+                   +'<th style="padding:6px 8px;text-align:center;font-size:11px">Status</th>'
+                   +'</tr></thead><tbody>'+rows+'</tbody></table>'
+                   +'<p style="margin-top:16px;font-size:10px;color:#9ca3af;text-align:right">Generated: '+new Date().toLocaleString()+'</p>'
+                   +'</body></html>';
+                  const w = window.open('','_blank');
+                  w.document.write(html);
+                  w.document.close();
+                  setTimeout(function(){ w.print(); }, 600);
+                };
+
                 return (
                   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
                   <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl my-8">
@@ -3139,7 +3233,7 @@ import React, { useState, useEffect } from 'react';
                   {/* ── View Payments Tab ── */}
                   {activeTab === 'view' && (
                    <div>
-                  {/* Global search bar */}
+                  {/* Global search bar + export buttons */}
                   <div className="flex gap-2 mb-3">
                    <div className="relative flex-1">
                   <input
@@ -3152,6 +3246,13 @@ import React, { useState, useEffect } from 'react';
                   />
                   {searchCode && <button onClick={function(){setSearchCode(''); if(searchRef.current) searchRef.current.value='';}} className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 text-base leading-none">✕</button>}
                    </div>
+                  </div>
+                  {filtered.length > 0 && (
+                   <div className="flex gap-2">
+                  <button onClick={exportExcel} className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 flex items-center gap-1 whitespace-nowrap">📊 Excel</button>
+                  <button onClick={exportPDF} className="px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 flex items-center gap-1 whitespace-nowrap">📄 PDF</button>
+                   </div>
+                  )}
                   </div>
                   <div className="flex gap-3 mb-4 flex-wrap items-center">
                    <select value={filterEmp} onChange={function(e){setFilterEmp(e.target.value);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
