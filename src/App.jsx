@@ -550,7 +550,7 @@ import React, { useState, useEffect } from 'react';
             const [showAgentReport, setShowAgentReport] = useState(false);
             const [showIraqPay, setShowIraqPay] = useState(false);
             const [iraqPayments, setIraqPayments] = useState([]);
-            const [iraqPayState, setIraqPayState] = useState({ activeTab:'view', batchName:'', empId:'', filterEmp:'', filterStatus:'all', previewRows:[] });
+            const [iraqPayState, setIraqPayState] = useState({ activeTab:'view', batchName:'', empId:'', filterEmp:'', filterStatus:'all', filterBatch:'', previewRows:[] });
             const [agentReportState, setAgentReportState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], empFilter:'', branchFilter:'', countryFilter:'', reportData:null, showAddForm:false });
             const [showAgentCollectionForm, setShowAgentCollectionForm] = useState(false);
             const [showAccountCredit, setShowAccountCredit] = useState(false);
@@ -3047,7 +3047,7 @@ import React, { useState, useEffect } from 'react';
                   catch(e) { alert('Failed: ' + e.message); }
                 };
 
-                const [filterBatch, setFilterBatch] = useState('');
+                const filterBatch = persistedState ? persistedState.filterBatch : ''; const setFilterBatch = mk('filterBatch');
                 const [deletingBatch, setDeletingBatch] = useState(false);
 
                 const handleDeleteBatch = async function() {
