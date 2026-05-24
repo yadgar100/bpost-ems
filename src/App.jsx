@@ -2880,12 +2880,13 @@ import React, { useState, useEffect } from 'react';
                   };
                   const anyCollected = payload.collectedIQD||payload.collectedUSD||payload.collectedGBP||payload.collectedEUR;
                   if (!anyCollected) { alert('Please enter at least one collected amount'); return; }
-                  payload.status = (
-                   (p.amountIQD>0 && payload.collectedIQD<p.amountIQD) ||
-                   (p.amountUSD>0 && payload.collectedUSD<p.amountUSD) ||
-                   (p.amountGBP>0 && payload.collectedGBP<p.amountGBP) ||
-                   (p.amountEUR>0 && payload.collectedEUR<p.amountEUR)
-                  ) ? 'partial' : 'collected';
+                  // Full collection: all non-zero amounts are covered
+                  const isFullyCollected =
+                   (!p.amountIQD || payload.collectedIQD >= p.amountIQD) &&
+                   (!p.amountUSD || payload.collectedUSD >= p.amountUSD) &&
+                   (!p.amountGBP || payload.collectedGBP >= p.amountGBP) &&
+                   (!p.amountEUR || payload.collectedEUR >= p.amountEUR);
+                  payload.status = isFullyCollected ? 'collected' : 'partial';
                   setSaving(true);
                   try {
                    await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method:'PUT', body: JSON.stringify(payload) });
@@ -3035,7 +3036,20 @@ import React, { useState, useEffect } from 'react';
 
                 const handleSaveEdit = async function(p) {
                   try {
-                   await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method:'PUT', body: JSON.stringify(editVals) });
+                   const vals = Object.assign({}, editVals);
+                   // Auto-determine status based on collected vs amount
+                   const aIQD = vals.amountIQD !== undefined ? vals.amountIQD : p.amountIQD;
+                   const aUSD = vals.amountUSD !== undefined ? vals.amountUSD : p.amountUSD;
+                   const aGBP = vals.amountGBP !== undefined ? vals.amountGBP : p.amountGBP;
+                   const aEUR = vals.amountEUR !== undefined ? vals.amountEUR : p.amountEUR;
+                   const cIQD = vals.collectedIQD !== undefined ? vals.collectedIQD : p.collectedIQD;
+                   const cUSD = vals.collectedUSD !== undefined ? vals.collectedUSD : p.collectedUSD;
+                   const cGBP = vals.collectedGBP !== undefined ? vals.collectedGBP : p.collectedGBP;
+                   const cEUR = vals.collectedEUR !== undefined ? vals.collectedEUR : p.collectedEUR;
+                   const anyCollected = cIQD||cUSD||cGBP||cEUR;
+                   const fullyCollected = (!aIQD||cIQD>=aIQD)&&(!aUSD||cUSD>=aUSD)&&(!aGBP||cGBP>=aGBP)&&(!aEUR||cEUR>=aEUR);
+                   if (anyCollected) vals.status = fullyCollected ? 'collected' : 'partial';
+                   await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method:'PUT', body: JSON.stringify(vals) });
                    await loadIraqPaymentsFromAPI();
                    setEditingId(null); setEditVals({});
                   } catch(e) { alert('Failed: ' + e.message); }
@@ -3196,7 +3210,10 @@ import React, { useState, useEffect } from 'react';
                    {colEUR>0 && <div className="text-green-700">€{colEUR.toFixed(2)}</div>}
                    {!colIQD&&!colUSD&&!colGBP&&!colEUR && <span className="text-gray-300">—</span>}
                   </td>
-                  <td className="px-3 py-2 text-blue-600">{filtered.filter(function(p){return p.status==='collected';}).length} collected</td>
+                  <td className="px-3 py-2 text-xs">
+                  <span className="text-green-700 font-semibold">{filtered.filter(function(p){return p.status==='collected';}).length} fully collected</span>
+                  {filtered.filter(function(p){return p.status==='partial';}).length > 0 && <span className="text-blue-600 font-semibold ml-1">· {filtered.filter(function(p){return p.status==='partial';}).length} partial</span>}
+                  </td>
                   <td className="px-3 py-2"></td>
                    </tr>
                   );
