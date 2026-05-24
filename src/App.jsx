@@ -714,7 +714,7 @@ import React, { useState, useEffect } from 'react';
             const loadIraqPaymentsFromAPI = async () => {
                 try {
                   const data = await apiCall(API_ENDPOINTS.iraqPay);
-                  if (data.success) setIraqPayments(data.payments.map(function(p){return{
+                  if (data.success && data.payments) setIraqPayments(data.payments.map(function(p){return{
                    id:p.Id, batchName:p.BatchName, shipmentCode:p.ShipmentCode,
                    employeeId:p.EmployeeId, employeeName:(p.FirstName?p.FirstName+' '+p.LastName:''),
                    employeeCode:p.EmployeeCode,
@@ -2470,7 +2470,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
 
                   {(() => {
-                   const myIraqPay = iraqPayments.filter(function(p){ return parseInt(p.employeeId) === parseInt(currentUser.id) && (p.status === 'pending' || p.status === 'partial'); });
+                   const myIraqPay = iraqPayments.filter(function(p){ return parseInt(p.employeeId) === parseInt(currentUser.id) && p.status === 'pending'; });
                    if (!myIraqPay.length) return null;
                    const sym = getCurrencySymbol(currentUser.currency || 'GBP');
                    const batches = [...new Set(myIraqPay.map(function(p){return p.batchName;}))];
@@ -2896,13 +2896,8 @@ import React, { useState, useEffect } from 'react';
                   };
                   const anyCollected = payload.collectedIQD||payload.collectedUSD||payload.collectedGBP||payload.collectedEUR;
                   if (!anyCollected) { alert('Please enter at least one collected amount'); return; }
-                  // Full collection: all non-zero amounts are covered
-                  const isFullyCollected =
-                   (!p.amountIQD || payload.collectedIQD >= p.amountIQD) &&
-                   (!p.amountUSD || payload.collectedUSD >= p.amountUSD) &&
-                   (!p.amountGBP || payload.collectedGBP >= p.amountGBP) &&
-                   (!p.amountEUR || payload.collectedEUR >= p.amountEUR);
-                  payload.status = isFullyCollected ? 'collected' : 'partial';
+                  // Mark as collected when any amount is submitted
+                  payload.status = 'collected';
                   setSaving(true);
                   try {
                    await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method:'PUT', body: JSON.stringify(payload) });
@@ -2911,7 +2906,15 @@ import React, { useState, useEffect } from 'react';
                   } catch(e) { alert('Failed: ' + e.message); }
                   setSaving(false);
                 };
-                if (recorded) return null;
+                if (recorded) return (
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">
+                  <span className="text-2xl">✅</span>
+                  <div>
+                   <p className="font-bold text-green-800">{p.shipmentCode} — Collected</p>
+                   <p className="text-xs text-green-600">Successfully recorded. Thank you!</p>
+                  </div>
+                  </div>
+                );
                 return (
                   <div className="bg-white rounded-xl border border-blue-100 p-4">
                   <div className="flex items-center justify-between mb-2">
@@ -2928,14 +2931,7 @@ import React, { useState, useEffect } from 'react';
                    {p.amountIQD>0 && <div className="bg-gray-50 rounded-lg px-3 py-2"><p className="text-xs text-gray-400">IQD</p><p className="font-bold text-sm">{p.amountIQD.toLocaleString()}</p></div>}
                    {p.amountEUR>0 && <div className="bg-gray-50 rounded-lg px-3 py-2"><p className="text-xs text-gray-400">EUR</p><p className="font-bold text-sm">€{p.amountEUR.toFixed(2)}</p></div>}
                   </div>
-                  <p className="text-xs font-semibold text-gray-500 mb-2">
-                  {p.status === 'partial' ? '⚠️ Partially collected — update amounts:' : 'Enter collected amount:'}
-                  </p>
-                  {p.status === 'partial' && (
-                   <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 mb-2 text-xs text-yellow-800">
-                  Already collected: {p.collectedGBP>0?'£'+p.collectedGBP.toFixed(2)+' ':''}{p.collectedUSD>0?'$'+p.collectedUSD.toFixed(2)+' ':''}{p.collectedIQD>0?p.collectedIQD.toLocaleString()+' IQD ':''}{p.collectedEUR>0?'€'+p.collectedEUR.toFixed(2):''}
-                   </div>
-                  )}
+                  <p className="text-xs font-semibold text-gray-500 mb-2">Enter collected amount:</p>
                   <div className="grid grid-cols-2 gap-2 mb-3">
                    {p.amountGBP>0 && <div><label className="text-xs text-gray-400">GBP collected</label><input type="number" ref={collGBP} defaultValue={p.collectedGBP||''} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
                    {p.amountUSD>0 && <div><label className="text-xs text-gray-400">USD collected</label><input type="number" ref={collUSD} defaultValue={p.collectedUSD||''} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
@@ -3070,8 +3066,7 @@ import React, { useState, useEffect } from 'react';
                    const cGBP = vals.collectedGBP !== undefined ? vals.collectedGBP : p.collectedGBP;
                    const cEUR = vals.collectedEUR !== undefined ? vals.collectedEUR : p.collectedEUR;
                    const anyCollected = cIQD||cUSD||cGBP||cEUR;
-                   const fullyCollected = (!aIQD||cIQD>=aIQD)&&(!aUSD||cUSD>=aUSD)&&(!aGBP||cGBP>=aGBP)&&(!aEUR||cEUR>=aEUR);
-                   if (anyCollected) vals.status = fullyCollected ? 'collected' : 'partial';
+                   if (anyCollected) vals.status = 'collected';
                    await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method:'PUT', body: JSON.stringify(vals) });
                    await loadIraqPaymentsFromAPI();
                    setEditingId(null); setEditVals({});
@@ -3147,7 +3142,7 @@ import React, { useState, useEffect } from 'react';
                    <select value={filterStatus} onChange={function(e){setFilterStatus(e.target.value);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
                   <option value="all">All Statuses</option>
                   <option value="pending">Pending</option>
-                  <option value="partial">Partial</option>
+
                   <option value="collected">Collected</option>
                    </select>
                    <select value={filterBatch} onChange={function(e){setFilterBatch(e.target.value);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
