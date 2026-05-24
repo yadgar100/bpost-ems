@@ -2471,7 +2471,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
 
                   {(() => {
-                   const myIraqPay = iraqPayments.filter(function(p){ return parseInt(p.employeeId) === parseInt(currentUser.id) && p.status === 'pending'; });
+                   const myIraqPay = iraqPayments.filter(function(p){ return parseInt(p.employeeId) === parseInt(currentUser.id); });
                    if (!myIraqPay.length) return null;
                    const sym = getCurrencySymbol(currentUser.currency || 'GBP');
                    const batches = [...new Set(myIraqPay.map(function(p){return p.batchName;}))];
@@ -2838,39 +2838,77 @@ import React, { useState, useEffect } from 'react';
 
             /* ── IraqPaySection — employee portal section with batch dropdown ─────── */
             const IraqPaySection = ({ myIraqPay, batches, sym, apiCall, API_ENDPOINTS, loadIraqPaymentsFromAPI }) => {
-                const [selectedBatch, setSelectedBatch] = useState(batches[0] || '');
+                const [selectedBatch, setSelectedBatch] = useState('');
                 const [searchCode, setSearchCode] = useState('');
-                const batchFiltered = selectedBatch ? myIraqPay.filter(function(p){return p.batchName === selectedBatch;}) : myIraqPay;
-                const shown = searchCode.trim()
-                  ? batchFiltered.filter(function(p){ return p.shipmentCode.toLowerCase().includes(searchCode.trim().toLowerCase()); })
+                const [statusFilter, setStatusFilter] = useState('pending');
+
+                // Counts for header tabs
+                const pendingCount   = myIraqPay.filter(function(p){return p.status==='pending';}).length;
+                const collectedCount = myIraqPay.filter(function(p){return p.status==='collected';}).length;
+
+                // Search is GLOBAL — when active, it ignores batch filter so the employee can find any code
+                const searchActive = searchCode.trim().length > 0;
+                const base = myIraqPay.filter(function(p){ return p.status === statusFilter; });
+                const batchFiltered = (!searchActive && selectedBatch) ? base.filter(function(p){return p.batchName === selectedBatch;}) : base;
+                const shown = searchActive
+                  ? base.filter(function(p){ return p.shipmentCode.toLowerCase().includes(searchCode.trim().toLowerCase()); })
                   : batchFiltered;
+
                 return (
                   <div className="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
-                  <h3 className="text-sm font-bold text-blue-800 mb-3 flex items-center gap-2"><span className="text-base">🇮🇶</span>Pay in Iraq — Pending Collections</h3>
-                  {batches.length > 1 && (
-                   <div className="mb-3">
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Select Batch</label>
-                  <select value={selectedBatch} onChange={function(e){setSelectedBatch(e.target.value); setSearchCode('');}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                   <option value="">All Batches ({myIraqPay.length} shipments)</option>
-                   {batches.map(function(b){
-                  const count = myIraqPay.filter(function(p){return p.batchName===b;}).length;
-                  return <option key={b} value={b}>{b} ({count} shipments)</option>;
-                   })}
-                  </select>
-                   </div>
-                  )}
+                  <h3 className="text-sm font-bold text-blue-800 mb-3 flex items-center gap-2"><span className="text-base">🇮🇶</span>Pay in Iraq</h3>
+
+                  {/* Status tabs — Pending (default) / Collected */}
+                  <div className="flex gap-2 mb-3">
+                   <button
+                  onClick={function(){setStatusFilter('pending');}}
+                  className={'flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition ' + (statusFilter==='pending' ? 'bg-blue-700 text-white shadow' : 'bg-white text-gray-600 border border-gray-200')}>
+                  Pending ({pendingCount})
+                   </button>
+                   <button
+                  onClick={function(){setStatusFilter('collected');}}
+                  className={'flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition ' + (statusFilter==='collected' ? 'bg-green-600 text-white shadow' : 'bg-white text-gray-600 border border-gray-200')}>
+                  Collected ({collectedCount})
+                   </button>
+                  </div>
+
+                  {/* Global search bar */}
                   <div className="mb-3 relative">
                   <input
                    type="text"
                    value={searchCode}
                    onChange={function(e){setSearchCode(e.target.value);}}
-                   placeholder="Search shipment code (e.g. XL13)..."
+                   placeholder="🔍 Search shipment code across ALL batches…"
                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white pr-8"
                   />
                   {searchCode && <button onClick={function(){setSearchCode('');}} className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 text-sm">✕</button>}
                   </div>
-                  <p className="text-xs text-gray-500 mb-3">{shown.length} of {batchFiltered.length} shipment{batchFiltered.length!==1?'s':''}</p>
+
+                  {/* Batch selector — hidden during search since search is global */}
+                  {!searchActive && batches.length > 1 && (
+                   <div className="mb-3">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Filter by Batch</label>
+                  <select value={selectedBatch} onChange={function(e){setSelectedBatch(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                   <option value="">All Batches ({base.length} shipments)</option>
+                   {batches.map(function(b){
+                  const count = base.filter(function(p){return p.batchName===b;}).length;
+                  if (count === 0) return null;
+                  return <option key={b} value={b}>{b} ({count} shipments)</option>;
+                   })}
+                  </select>
+                   </div>
+                  )}
+
+                  {searchActive && (
+                   <p className="text-xs text-blue-700 mb-2 bg-blue-100 rounded-lg px-3 py-1.5">🌐 Searching across all batches</p>
+                  )}
+
+                  <p className="text-xs text-gray-500 mb-3">{shown.length} of {searchActive ? base.length : batchFiltered.length} shipment{shown.length!==1?'s':''}</p>
+
                   <div className="space-y-3">
+                   {shown.length === 0 && (
+                  <p className="text-center text-gray-400 text-sm py-6">No {statusFilter} shipments{searchActive ? ' match your search' : ''}.</p>
+                   )}
                    {shown.map(function(p){
                   return <IraqPayCard key={p.id} p={p} apiCall={apiCall} API_ENDPOINTS={API_ENDPOINTS} loadIraqPaymentsFromAPI={loadIraqPaymentsFromAPI} sym={sym} />;
                    })}
@@ -2888,6 +2926,31 @@ import React, { useState, useEffect } from 'react';
                 const collUSD = React.useRef(null);
                 const collGBP = React.useRef(null);
                 const collEUR = React.useRef(null);
+
+                // READ-ONLY view for already-collected records — employees cannot edit, only admin can.
+                if (p.status === 'collected') {
+                  const dt = p.collectedAt ? new Date(p.collectedAt).toLocaleDateString() : '';
+                  return (
+                   <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-2">
+                   <div>
+                  <p className="font-bold text-gray-900 flex items-center gap-2">{p.shipmentCode}<span className="text-green-600">✅</span></p>
+                  {p.receiver && <p className="text-xs text-gray-500">{p.receiver}</p>}
+                  <p className="text-xs text-gray-400">{p.batchName}{dt && ' · ' + dt}</p>
+                   </div>
+                   <span className="px-2 py-0.5 bg-green-200 text-green-800 rounded-full text-xs font-semibold">collected</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                   {p.collectedGBP>0 && <div className="bg-white rounded-lg px-3 py-2 border border-green-100"><p className="text-xs text-gray-400">GBP collected</p><p className="font-bold text-sm text-green-700">£{p.collectedGBP.toFixed(2)}</p></div>}
+                   {p.collectedUSD>0 && <div className="bg-white rounded-lg px-3 py-2 border border-green-100"><p className="text-xs text-gray-400">USD collected</p><p className="font-bold text-sm text-green-700">${p.collectedUSD.toFixed(2)}</p></div>}
+                   {p.collectedIQD>0 && <div className="bg-white rounded-lg px-3 py-2 border border-green-100"><p className="text-xs text-gray-400">IQD collected</p><p className="font-bold text-sm text-green-700">{p.collectedIQD.toLocaleString()}</p></div>}
+                   {p.collectedEUR>0 && <div className="bg-white rounded-lg px-3 py-2 border border-green-100"><p className="text-xs text-gray-400">EUR collected</p><p className="font-bold text-sm text-green-700">€{p.collectedEUR.toFixed(2)}</p></div>}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2 italic">🔒 Locked — contact admin to make corrections</p>
+                   </div>
+                  );
+                }
+
                 const saveCollection = async function() {
                   const payload = {
                    collectedIQD: parseFloat(collIQD.current?collIQD.current.value:0)||0,
