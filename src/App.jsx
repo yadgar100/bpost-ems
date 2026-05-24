@@ -3426,14 +3426,14 @@ import React, { useState, useEffect } from 'react';
                 };
 
                 return (
-                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
-                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl my-8">
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto" onClick={onClose}>
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl my-8" onClick={function(e){e.stopPropagation();}}>
                    <div className="bg-gradient-to-r from-blue-700 to-indigo-700 rounded-t-2xl px-6 py-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                    <span className="text-2xl">🇮🇶</span>
                    <h2 className="text-xl font-bold text-white">Pay in Iraq</h2>
                   </div>
-                  <button onClick={onClose} className="bg-blue-800 hover:bg-blue-900 text-white px-4 py-2 rounded-lg font-semibold flex items-center gap-2"><X className="w-4 h-4"/>Close</button>
+                  <button type="button" onClick={onClose} className="bg-blue-800 hover:bg-blue-900 text-white px-4 py-2 rounded-lg font-semibold flex items-center gap-2"><X className="w-4 h-4"/>Close</button>
                    </div>
 
                    {/* Tabs */}
