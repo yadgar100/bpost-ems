@@ -779,6 +779,7 @@ import React, { useState, useEffect } from 'react';
                   if (document.visibilityState === 'visible' && currentUser) {
                    loadTimesheetsFromAPI();
                    loadAdjustmentsFromAPI();
+                   loadIraqPaymentsFromAPI();
                   }
                 };
                 document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -791,6 +792,7 @@ import React, { useState, useEffect } from 'react';
                 const interval = setInterval(() => {
                   if (document.visibilityState === 'visible') {
                    loadTimesheetsFromAPI();
+                   loadIraqPaymentsFromAPI();
                   }
                 }, 60000);
                 return () => clearInterval(interval);
@@ -2466,7 +2468,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
 
                   {(() => {
-                   const myIraqPay = iraqPayments.filter(function(p){ return p.employeeId === currentUser.id && p.status !== 'collected'; });
+                   const myIraqPay = iraqPayments.filter(function(p){ return parseInt(p.employeeId) === parseInt(currentUser.id) && (p.status === 'pending' || p.status === 'partial'); });
                    if (!myIraqPay.length) return null;
                    const sym = getCurrencySymbol(currentUser.currency || 'GBP');
                    const batches = [...new Set(myIraqPay.map(function(p){return p.batchName;}))];
