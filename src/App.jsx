@@ -3556,7 +3556,7 @@ import React, { useState, useEffect } from 'react';
                    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
                   <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-screen overflow-y-auto">
                    {/* Header — changes to green after move is confirmed */}
-                   <div className={`bg-gradient-to-r ${moveBatchDone ? 'from-green-600 to-emerald-600' : 'from-amber-500 to-orange-500'} rounded-t-2xl px-6 py-4 flex items-center justify-between`}>
+                   <div className={'bg-gradient-to-r ' + (moveBatchDone ? 'from-green-600 to-emerald-600' : 'from-amber-500 to-orange-500') + ' rounded-t-2xl px-6 py-4 flex items-center justify-between'}>
                   <div className="flex items-center gap-3">
                    <span className="text-2xl">{moveBatchDone ? '✅' : '📦'}</span>
                    <div>
@@ -3564,7 +3564,7 @@ import React, { useState, useEffect } from 'react';
                   {moveBatchDone && <p className="text-green-100 text-xs mt-0.5">{moveBatchRecords.length} records moved to <b>{moveBatchName}</b>{moveBatchAssignedEmpName ? ' · Assigned to ' + moveBatchAssignedEmpName : ''}</p>}
                    </div>
                   </div>
-                  <button onClick={function(){setShowMoveBatch(false);setMoveBatchDone(false);}} className={`${moveBatchDone ? 'bg-green-700 hover:bg-green-800' : 'bg-orange-600 hover:bg-orange-700'} text-white px-4 py-1.5 rounded-lg font-semibold text-sm flex items-center gap-1`}><X className="w-3 h-3"/>Close</button>
+                  <button onClick={function(){setShowMoveBatch(false);setMoveBatchDone(false);}} className={(moveBatchDone ? 'bg-green-700 hover:bg-green-800' : 'bg-orange-600 hover:bg-orange-700') + ' text-white px-4 py-1.5 rounded-lg font-semibold text-sm flex items-center gap-1'}><X className="w-3 h-3"/>Close</button>
                    </div>
 
                   {/* From → To inputs + export buttons */}
@@ -3582,7 +3582,7 @@ import React, { useState, useEffect } from 'react';
                    onChange={function(e){ if (!moveBatchDone) setMoveBatchName(e.target.value); }}
                    readOnly={moveBatchDone}
                    placeholder="e.g. 428-Slemani"
-                   className={`border-2 ${moveBatchDone ? 'border-green-400 bg-green-50 text-green-700' : 'border-amber-400 focus:border-amber-600'} rounded-lg px-3 py-2 text-sm font-semibold min-w-52 outline-none`}
+                   className={'border-2 ' + (moveBatchDone ? 'border-green-400 bg-green-50 text-green-700' : 'border-amber-400 focus:border-amber-600') + ' rounded-lg px-3 py-2 text-sm font-semibold min-w-52 outline-none'}
                   />
                    </div>
                    <div>
@@ -3591,7 +3591,7 @@ import React, { useState, useEffect } from 'react';
                    value={moveBatchAssignEmp}
                    onChange={function(e){ if (!moveBatchDone) setMoveBatchAssignEmp(e.target.value); }}
                    disabled={moveBatchDone}
-                   className={`border-2 ${moveBatchDone ? 'border-green-400 bg-green-50 text-green-700' : 'border-blue-400 focus:border-blue-600'} rounded-lg px-3 py-2 text-sm font-semibold min-w-52 outline-none`}
+                   className={'border-2 ' + (moveBatchDone ? 'border-green-400 bg-green-50 text-green-700' : 'border-blue-400 focus:border-blue-600') + ' rounded-lg px-3 py-2 text-sm font-semibold min-w-52 outline-none'}
                   >
                    <option value="">Select employee…</option>
                    {[...visEmp].filter(function(e){return !e.isAdmin;}).sort(function(a,b){return (a.firstName+a.lastName).localeCompare(b.firstName+b.lastName);}).map(function(e){return <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.employeeId})</option>;})}
