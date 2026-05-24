@@ -3142,10 +3142,10 @@ import React, { useState, useEffect } from 'react';
                    ['Employee:', meta.emp],
                    ['Date Range:', meta.dateRange],
                    ['Total Records:', meta.qty, '', 'Fully Collected:', meta.collected],
-                   ['Total IQD Due:', meta.totIQD, 'Collected IQD:', meta.colIQD],
-                   ['Total USD Due:', '$'+meta.totUSD.toFixed(2), 'Collected USD:', '$'+meta.colUSD.toFixed(2)],
-                   ['Total GBP Due:', '£'+meta.totGBP.toFixed(2), 'Collected GBP:', '£'+meta.colGBP.toFixed(2)],
-                   meta.totEUR ? ['Total EUR Due:', '€'+meta.totEUR.toFixed(2), 'Collected EUR:', '€'+meta.colEUR.toFixed(2)] : [],
+                   meta.colIQD>0 ? ['Total IQD Collected:', meta.colIQD] : [],
+                   meta.colUSD>0 ? ['Total USD Collected:', '$'+meta.colUSD.toFixed(2)] : [],
+                   meta.colGBP>0 ? ['Total GBP Collected:', '£'+meta.colGBP.toFixed(2)] : [],
+                   meta.colEUR>0 ? ['Total EUR Collected:', '€'+meta.colEUR.toFixed(2)] : [],
                    [],
                    ['Employee','Batch','Shipment Code','To Office','IQD Due','USD Due','GBP Due','EUR Due','Collected IQD','Collected USD','Collected GBP','Collected EUR','Status'],
                   ];
@@ -3187,10 +3187,10 @@ import React, { useState, useEffect } from 'react';
                    +'<div><b>Employee:</b> '+meta.emp+'</div>'
                    +'<div><b>Date Range:</b> '+meta.dateRange+'</div>'
                    +'<div><b>Records:</b> '+meta.qty+' total · '+meta.collected+' collected</div>'
-                   +'<div><b>Total IQD Due:</b> '+meta.totIQD.toLocaleString()+' &nbsp;|&nbsp; <b>Collected:</b> '+meta.colIQD.toLocaleString()+'</div>'
-                   +'<div><b>Total GBP Due:</b> £'+meta.totGBP.toFixed(2)+' &nbsp;|&nbsp; <b>Collected:</b> £'+meta.colGBP.toFixed(2)+'</div>'
-                   +'<div><b>Total USD Due:</b> $'+meta.totUSD.toFixed(2)+' &nbsp;|&nbsp; <b>Collected:</b> $'+meta.colUSD.toFixed(2)+'</div>'
-                   +(meta.totEUR?'<div><b>Total EUR Due:</b> €'+meta.totEUR.toFixed(2)+' &nbsp;|&nbsp; <b>Collected:</b> €'+meta.colEUR.toFixed(2)+'</div>':'')
+                   +(meta.colIQD>0?'<div><b>Total IQD Collected:</b> '+meta.colIQD.toLocaleString()+'</div>':'')
+                   +(meta.colGBP>0?'<div><b>Total GBP Collected:</b> £'+meta.colGBP.toFixed(2)+'</div>':'')
+                   +(meta.colUSD>0?'<div><b>Total USD Collected:</b> $'+meta.colUSD.toFixed(2)+'</div>':'')
+                   +(meta.colEUR>0?'<div><b>Total EUR Collected:</b> €'+meta.colEUR.toFixed(2)+'</div>':'')
                    +'</div>'
                    +'<table style="width:100%;border-collapse:collapse">'
                    +'<thead><tr style="background:#1e3a8a;color:white">'
