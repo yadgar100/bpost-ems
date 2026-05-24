@@ -3637,6 +3637,9 @@ import React, { useState, useEffect } from 'react';
                   )}
                   {moveBatchRecords.map(function(p, i){
                    const off = (p.notes||'').replace('Office:','').trim().split('|')[0].trim() || '—';
+                   const cParts = (p.receiverContact||'').split(' | ');
+                   const cName  = cParts[0] || '';
+                   const cPhone = cParts[1] || '';
                    return (
                   <tr key={p.id} className={i%2===0?'bg-white':'bg-blue-50/30'}>
                    <td className="px-3 py-2 text-xs font-semibold text-gray-800">{p.employeeName}<br/><span className="text-gray-400 font-normal">{p.employeeCode}</span></td>
@@ -3644,7 +3647,7 @@ import React, { useState, useEffect } from 'react';
                    <td className="px-3 py-2 text-sm font-bold text-gray-900">{p.shipmentCode}</td>
                    <td className="px-3 py-2 text-xs font-semibold text-green-600">{moveBatchName || <span className="text-gray-300 font-normal">not set</span>}</td>
                    <td className="px-3 py-2 text-xs text-gray-600">{off}</td>
-                   <td className="px-3 py-2 text-xs text-gray-600">{p.receiverContact ? (() => { const parts = p.receiverContact.split(' | '); return <span>{parts[0]}{parts[1] && <><br/><span className="text-blue-600 font-medium">{parts[1]}</span></>}</span>; })() : '—'}</td>
+                   <td className="px-3 py-2 text-xs text-gray-600">{cName || '—'}{cPhone ? <span className="block text-blue-600 font-medium">{cPhone}</span> : null}</td>
                    <td className="px-3 py-2 text-xs">{p.amountIQD>0?<span className="font-semibold">{p.amountIQD.toLocaleString()}</span>:'—'}</td>
                    <td className="px-3 py-2 text-xs">{p.amountUSD>0?<span className="font-semibold">${p.amountUSD.toFixed(2)}</span>:'—'}</td>
                    <td className="px-3 py-2 text-xs">{p.amountGBP>0?<span className="font-semibold">£{p.amountGBP.toFixed(2)}</span>:'—'}</td>
