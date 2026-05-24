@@ -2994,6 +2994,9 @@ import React, { useState, useEffect } from 'react';
                    const code = String(row[shipIdx >= 0 ? shipIdx : 0]||'').trim();
                    const toOffice = officeIdx >= 0 ? String(row[officeIdx]||'').trim() : '';
                    const receiver = recvIdx >= 0 ? String(row[recvIdx]||'').trim() : '';
+                   const excelNote = noteIdx >= 0 ? String(row[noteIdx]||'').trim() : '';
+                   // Always store office in notes field prefixed with "Office: "
+                   const combinedNotes = (toOffice ? 'Office: '+toOffice : '') + (excelNote ? (toOffice ? ' | ' : '') + excelNote : '');
                    return {
                     shipmentCode: code,
                     receiver: receiver,
@@ -3002,7 +3005,7 @@ import React, { useState, useEffect } from 'react';
                     amountUSD: usdIdx >= 0 ? pn(row[usdIdx]) : 0,
                     amountGBP: gbpIdx >= 0 ? pn(row[gbpIdx]) : 0,
                     amountEUR: eurIdx >= 0 ? pn(row[eurIdx]) : 0,
-                    notes: noteIdx >= 0 ? String(row[noteIdx]||'') : (toOffice ? 'Office: '+toOffice : ''),
+                    notes: combinedNotes,
                    };
                   }).filter(function(r){
                    // Only keep rows where shipment code matches pattern: 1-5 letters followed by 2+ digits
