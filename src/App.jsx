@@ -3253,7 +3253,6 @@ import React, { useState, useEffect } from 'react';
                   <button onClick={exportPDF} className="px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 flex items-center gap-1 whitespace-nowrap">📄 PDF</button>
                    </div>
                   )}
-                  </div>
                   <div className="flex gap-3 mb-4 flex-wrap items-center">
                    <select value={filterEmp} onChange={function(e){setFilterEmp(e.target.value);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
                   <option value="">All Employees</option>
