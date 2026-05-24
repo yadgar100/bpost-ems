@@ -3172,6 +3172,35 @@ import React, { useState, useEffect } from 'react';
                    </td>
                   </tr>
                    );})}
+                  {filtered.length > 0 && (() => {
+                  const totIQD = filtered.reduce(function(s,p){return s+(p.amountIQD||0);},0);
+                  const totUSD = filtered.reduce(function(s,p){return s+(p.amountUSD||0);},0);
+                  const totGBP = filtered.reduce(function(s,p){return s+(p.amountGBP||0);},0);
+                  const totEUR = filtered.reduce(function(s,p){return s+(p.amountEUR||0);},0);
+                  const colIQD = filtered.reduce(function(s,p){return s+(p.collectedIQD||0);},0);
+                  const colUSD = filtered.reduce(function(s,p){return s+(p.collectedUSD||0);},0);
+                  const colGBP = filtered.reduce(function(s,p){return s+(p.collectedGBP||0);},0);
+                  const colEUR = filtered.reduce(function(s,p){return s+(p.collectedEUR||0);},0);
+                  return (
+                   <tr className="bg-blue-50 font-bold border-t-2 border-blue-200 text-xs">
+                  <td className="px-3 py-2 text-blue-700" colSpan="3">TOTAL ({filtered.length} records)</td>
+                  <td className="px-3 py-2 text-blue-600"></td>
+                  <td className="px-3 py-2 text-blue-700">{totIQD>0?totIQD.toLocaleString():'—'}</td>
+                  <td className="px-3 py-2 text-blue-700">{totUSD>0?'$'+totUSD.toFixed(2):'—'}</td>
+                  <td className="px-3 py-2 text-blue-700">{totGBP>0?'£'+totGBP.toFixed(2):'—'}</td>
+                  <td className="px-3 py-2 text-blue-700">{totEUR>0?'€'+totEUR.toFixed(2):'—'}</td>
+                  <td className="px-3 py-2">
+                   {colIQD>0 && <div className="text-green-700">IQD {colIQD.toLocaleString()}</div>}
+                   {colUSD>0 && <div className="text-green-700">${colUSD.toFixed(2)}</div>}
+                   {colGBP>0 && <div className="text-green-700">£{colGBP.toFixed(2)}</div>}
+                   {colEUR>0 && <div className="text-green-700">€{colEUR.toFixed(2)}</div>}
+                   {!colIQD&&!colUSD&&!colGBP&&!colEUR && <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="px-3 py-2 text-blue-600">{filtered.filter(function(p){return p.status==='collected';}).length} collected</td>
+                  <td className="px-3 py-2"></td>
+                   </tr>
+                  );
+                  })()}
                   </tbody>
                    </table>
                   </div>
