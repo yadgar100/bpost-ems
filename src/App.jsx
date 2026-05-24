@@ -2986,19 +2986,23 @@ import React, { useState, useEffect } from 'react';
                   const usdIdx  = getColIdx('usd$', 'usd', 'dollar', '$');
                   const gbpIdx  = getColIdx('£', 'gbp', 'total', 'pound');
                   const eurIdx  = getColIdx('eur', 'euro');
-                  const recvIdx = getColIdx('receiver', 'recipient', 'customer');
+                  const recvIdx   = getColIdx('receiver', 'recipient', 'customer');
+                  const officeIdx = getColIdx('tooffice', 'office', 'destination', 'city');
                   const noteIdx = getColIdx('note', 'status', 'desc');
                   const pn = function(v){ return parseFloat(String(v||'').replace(/,/g,'').replace(/[^0-9.]/g,'')) || 0; };
                   const mapped = raw.slice(headerRowIdx + 1).map(function(row) {
                    const code = String(row[shipIdx >= 0 ? shipIdx : 0]||'').trim();
+                   const toOffice = officeIdx >= 0 ? String(row[officeIdx]||'').trim() : '';
+                   const receiver = recvIdx >= 0 ? String(row[recvIdx]||'').trim() : '';
                    return {
                     shipmentCode: code,
-                    receiver: recvIdx >= 0 ? String(row[recvIdx]||'').trim() : '',
+                    receiver: receiver,
+                    toOffice: toOffice,
                     amountIQD: iqdIdx >= 0 ? pn(row[iqdIdx]) : 0,
                     amountUSD: usdIdx >= 0 ? pn(row[usdIdx]) : 0,
                     amountGBP: gbpIdx >= 0 ? pn(row[gbpIdx]) : 0,
                     amountEUR: eurIdx >= 0 ? pn(row[eurIdx]) : 0,
-                    notes: noteIdx >= 0 ? String(row[noteIdx]||'') : '',
+                    notes: noteIdx >= 0 ? String(row[noteIdx]||'') : (toOffice ? 'Office: '+toOffice : ''),
                    };
                   }).filter(function(r){
                    // Only keep rows where shipment code matches pattern: 1-5 letters followed by 2+ digits
@@ -3123,10 +3127,10 @@ import React, { useState, useEffect } from 'react';
                   <div className="overflow-x-auto">
                    <table className="w-full text-sm border-collapse">
                   <thead><tr className="bg-blue-50">
-                   {['Employee','Batch','Shipment Code','IQD','USD','GBP','EUR','Collected','Status','Actions'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-blue-700 border-b border-blue-100">{h}</th>;})}
+                   {['Employee','Batch','Shipment Code','To Office','IQD','USD','GBP','EUR','Collected','Status','Actions'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-blue-700 border-b border-blue-100">{h}</th>;})}
                   </tr></thead>
                   <tbody className="divide-y divide-gray-100">
-                  {filtered.length === 0 && <tr><td colSpan="10" className="text-center py-8 text-gray-400">No records found</td></tr>}
+                  {filtered.length === 0 && <tr><td colSpan="11" className="text-center py-8 text-gray-400">No records found</td></tr>}
                   {filtered.map(function(p){
                    const isEditing = editingId === p.id;
                    const inp = function(field, val) {
@@ -3137,6 +3141,7 @@ import React, { useState, useEffect } from 'react';
                    <td className="px-3 py-2 font-semibold text-gray-800 text-xs">{p.employeeName}<br/><span className="text-gray-400 font-normal">{p.employeeCode}</span></td>
                    <td className="px-3 py-2 text-xs text-gray-500">{p.batchName}</td>
                    <td className="px-3 py-2 font-bold text-gray-900">{p.shipmentCode}</td>
+                   <td className="px-3 py-2 text-xs text-gray-500">{p.notes && p.notes.startsWith('Office:') ? p.notes.replace('Office:','').trim() : (p.notes||'—')}</td>
                    <td className="px-3 py-2 text-xs">{isEditing ? inp('amountIQD',p.amountIQD) : (p.amountIQD>0?<span className="font-semibold">{p.amountIQD.toLocaleString()}</span>:'—')}</td>
                    <td className="px-3 py-2 text-xs">{isEditing ? inp('amountUSD',p.amountUSD) : (p.amountUSD>0?<span className="font-semibold">${p.amountUSD.toFixed(2)}</span>:'—')}</td>
                    <td className="px-3 py-2 text-xs">{isEditing ? inp('amountGBP',p.amountGBP) : (p.amountGBP>0?<span className="font-semibold">£{p.amountGBP.toFixed(2)}</span>:'—')}</td>
@@ -3199,13 +3204,14 @@ import React, { useState, useEffect } from 'react';
                   <div className="overflow-x-auto max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
                    <table className="w-full text-xs">
                   <thead className="bg-gray-50 sticky top-0"><tr>
-                   {['Shipment Code','Receiver','IQD','USD','GBP','EUR','Notes'].map(function(h){return <th key={h} className="px-3 py-2 text-left font-semibold text-gray-600">{h}</th>;})}
+                   {['Shipment Code','Receiver','To Office','IQD','USD','GBP','EUR','Notes'].map(function(h){return <th key={h} className="px-3 py-2 text-left font-semibold text-gray-600">{h}</th>;})}
                   </tr></thead>
                   <tbody className="divide-y divide-gray-100">
                   {previewRows.map(function(r,i){return(
                    <tr key={i} className="hover:bg-gray-50">
                   <td className="px-3 py-1.5 font-semibold">{r.shipmentCode}</td>
                   <td className="px-3 py-1.5 text-gray-500">{r.receiver||'—'}</td>
+                  <td className="px-3 py-1.5 text-gray-500">{r.toOffice||'—'}</td>
                   <td className="px-3 py-1.5">{r.amountIQD>0?r.amountIQD.toLocaleString():'—'}</td>
                   <td className="px-3 py-1.5">{r.amountUSD>0?'$'+r.amountUSD.toFixed(2):'—'}</td>
                   <td className="px-3 py-1.5">{r.amountGBP>0?'£'+r.amountGBP.toFixed(2):'—'}</td>
