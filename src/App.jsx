@@ -552,7 +552,7 @@ import React, { useState, useEffect } from 'react';
             const [showAgentReport, setShowAgentReport] = useState(false);
             const [showIraqPay, setShowIraqPay] = useState(false);
             const [iraqPayments, setIraqPayments] = useState([]);
-            const [iraqPayState, setIraqPayState] = useState({ activeTab:'view', batchName:'', empId:'', filterEmp:'', filterStatus:'all', filterBatch:'', searchCode:'', filterFrom:'', filterTo:'', previewRows:[] });
+            const [iraqPayState, setIraqPayState] = useState({ activeTab:'view', batchName:'', empId:'', filterEmp:'', filterStatus:'all', filterBatch:'', filterFrom:'', filterTo:'', previewRows:[] });
             const [agentReportState, setAgentReportState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], empFilter:'', branchFilter:'', countryFilter:'', reportData:null, showAddForm:false });
             const [showAgentCollectionForm, setShowAgentCollectionForm] = useState(false);
             const [showAccountCredit, setShowAccountCredit] = useState(false);
@@ -3080,7 +3080,9 @@ import React, { useState, useEffect } from 'react';
                 };
 
                 const filterBatch = persistedState ? persistedState.filterBatch : ''; const setFilterBatch = mk('filterBatch');
-                const searchCode = persistedState ? persistedState.searchCode : ''; const setSearchCode = mk('searchCode');
+                // searchCode is LOCAL (not persisted) — persisted state triggers re-render on each keystroke
+                const [searchCode, setSearchCode] = useState('');
+                const searchRef = React.useRef(null);
                 const filterFrom = persistedState ? persistedState.filterFrom : ''; const setFilterFrom = mk('filterFrom');
                 const filterTo = persistedState ? persistedState.filterTo : ''; const setFilterTo = mk('filterTo');
                 const [deletingBatch, setDeletingBatch] = useState(false);
@@ -3140,8 +3142,15 @@ import React, { useState, useEffect } from 'react';
                   {/* Global search bar */}
                   <div className="flex gap-2 mb-3">
                    <div className="relative flex-1">
-                  <input type="text" value={searchCode} onChange={function(e){setSearchCode(e.target.value);}} placeholder="🔍 Search shipment code (e.g. XL13, YF66)..." className="w-full border-2 border-blue-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
-                  {searchCode && <button onClick={function(){setSearchCode('');}} className="absolute right-2 top-2 text-gray-400 hover:text-gray-600">✕</button>}
+                  <input
+                   type="text"
+                   ref={searchRef}
+                   defaultValue={searchCode}
+                   onChange={function(e){setSearchCode(e.target.value);}}
+                   placeholder="🔍 Search shipment code (e.g. XL13, YF66)..."
+                   className="w-full border-2 border-blue-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  />
+                  {searchCode && <button onClick={function(){setSearchCode(''); if(searchRef.current) searchRef.current.value='';}} className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 text-base leading-none">✕</button>}
                    </div>
                   </div>
                   <div className="flex gap-3 mb-4 flex-wrap items-center">
