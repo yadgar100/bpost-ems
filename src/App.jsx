@@ -3038,9 +3038,30 @@ import React, { useState, useEffect } from 'react';
                   catch(e) { alert('Failed: ' + e.message); }
                 };
 
+                const [filterBatch, setFilterBatch] = useState('');
+                const [deletingBatch, setDeletingBatch] = useState(false);
+
+                const handleDeleteBatch = async function() {
+                  const batchToDelete = filterBatch;
+                  if (!batchToDelete) { alert('Select a batch to delete'); return; }
+                  const batchRecords = iraqPayments.filter(function(p){ return p.batchName === batchToDelete; });
+                  if (!window.confirm('Delete ALL ' + batchRecords.length + ' records in batch "' + batchToDelete + '"? This cannot be undone.')) return;
+                  setDeletingBatch(true);
+                  try {
+                   for (const p of batchRecords) {
+                  await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method: 'DELETE' });
+                   }
+                   await loadIraqPaymentsFromAPI();
+                   setFilterBatch('');
+                   alert('Batch "' + batchToDelete + '" deleted — ' + batchRecords.length + ' records removed.');
+                  } catch(e) { alert('Failed: ' + e.message); }
+                  setDeletingBatch(false);
+                };
+
                 const filtered = iraqPayments.filter(function(p){
                   if (filterEmp && p.employeeId !== parseInt(filterEmp)) return false;
                   if (filterStatus !== 'all' && p.status !== filterStatus) return false;
+                  if (filterBatch && p.batchName !== filterBatch) return false;
                   return true;
                 });
 
@@ -3069,7 +3090,7 @@ import React, { useState, useEffect } from 'react';
                   {/* ── View Payments Tab ── */}
                   {activeTab === 'view' && (
                    <div>
-                  <div className="flex gap-3 mb-4 flex-wrap">
+                  <div className="flex gap-3 mb-4 flex-wrap items-center">
                    <select value={filterEmp} onChange={function(e){setFilterEmp(e.target.value);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
                   <option value="">All Employees</option>
                   {[...new Set(iraqPayments.map(function(p){return p.employeeId;}))].map(function(id){
@@ -3083,6 +3104,17 @@ import React, { useState, useEffect } from 'react';
                   <option value="partial">Partial</option>
                   <option value="collected">Collected</option>
                    </select>
+                   <select value={filterBatch} onChange={function(e){setFilterBatch(e.target.value);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <option value="">All Batches</option>
+                  {[...new Set(iraqPayments.map(function(p){return p.batchName;}))].sort().map(function(b){
+                   return <option key={b} value={b}>{b} ({iraqPayments.filter(function(p){return p.batchName===b;}).length})</option>;
+                  })}
+                   </select>
+                   {filterBatch && (
+                  <button onClick={handleDeleteBatch} disabled={deletingBatch} className="px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 disabled:opacity-50 flex items-center gap-1">
+                   {deletingBatch ? 'Deleting...' : '🗑 Delete Batch'}
+                  </button>
+                   )}
                    <span className="text-sm text-gray-500 self-center">{filtered.length} record{filtered.length!==1?'s':''}</span>
                   </div>
 
