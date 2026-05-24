@@ -3163,6 +3163,55 @@ import React, { useState, useEffect } from 'react';
                 const [moveBatchDone, setMoveBatchDone] = useState(false);
                 const [moveBatchAssignEmp, setMoveBatchAssignEmp] = useState('');
                 const [moveBatchAssignedEmpName, setMoveBatchAssignedEmpName] = useState('');
+
+                // ── Add Shipment Manually states ─────────────────────
+                const [showAddShipment, setShowAddShipment]   = useState(false);
+                const [addShipForm, setAddShipForm]           = useState({
+                  batchName: '', employeeId: '', shipmentCode: '',
+                  receiverName: '', receiverMobile: '', toOffice: '',
+                  amountIQD: '', amountUSD: '', amountGBP: '', amountEUR: '', notes: ''
+                });
+                const [addShipSaving, setAddShipSaving] = useState(false);
+
+                const openAddShipmentModal = function() {
+                  setAddShipForm({
+                   batchName:      filterBatch || '',
+                   employeeId:     filterEmp   || '',
+                   shipmentCode:   '',
+                   receiverName:   '',
+                   receiverMobile: '',
+                   toOffice:       '',
+                   amountIQD: '', amountUSD: '', amountGBP: '', amountEUR: '', notes: ''
+                  });
+                  setShowAddShipment(true);
+                };
+
+                const submitAddShipment = async function() {
+                  if (!addShipForm.shipmentCode.trim()) { alert('Shipment code is required'); return; }
+                  if (!addShipForm.batchName.trim())    { alert('Batch name is required'); return; }
+                  if (!addShipForm.employeeId)          { alert('Please select an employee'); return; }
+                  setAddShipSaving(true);
+                  try {
+                   const recvParts = [addShipForm.receiverName.trim(), addShipForm.receiverMobile.trim()].filter(Boolean);
+                   const body = {
+                    batchName:       addShipForm.batchName.trim(),
+                    shipmentCode:    addShipForm.shipmentCode.trim(),
+                    employeeId:      parseInt(addShipForm.employeeId),
+                    amountIQD:       parseFloat(addShipForm.amountIQD) || 0,
+                    amountUSD:       parseFloat(addShipForm.amountUSD) || 0,
+                    amountGBP:       parseFloat(addShipForm.amountGBP) || 0,
+                    amountEUR:       parseFloat(addShipForm.amountEUR) || 0,
+                    receiverContact: recvParts.join(' | '),
+                    toOffice:        addShipForm.toOffice.trim(),
+                    notes:           addShipForm.notes.trim()
+                   };
+                   await apiCall(API_ENDPOINTS.iraqPay, { method:'POST', body: JSON.stringify(body) });
+                   await loadIraqPaymentsFromAPI();
+                   setShowAddShipment(false);
+                   alert('✅ Shipment ' + body.shipmentCode + ' added to batch "' + body.batchName + '"');
+                  } catch(e) { alert('Add failed: ' + e.message); }
+                  setAddShipSaving(false);
+                };
                 const moveTotIQD = moveBatchRecords.reduce(function(s,p){return s+(p.amountIQD||0);},0);
                 const moveTotUSD = moveBatchRecords.reduce(function(s,p){return s+(p.amountUSD||0);},0);
                 const moveTotGBP = moveBatchRecords.reduce(function(s,p){return s+(p.amountGBP||0);},0);
@@ -3498,6 +3547,9 @@ import React, { useState, useEffect } from 'react';
                    📦 Move Pending →
                   </button>
                    )}
+                   <button onClick={openAddShipmentModal} className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 flex items-center gap-1">
+                  ➕ Add Shipment
+                   </button>
                    <span className="text-sm text-gray-500 self-center">{filtered.length} record{filtered.length!==1?'s':''}</span>
                   </div>
                   {/* Date range row */}
@@ -3757,6 +3809,134 @@ import React, { useState, useEffect } from 'react';
                    <X className="w-4 h-4"/>Close Report
                   </button>
                    )}
+                  </div>
+                   </div>
+                  </div>
+                   </div>
+                  )}
+
+                  {/* ── Add Shipment Manually Modal ── */}
+                  {showAddShipment && (
+                   <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" onClick={function(){setShowAddShipment(false);}}>
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-screen overflow-y-auto" onClick={function(e){e.stopPropagation();}}>
+                   {/* Header */}
+                   <div className="bg-gradient-to-r from-emerald-600 to-green-600 rounded-t-2xl px-6 py-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                   <span className="text-2xl">➕</span>
+                   <h3 className="text-lg font-bold text-white">Add Shipment Manually</h3>
+                  </div>
+                  <button type="button" onClick={function(){setShowAddShipment(false);}} className="bg-green-700 hover:bg-green-800 text-white px-4 py-1.5 rounded-lg font-semibold text-sm flex items-center gap-1"><X className="w-3 h-3"/>Close</button>
+                   </div>
+
+                   <div className="p-6 space-y-4">
+                  <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">Use this when a shipment is missing from the uploaded Excel sheet but needs to be on record.</p>
+
+                  {/* Batch + Employee */}
+                  <div className="grid grid-cols-2 gap-3">
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Batch Name *</label>
+                  <input type="text" value={addShipForm.batchName}
+                   onChange={function(e){setAddShipForm(Object.assign({}, addShipForm, {batchName: e.target.value}));}}
+                   placeholder="e.g. 427-Slemani"
+                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   </div>
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Assign to Employee *</label>
+                  <select value={addShipForm.employeeId}
+                   onChange={function(e){setAddShipForm(Object.assign({}, addShipForm, {employeeId: e.target.value}));}}
+                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <option value="">Select employee…</option>
+                  {[...visEmp].filter(function(e){return !e.isAdmin;}).sort(function(a,b){return (a.firstName+a.lastName).localeCompare(b.firstName+b.lastName);}).map(function(e){return <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.employeeId})</option>;})}
+                  </select>
+                   </div>
+                  </div>
+
+                  {/* Shipment + To Office */}
+                  <div className="grid grid-cols-2 gap-3">
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Shipment Code *</label>
+                  <input type="text" value={addShipForm.shipmentCode}
+                   onChange={function(e){setAddShipForm(Object.assign({}, addShipForm, {shipmentCode: e.target.value}));}}
+                   placeholder="e.g. XL99"
+                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-semibold" />
+                   </div>
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">To Office</label>
+                  <input type="text" value={addShipForm.toOffice}
+                   onChange={function(e){setAddShipForm(Object.assign({}, addShipForm, {toOffice: e.target.value}));}}
+                   placeholder="e.g. Slemani"
+                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   </div>
+                  </div>
+
+                  {/* Receiver */}
+                  <div className="grid grid-cols-2 gap-3">
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Receiver Name</label>
+                  <input type="text" value={addShipForm.receiverName}
+                   onChange={function(e){setAddShipForm(Object.assign({}, addShipForm, {receiverName: e.target.value}));}}
+                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   </div>
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Receiver Mobile</label>
+                  <input type="text" value={addShipForm.receiverMobile}
+                   onChange={function(e){setAddShipForm(Object.assign({}, addShipForm, {receiverMobile: e.target.value}));}}
+                   placeholder="07XXXXXXXXX"
+                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   </div>
+                  </div>
+
+                  {/* Amounts */}
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-2">Amounts</label>
+                   <div className="grid grid-cols-4 gap-3">
+                  <div>
+                   <label className="text-xs text-gray-400">GBP</label>
+                   <input type="number" min="0" step="0.01" value={addShipForm.amountGBP}
+                  onChange={function(e){setAddShipForm(Object.assign({}, addShipForm, {amountGBP: e.target.value}));}}
+                  placeholder="0.00"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                   <label className="text-xs text-gray-400">USD</label>
+                   <input type="number" min="0" step="0.01" value={addShipForm.amountUSD}
+                  onChange={function(e){setAddShipForm(Object.assign({}, addShipForm, {amountUSD: e.target.value}));}}
+                  placeholder="0.00"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                   <label className="text-xs text-gray-400">IQD</label>
+                   <input type="number" min="0" step="1" value={addShipForm.amountIQD}
+                  onChange={function(e){setAddShipForm(Object.assign({}, addShipForm, {amountIQD: e.target.value}));}}
+                  placeholder="0"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                   <label className="text-xs text-gray-400">EUR</label>
+                   <input type="number" min="0" step="0.01" value={addShipForm.amountEUR}
+                  onChange={function(e){setAddShipForm(Object.assign({}, addShipForm, {amountEUR: e.target.value}));}}
+                  placeholder="0.00"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                   </div>
+                  </div>
+
+                  {/* Notes */}
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Notes (optional)</label>
+                   <input type="text" value={addShipForm.notes}
+                  onChange={function(e){setAddShipForm(Object.assign({}, addShipForm, {notes: e.target.value}));}}
+                  placeholder="Any additional info"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex justify-end gap-3 pt-2">
+                   <button type="button" onClick={function(){setShowAddShipment(false);}} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 text-sm">Cancel</button>
+                   <button type="button" onClick={submitAddShipment} disabled={addShipSaving}
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white rounded-lg font-bold text-sm flex items-center gap-2">
+                  {addShipSaving ? 'Saving…' : '✅ Add Shipment'}
+                   </button>
                   </div>
                    </div>
                   </div>
