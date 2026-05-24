@@ -2838,14 +2838,18 @@ import React, { useState, useEffect } from 'react';
             /* ── IraqPaySection — employee portal section with batch dropdown ─────── */
             const IraqPaySection = ({ myIraqPay, batches, sym, apiCall, API_ENDPOINTS, loadIraqPaymentsFromAPI }) => {
                 const [selectedBatch, setSelectedBatch] = useState(batches[0] || '');
-                const shown = selectedBatch ? myIraqPay.filter(function(p){return p.batchName === selectedBatch;}) : myIraqPay;
+                const [searchCode, setSearchCode] = useState('');
+                const batchFiltered = selectedBatch ? myIraqPay.filter(function(p){return p.batchName === selectedBatch;}) : myIraqPay;
+                const shown = searchCode.trim()
+                  ? batchFiltered.filter(function(p){ return p.shipmentCode.toLowerCase().includes(searchCode.trim().toLowerCase()); })
+                  : batchFiltered;
                 return (
                   <div className="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
                   <h3 className="text-sm font-bold text-blue-800 mb-3 flex items-center gap-2"><span className="text-base">🇮🇶</span>Pay in Iraq — Pending Collections</h3>
                   {batches.length > 1 && (
-                   <div className="mb-4">
+                   <div className="mb-3">
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Select Batch</label>
-                  <select value={selectedBatch} onChange={function(e){setSelectedBatch(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                  <select value={selectedBatch} onChange={function(e){setSelectedBatch(e.target.value); setSearchCode('');}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
                    <option value="">All Batches ({myIraqPay.length} shipments)</option>
                    {batches.map(function(b){
                   const count = myIraqPay.filter(function(p){return p.batchName===b;}).length;
@@ -2854,7 +2858,17 @@ import React, { useState, useEffect } from 'react';
                   </select>
                    </div>
                   )}
-                  <p className="text-xs text-gray-500 mb-3">{shown.length} shipment{shown.length!==1?'s':''} pending</p>
+                  <div className="mb-3 relative">
+                  <input
+                   type="text"
+                   value={searchCode}
+                   onChange={function(e){setSearchCode(e.target.value);}}
+                   placeholder="Search shipment code (e.g. XL13)..."
+                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white pr-8"
+                  />
+                  {searchCode && <button onClick={function(){setSearchCode('');}} className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 text-sm">✕</button>}
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">{shown.length} of {batchFiltered.length} shipment{batchFiltered.length!==1?'s':''}</p>
                   <div className="space-y-3">
                    {shown.map(function(p){
                   return <IraqPayCard key={p.id} p={p} apiCall={apiCall} API_ENDPOINTS={API_ENDPOINTS} loadIraqPaymentsFromAPI={loadIraqPaymentsFromAPI} sym={sym} />;
@@ -2914,12 +2928,19 @@ import React, { useState, useEffect } from 'react';
                    {p.amountIQD>0 && <div className="bg-gray-50 rounded-lg px-3 py-2"><p className="text-xs text-gray-400">IQD</p><p className="font-bold text-sm">{p.amountIQD.toLocaleString()}</p></div>}
                    {p.amountEUR>0 && <div className="bg-gray-50 rounded-lg px-3 py-2"><p className="text-xs text-gray-400">EUR</p><p className="font-bold text-sm">€{p.amountEUR.toFixed(2)}</p></div>}
                   </div>
-                  <p className="text-xs font-semibold text-gray-500 mb-2">Enter collected amount:</p>
+                  <p className="text-xs font-semibold text-gray-500 mb-2">
+                  {p.status === 'partial' ? '⚠️ Partially collected — update amounts:' : 'Enter collected amount:'}
+                  </p>
+                  {p.status === 'partial' && (
+                   <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 mb-2 text-xs text-yellow-800">
+                  Already collected: {p.collectedGBP>0?'£'+p.collectedGBP.toFixed(2)+' ':''}{p.collectedUSD>0?'$'+p.collectedUSD.toFixed(2)+' ':''}{p.collectedIQD>0?p.collectedIQD.toLocaleString()+' IQD ':''}{p.collectedEUR>0?'€'+p.collectedEUR.toFixed(2):''}
+                   </div>
+                  )}
                   <div className="grid grid-cols-2 gap-2 mb-3">
-                   {p.amountGBP>0 && <div><label className="text-xs text-gray-400">GBP collected</label><input type="number" ref={collGBP} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
-                   {p.amountUSD>0 && <div><label className="text-xs text-gray-400">USD collected</label><input type="number" ref={collUSD} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
-                   {p.amountIQD>0 && <div><label className="text-xs text-gray-400">IQD collected</label><input type="number" ref={collIQD} defaultValue="" placeholder="0" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
-                   {p.amountEUR>0 && <div><label className="text-xs text-gray-400">EUR collected</label><input type="number" ref={collEUR} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
+                   {p.amountGBP>0 && <div><label className="text-xs text-gray-400">GBP collected</label><input type="number" ref={collGBP} defaultValue={p.collectedGBP||''} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
+                   {p.amountUSD>0 && <div><label className="text-xs text-gray-400">USD collected</label><input type="number" ref={collUSD} defaultValue={p.collectedUSD||''} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
+                   {p.amountIQD>0 && <div><label className="text-xs text-gray-400">IQD collected</label><input type="number" ref={collIQD} defaultValue={p.collectedIQD||''} placeholder="0" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
+                   {p.amountEUR>0 && <div><label className="text-xs text-gray-400">EUR collected</label><input type="number" ref={collEUR} defaultValue={p.collectedEUR||''} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm mt-0.5" /></div>}
                   </div>
                   <button onClick={saveCollection} disabled={saving} className="w-full py-2 bg-blue-700 text-white rounded-lg font-semibold text-sm hover:bg-blue-800 disabled:opacity-50">
                    {saving ? 'Saving...' : 'Mark Collected'}
