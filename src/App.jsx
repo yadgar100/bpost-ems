@@ -2901,23 +2901,42 @@ import React, { useState, useEffect } from 'react';
                    try {
                   const wb = window.XLSX.read(ev.target.result, { type: 'binary' });
                   const ws = wb.Sheets[wb.SheetNames[0]];
-                  const rows = window.XLSX.utils.sheet_to_json(ws, { defval: '' });
-                  // Map columns flexibly
-                  const mapped = rows.map(function(r, i) {
-                   const keys = Object.keys(r).map(function(k){return k.toLowerCase().replace(/[^a-z0-9]/g,'');});
-                   const get = function(pat) {
-                    const k = Object.keys(r).find(function(k){return k.toLowerCase().replace(/[^a-z0-9]/g,'').includes(pat);});
-                    return k ? r[k] : '';
-                   };
+                  // Get raw array of arrays to find header row
+                  const raw = window.XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+                  // Find the row that looks like the data header (contains shipment code + currency columns)
+                  let headerRowIdx = 0;
+                  for (let i = 0; i < Math.min(raw.length, 20); i++) {
+                   const rowStr = raw[i].join(' ').toLowerCase();
+                   if (rowStr.includes('shipment') || rowStr.includes('code') || rowStr.includes('iqd') || rowStr.includes('usd')) {
+                    headerRowIdx = i;
+                    break;
+                   }
+                  }
+                  const headerRow = raw[headerRowIdx].map(function(h){ return String(h||'').toLowerCase().replace(/[^a-z0-9]/g,''); });
+                  const getColIdx = function(pat) {
+                   return headerRow.findIndex(function(h){ return h.includes(pat); });
+                  };
+                  const shipIdx  = getColIdx('shipment') >= 0 ? getColIdx('shipment') : getColIdx('code') >= 0 ? getColIdx('code') : 0;
+                  const iqdIdx   = getColIdx('iqd');
+                  const usdIdx   = getColIdx('usd') >= 0 ? getColIdx('usd') : getColIdx('dollar');
+                  const gbpIdx   = getColIdx('gbp') >= 0 ? getColIdx('gbp') : getColIdx('pound');
+                  const eurIdx   = getColIdx('eur') >= 0 ? getColIdx('eur') : getColIdx('euro');
+                  const noteIdx  = getColIdx('note') >= 0 ? getColIdx('note') : getColIdx('desc');
+                  const pn = function(v){ return parseFloat(String(v||'').replace(/,/g,'').replace(/[^0-9.]/g,'')) || 0; };
+                  const mapped = raw.slice(headerRowIdx + 1).map(function(row) {
+                   const code = String(row[shipIdx]||'').trim();
                    return {
-                    shipmentCode: get('shipment') || get('code') || get('ref') || get('order') || String(r[Object.keys(r)[0]] || ''),
-                    amountIQD: parseFloat(String(get('iqd')).replace(/,/g,'')) || 0,
-                    amountUSD: parseFloat(String(get('usd') || get('dollar')).replace(/,/g,'')) || 0,
-                    amountGBP: parseFloat(String(get('gbp') || get('pound')).replace(/,/g,'')) || 0,
-                    amountEUR: parseFloat(String(get('eur') || get('euro')).replace(/,/g,'')) || 0,
-                    notes: get('note') || get('desc') || '',
+                    shipmentCode: code,
+                    amountIQD: iqdIdx >= 0 ? pn(row[iqdIdx]) : 0,
+                    amountUSD: usdIdx >= 0 ? pn(row[usdIdx]) : 0,
+                    amountGBP: gbpIdx >= 0 ? pn(row[gbpIdx]) : 0,
+                    amountEUR: eurIdx >= 0 ? pn(row[eurIdx]) : 0,
+                    notes: noteIdx >= 0 ? String(row[noteIdx]||'') : '',
                    };
-                  }).filter(function(r){ return r.shipmentCode; });
+                  }).filter(function(r){
+                   // Only keep rows with a real shipment code (skip empty, totals, headers)
+                   return r.shipmentCode && r.shipmentCode.length > 1 && !/^(total|sum|grand|note|shipment|code)/i.test(r.shipmentCode);
+                  });
                   setPreviewRows(mapped);
                    } catch(err) { alert('Could not parse file: ' + err.message); }
                   };
