@@ -3100,6 +3100,10 @@ import React, { useState, useEffect } from 'react';
                 const [moveBatchDone, setMoveBatchDone] = useState(false);
                 const [moveBatchAssignEmp, setMoveBatchAssignEmp] = useState('');
                 const [moveBatchAssignedEmpName, setMoveBatchAssignedEmpName] = useState('');
+                const moveTotIQD = moveBatchRecords.reduce(function(s,p){return s+(p.amountIQD||0);},0);
+                const moveTotUSD = moveBatchRecords.reduce(function(s,p){return s+(p.amountUSD||0);},0);
+                const moveTotGBP = moveBatchRecords.reduce(function(s,p){return s+(p.amountGBP||0);},0);
+                const moveTotEUR = moveBatchRecords.reduce(function(s,p){return s+(p.amountEUR||0);},0);
 
                 const openMoveBatchModal = async function() {
                   if (!filterBatch) { alert('Please select a batch first'); return; }
@@ -3656,22 +3660,16 @@ import React, { useState, useEffect } from 'react';
                   </tr>
                    );
                   })}
-                  {moveBatchRecords.length > 0 && (function(){
-                   const tIQD=moveBatchRecords.reduce(function(s,p){return s+(p.amountIQD||0);},0);
-                   const tUSD=moveBatchRecords.reduce(function(s,p){return s+(p.amountUSD||0);},0);
-                   const tGBP=moveBatchRecords.reduce(function(s,p){return s+(p.amountGBP||0);},0);
-                   const tEUR=moveBatchRecords.reduce(function(s,p){return s+(p.amountEUR||0);},0);
-                   return (
+                  {moveBatchRecords.length > 0 && (
                   <tr className="bg-amber-50 font-bold border-t-2 border-amber-200 text-xs">
                    <td className="px-3 py-2 text-amber-700" colSpan="6">TOTAL ({moveBatchRecords.length} records)</td>
-                   <td className="px-3 py-2 text-amber-700">{tIQD>0?tIQD.toLocaleString():'—'}</td>
-                   <td className="px-3 py-2 text-amber-700">{tUSD>0?'$'+tUSD.toFixed(2):'—'}</td>
-                   <td className="px-3 py-2 text-amber-700">{tGBP>0?'£'+tGBP.toFixed(2):'—'}</td>
-                   <td className="px-3 py-2 text-amber-700">{tEUR>0?'€'+tEUR.toFixed(2):'—'}</td>
+                   <td className="px-3 py-2 text-amber-700">{moveTotIQD>0?moveTotIQD.toLocaleString():'—'}</td>
+                   <td className="px-3 py-2 text-amber-700">{moveTotUSD>0?'$'+moveTotUSD.toFixed(2):'—'}</td>
+                   <td className="px-3 py-2 text-amber-700">{moveTotGBP>0?'£'+moveTotGBP.toFixed(2):'—'}</td>
+                   <td className="px-3 py-2 text-amber-700">{moveTotEUR>0?'€'+moveTotEUR.toFixed(2):'—'}</td>
                    <td></td>
                   </tr>
-                   );
-                  })()}
+                  )}
                    </tbody>
                   </table>
                    </div>
