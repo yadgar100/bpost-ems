@@ -715,13 +715,14 @@ import React, { useState, useEffect } from 'react';
                 try {
                   const data = await apiCall(API_ENDPOINTS.iraqPay);
                   if (data.success && data.payments) setIraqPayments(data.payments.map(function(p){return{
-                   id:p.Id, batchName:p.BatchName, shipmentCode:p.ShipmentCode,
+                   id:p.Id, batchName:p.BatchName, oldBatchName:p.OldBatchName||'', shipmentCode:p.ShipmentCode,
                    employeeId:p.EmployeeId, employeeName:(p.FirstName?p.FirstName+' '+p.LastName:''),
                    employeeCode:p.EmployeeCode,
                    amountIQD:parseFloat(p.AmountIQD)||0, amountUSD:parseFloat(p.AmountUSD)||0,
                    amountGBP:parseFloat(p.AmountGBP)||0, amountEUR:parseFloat(p.AmountEUR)||0,
                    collectedIQD:parseFloat(p.CollectedIQD)||0, collectedUSD:parseFloat(p.CollectedUSD)||0,
                    collectedGBP:parseFloat(p.CollectedGBP)||0, collectedEUR:parseFloat(p.CollectedEUR)||0,
+                   receiverContact:p.ReceiverContact||'',
                    status:p.Status, notes:p.Notes, createdAt:p.CreatedAt, collectedAt:p.CollectedAt
                   };}));
                 } catch(e) { console.error('loadIraqPay error:',e); }
@@ -3086,6 +3087,116 @@ import React, { useState, useEffect } from 'react';
                 const filterFrom = persistedState ? persistedState.filterFrom : ''; const setFilterFrom = mk('filterFrom');
                 const filterTo = persistedState ? persistedState.filterTo : ''; const setFilterTo = mk('filterTo');
                 const [deletingBatch, setDeletingBatch] = useState(false);
+                const [showMoveBatch, setShowMoveBatch] = useState(false);
+                const [moveBatchName, setMoveBatchName] = useState('');
+                const [moveBatchRecords, setMoveBatchRecords] = useState([]);
+                const [moveBatchLoading, setMoveBatchLoading] = useState(false);
+                const [moveBatchConfirming, setMoveBatchConfirming] = useState(false);
+
+                const openMoveBatchModal = async function() {
+                  if (!filterBatch) { alert('Please select a batch first'); return; }
+                  setMoveBatchName('');
+                  setMoveBatchLoading(true);
+                  setShowMoveBatch(true);
+                  // Pending records matching current employee + batch filters
+                  const pending = iraqPayments.filter(function(p) {
+                   if (p.batchName !== filterBatch) return false;
+                   if (filterEmp && p.employeeId !== parseInt(filterEmp)) return false;
+                   return p.status === 'pending';
+                  });
+                  setMoveBatchRecords(pending);
+                  setMoveBatchLoading(false);
+                };
+
+                const confirmMoveBatch = async function() {
+                  if (!moveBatchName.trim()) { alert('Please enter a new batch name.'); return; }
+                  if (!moveBatchRecords.length) { alert('No pending records to move.'); return; }
+                  setMoveBatchConfirming(true);
+                  try {
+                   const body = { fromBatch: filterBatch, newBatchName: moveBatchName.trim() };
+                   if (filterEmp) body.employeeId = parseInt(filterEmp);
+                   const data = await apiCall(API_ENDPOINTS.iraqPay + '/move-batch', { method:'PUT', body: JSON.stringify(body) });
+                   alert('✅ Moved ' + (data.moved||moveBatchRecords.length) + ' records to batch "' + moveBatchName.trim() + '"');
+                   setShowMoveBatch(false);
+                   await loadIraqPaymentsFromAPI();
+                  } catch(e) { alert('Move failed: ' + e.message); }
+                  setMoveBatchConfirming(false);
+                };
+
+                const exportMoveBatchExcel = function() {
+                  const wb = window.XLSX.utils.book_new();
+                  const headerRows = [
+                   ['Pay in Iraq — Move Batch Report'],
+                   ['From Batch:', filterBatch, '', 'New Batch:', moveBatchName || '(not confirmed yet)'],
+                   ['Employee:', filterEmp ? (iraqPayments.find(function(p){return p.employeeId===parseInt(filterEmp);})||{}).employeeName||'' : 'All'],
+                   ['Records to move:', moveBatchRecords.length, '', 'Generated:', new Date().toLocaleString()],
+                   [],
+                   ['Employee','EMP Code','Old Batch','Shipment Code','New Batch','To Office','Contact','IQD','USD','GBP','EUR','Status'],
+                  ];
+                  const dataRows = moveBatchRecords.map(function(p){
+                   return [
+                    p.employeeName||'', p.employeeCode||'', p.batchName||'', p.shipmentCode||'',
+                    moveBatchName||'(pending)', (p.notes||'').replace('Office:','').trim().split('|')[0].trim(),
+                    p.receiverContact||'',
+                    p.amountIQD||0, p.amountUSD||0, p.amountGBP||0, p.amountEUR||0, p.status||''
+                   ];
+                  });
+                  const ws = window.XLSX.utils.aoa_to_sheet([...headerRows, ...dataRows]);
+                  ws['!cols'] = [{wch:20},{wch:10},{wch:18},{wch:14},{wch:18},{wch:25},{wch:16},{wch:12},{wch:12},{wch:12},{wch:12},{wch:12}];
+                  window.XLSX.utils.book_append_sheet(wb, ws, 'Move Batch');
+                  window.XLSX.writeFile(wb, 'MoveBatch_' + (moveBatchName||filterBatch) + '_' + new Date().toISOString().slice(0,10) + '.xlsx');
+                };
+
+                const printMoveBatchPDF = function() {
+                  const fmt = function(v, sym){ return v > 0 ? sym + (sym==='IQD ' ? Number(v).toLocaleString() : Number(v).toFixed(2)) : '—'; };
+                  const rows = moveBatchRecords.map(function(p){
+                   const off = (p.notes||'').replace('Office:','').trim().split('|')[0].trim();
+                   return '<tr style="border-bottom:1px solid #e5e7eb">'\
+                    +'<td style="padding:5px 8px;font-size:11px">'+p.employeeName+'<br><span style="color:#9ca3af;font-size:10px">'+p.employeeCode+'</span></td>'\
+                    +'<td style="padding:5px 8px;font-size:11px;color:#d97706;font-weight:600">'+p.batchName+'</td>'\
+                    +'<td style="padding:5px 8px;font-size:12px;font-weight:700">'+p.shipmentCode+'</td>'\
+                    +'<td style="padding:5px 8px;font-size:11px;color:#16a34a;font-weight:600">'+(moveBatchName||'—')+'</td>'\
+                    +'<td style="padding:5px 8px;font-size:11px">'+off+'</td>'\
+                    +'<td style="padding:5px 8px;font-size:11px">'+( p.receiverContact||'—')+'</td>'\
+                    +'<td style="padding:5px 8px;font-size:11px;text-align:right">'+fmt(p.amountIQD,'IQD ')+'</td>'\
+                    +'<td style="padding:5px 8px;font-size:11px;text-align:right">'+fmt(p.amountUSD,'$')+'</td>'\
+                    +'<td style="padding:5px 8px;font-size:11px;text-align:right">'+fmt(p.amountGBP,'£')+'</td>'\
+                    +'<td style="padding:5px 8px;font-size:11px;text-align:right">'+fmt(p.amountEUR,'€')+'</td>'\
+                    +'<td style="padding:5px 8px;font-size:11px;text-align:center"><span style="padding:2px 8px;border-radius:9999px;background:#fef3c7;color:#92400e;font-size:10px">'+p.status+'</span></td>'\
+                    +'</tr>';
+                  }).join('');
+                  const totIQD = moveBatchRecords.reduce(function(s,p){return s+(p.amountIQD||0);},0);
+                  const totUSD = moveBatchRecords.reduce(function(s,p){return s+(p.amountUSD||0);},0);
+                  const totGBP = moveBatchRecords.reduce(function(s,p){return s+(p.amountGBP||0);},0);
+                  const totEUR = moveBatchRecords.reduce(function(s,p){return s+(p.amountEUR||0);},0);
+                  const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Move Batch Report</title>'\
+                   +'<style>body{font-family:Arial,sans-serif;padding:24px;color:#1f2937}'\
+                   +'table{width:100%;border-collapse:collapse}'\
+                   +'th{background:#1e3a8a;color:#fff;padding:7px 8px;text-align:left;font-size:11px}'\
+                   +'tr:nth-child(even) td{background:#f8faff}</style></head><body>'\
+                   +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">'\
+                   +'<span style="font-size:28px">🇮🇶</span>'\
+                   +'<h1 style="margin:0;font-size:20px;color:#1e3a8a">Pay in Iraq — Move Batch Report</h1></div>'\
+                   +'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">'\
+                   +'<div><b>From Batch:</b> <span style="color:#d97706">'+filterBatch+'</span></div>'\
+                   +'<div><b>New Batch:</b> <span style="color:#16a34a;font-weight:700">'+(moveBatchName||'—')+'</span></div>'\
+                   +'<div><b>Records:</b> '+moveBatchRecords.length+'</div>'\
+                   +'<div><b>Generated:</b> '+new Date().toLocaleString()+'</div>'\
+                   +(totGBP>0?'<div><b>Total GBP:</b> £'+totGBP.toFixed(2)+'</div>':'')\
+                   +(totUSD>0?'<div><b>Total USD:</b> $'+totUSD.toFixed(2)+'</div>':'')\
+                   +(totIQD>0?'<div><b>Total IQD:</b> '+totIQD.toLocaleString()+'</div>':'')\
+                   +(totEUR>0?'<div><b>Total EUR:</b> €'+totEUR.toFixed(2)+'</div>':'')\
+                   +'</div>'\
+                   +'<table><thead><tr>'\
+                   +'<th>Employee</th><th>Old Batch</th><th>Shipment Code</th><th>New Batch</th>'\
+                   +'<th>To Office</th><th>Contact</th><th>IQD</th><th>USD</th><th>GBP</th><th>EUR</th><th>Status</th>'\
+                   +'</tr></thead><tbody>'+rows+'</tbody></table>'\
+                   +'</body></html>';
+                  const w = window.open('','_blank');
+                  w.document.write(html);
+                  w.document.close();
+                  setTimeout(function(){ w.print(); }, 600);
+                };
 
                 const handleDeleteBatch = async function() {
                   const batchToDelete = filterBatch;
@@ -3278,6 +3389,11 @@ import React, { useState, useEffect } from 'react';
                    {deletingBatch ? 'Deleting...' : '🗑 Delete Batch'}
                   </button>
                    )}
+                   {filterBatch && (
+                  <button onClick={openMoveBatchModal} className="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold hover:bg-amber-600 flex items-center gap-1">
+                   📦 Move Pending →
+                  </button>
+                   )}
                    <span className="text-sm text-gray-500 self-center">{filtered.length} record{filtered.length!==1?'s':''}</span>
                   </div>
                   {/* Date range row */}
@@ -3394,6 +3510,120 @@ import React, { useState, useEffect } from 'react';
                   })()}
                   </tbody>
                    </table>
+                  </div>
+                   </div>
+                  )}
+
+                  {/* ── Move Batch Modal ── */}
+                  {showMoveBatch && (
+                   <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-screen overflow-y-auto">
+                   {/* Header */}
+                   <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-t-2xl px-6 py-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                   <span className="text-2xl">📦</span>
+                   <h3 className="text-lg font-bold text-white">Move Pending to New Batch</h3>
+                  </div>
+                  <button onClick={function(){setShowMoveBatch(false);}} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-1.5 rounded-lg font-semibold text-sm flex items-center gap-1"><X className="w-3 h-3"/>Close</button>
+                   </div>
+
+                   <div className="p-6">
+                  {/* From → To inputs + export buttons */}
+                  <div className="flex flex-wrap gap-4 items-end mb-5">
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">From Batch</label>
+                  <input readOnly value={filterBatch} className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 font-semibold text-amber-700 min-w-40" />
+                   </div>
+                   <div className="text-2xl text-amber-500 pb-1">→</div>
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">New Batch Name *</label>
+                  <input
+                   type="text"
+                   value={moveBatchName}
+                   onChange={function(e){setMoveBatchName(e.target.value);}}
+                   placeholder="e.g. 428-Slemani"
+                   className="border-2 border-amber-400 focus:border-amber-600 rounded-lg px-3 py-2 text-sm font-semibold min-w-52 outline-none"
+                  />
+                   </div>
+                   <div className="flex gap-2 ml-auto">
+                  <button onClick={exportMoveBatchExcel} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 flex items-center gap-1">📊 Excel</button>
+                  <button onClick={printMoveBatchPDF}    className="px-4 py-2 bg-red-600   text-white rounded-lg text-sm font-semibold hover:bg-red-700   flex items-center gap-1">🖨 PDF</button>
+                   </div>
+                  </div>
+
+                  {/* Summary */}
+                  <p className="text-sm text-gray-500 mb-3">
+                   <span className="font-bold text-gray-800">{moveBatchRecords.length}</span> pending record{moveBatchRecords.length!==1?'s':''} will be moved.
+                  </p>
+
+                  {/* Preview table */}
+                  {moveBatchLoading ? (
+                   <p className="text-center text-gray-400 py-8">Loading records…</p>
+                  ) : (
+                   <div className="overflow-x-auto border border-gray-200 rounded-xl">
+                  <table className="w-full text-sm border-collapse">
+                   <thead>
+                  <tr className="bg-blue-900 text-white">
+                   {['Employee','Old Batch','Shipment Code','New Batch','To Office','Contact','IQD','USD','GBP','EUR','Status'].map(function(h){
+                  return <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold whitespace-nowrap">{h}</th>;
+                   })}
+                  </tr>
+                   </thead>
+                   <tbody className="divide-y divide-gray-100">
+                  {moveBatchRecords.length === 0 && (
+                   <tr><td colSpan="11" className="text-center py-8 text-gray-400">No pending records found for this filter.</td></tr>
+                  )}
+                  {moveBatchRecords.map(function(p, i){
+                   const off = (p.notes||'').replace('Office:','').trim().split('|')[0].trim() || '—';
+                   return (
+                  <tr key={p.id} className={i%2===0?'bg-white':'bg-blue-50/30'}>
+                   <td className="px-3 py-2 text-xs font-semibold text-gray-800">{p.employeeName}<br/><span className="text-gray-400 font-normal">{p.employeeCode}</span></td>
+                   <td className="px-3 py-2 text-xs font-semibold text-amber-600">{p.batchName}</td>
+                   <td className="px-3 py-2 text-sm font-bold text-gray-900">{p.shipmentCode}</td>
+                   <td className="px-3 py-2 text-xs font-semibold text-green-600">{moveBatchName || <span className="text-gray-300 font-normal">not set</span>}</td>
+                   <td className="px-3 py-2 text-xs text-gray-600">{off}</td>
+                   <td className="px-3 py-2 text-xs text-gray-600">{p.receiverContact||'—'}</td>
+                   <td className="px-3 py-2 text-xs">{p.amountIQD>0?<span className="font-semibold">{p.amountIQD.toLocaleString()}</span>:'—'}</td>
+                   <td className="px-3 py-2 text-xs">{p.amountUSD>0?<span className="font-semibold">${p.amountUSD.toFixed(2)}</span>:'—'}</td>
+                   <td className="px-3 py-2 text-xs">{p.amountGBP>0?<span className="font-semibold">£{p.amountGBP.toFixed(2)}</span>:'—'}</td>
+                   <td className="px-3 py-2 text-xs">{p.amountEUR>0?<span className="font-semibold">€{p.amountEUR.toFixed(2)}</span>:'—'}</td>
+                   <td className="px-3 py-2"><span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">{p.status}</span></td>
+                  </tr>
+                   );
+                  })}
+                  {moveBatchRecords.length > 0 && (function(){
+                   const tIQD=moveBatchRecords.reduce(function(s,p){return s+(p.amountIQD||0);},0);
+                   const tUSD=moveBatchRecords.reduce(function(s,p){return s+(p.amountUSD||0);},0);
+                   const tGBP=moveBatchRecords.reduce(function(s,p){return s+(p.amountGBP||0);},0);
+                   const tEUR=moveBatchRecords.reduce(function(s,p){return s+(p.amountEUR||0);},0);
+                   return (
+                  <tr className="bg-amber-50 font-bold border-t-2 border-amber-200 text-xs">
+                   <td className="px-3 py-2 text-amber-700" colSpan="6">TOTAL ({moveBatchRecords.length} records)</td>
+                   <td className="px-3 py-2 text-amber-700">{tIQD>0?tIQD.toLocaleString():'—'}</td>
+                   <td className="px-3 py-2 text-amber-700">{tUSD>0?'$'+tUSD.toFixed(2):'—'}</td>
+                   <td className="px-3 py-2 text-amber-700">{tGBP>0?'£'+tGBP.toFixed(2):'—'}</td>
+                   <td className="px-3 py-2 text-amber-700">{tEUR>0?'€'+tEUR.toFixed(2):'—'}</td>
+                   <td></td>
+                  </tr>
+                   );
+                  })()}
+                   </tbody>
+                  </table>
+                   </div>
+                  )}
+
+                  {/* Confirm / Cancel */}
+                  <div className="flex justify-end gap-3 mt-5">
+                   <button onClick={function(){setShowMoveBatch(false);}} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 text-sm">Cancel</button>
+                   <button
+                  onClick={confirmMoveBatch}
+                  disabled={moveBatchConfirming || !moveBatchName.trim() || !moveBatchRecords.length}
+                  className={'px-6 py-2.5 rounded-lg font-bold text-white text-sm ' + (moveBatchName.trim() && moveBatchRecords.length ? 'bg-amber-500 hover:bg-amber-600 cursor-pointer' : 'bg-gray-300 cursor-not-allowed')}
+                   >
+                  {moveBatchConfirming ? 'Moving…' : '✅ Confirm Move (' + moveBatchRecords.length + ' records)'}
+                   </button>
+                  </div>
+                   </div>
                   </div>
                    </div>
                   )}
