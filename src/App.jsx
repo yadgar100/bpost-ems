@@ -552,7 +552,7 @@ import React, { useState, useEffect } from 'react';
             const [showAgentReport, setShowAgentReport] = useState(false);
             const [showIraqPay, setShowIraqPay] = useState(false);
             const [iraqPayments, setIraqPayments] = useState([]);
-            const [iraqPayState, setIraqPayState] = useState({ activeTab:'view', batchName:'', empId:'', filterEmp:'', filterStatus:'all', filterBatch:'', previewRows:[] });
+            const [iraqPayState, setIraqPayState] = useState({ activeTab:'view', batchName:'', empId:'', filterEmp:'', filterStatus:'all', filterBatch:'', searchCode:'', filterFrom:'', filterTo:'', previewRows:[] });
             const [agentReportState, setAgentReportState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], empFilter:'', branchFilter:'', countryFilter:'', reportData:null, showAddForm:false });
             const [showAgentCollectionForm, setShowAgentCollectionForm] = useState(false);
             const [showAccountCredit, setShowAccountCredit] = useState(false);
@@ -3080,6 +3080,9 @@ import React, { useState, useEffect } from 'react';
                 };
 
                 const filterBatch = persistedState ? persistedState.filterBatch : ''; const setFilterBatch = mk('filterBatch');
+                const searchCode = persistedState ? persistedState.searchCode : ''; const setSearchCode = mk('searchCode');
+                const filterFrom = persistedState ? persistedState.filterFrom : ''; const setFilterFrom = mk('filterFrom');
+                const filterTo = persistedState ? persistedState.filterTo : ''; const setFilterTo = mk('filterTo');
                 const [deletingBatch, setDeletingBatch] = useState(false);
 
                 const handleDeleteBatch = async function() {
@@ -3103,6 +3106,9 @@ import React, { useState, useEffect } from 'react';
                   if (filterEmp && p.employeeId !== parseInt(filterEmp)) return false;
                   if (filterStatus !== 'all' && p.status !== filterStatus) return false;
                   if (filterBatch && p.batchName !== filterBatch) return false;
+                  if (searchCode && !p.shipmentCode.toLowerCase().includes(searchCode.toLowerCase())) return false;
+                  if (filterFrom && p.createdAt && p.createdAt.slice(0,10) < filterFrom) return false;
+                  if (filterTo && p.createdAt && p.createdAt.slice(0,10) > filterTo) return false;
                   return true;
                 });
 
@@ -3131,6 +3137,13 @@ import React, { useState, useEffect } from 'react';
                   {/* ── View Payments Tab ── */}
                   {activeTab === 'view' && (
                    <div>
+                  {/* Global search bar */}
+                  <div className="flex gap-2 mb-3">
+                   <div className="relative flex-1">
+                  <input type="text" value={searchCode} onChange={function(e){setSearchCode(e.target.value);}} placeholder="🔍 Search shipment code (e.g. XL13, YF66)..." className="w-full border-2 border-blue-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+                  {searchCode && <button onClick={function(){setSearchCode('');}} className="absolute right-2 top-2 text-gray-400 hover:text-gray-600">✕</button>}
+                   </div>
+                  </div>
                   <div className="flex gap-3 mb-4 flex-wrap items-center">
                    <select value={filterEmp} onChange={function(e){setFilterEmp(e.target.value);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
                   <option value="">All Employees</option>
@@ -3157,6 +3170,29 @@ import React, { useState, useEffect } from 'react';
                   </button>
                    )}
                    <span className="text-sm text-gray-500 self-center">{filtered.length} record{filtered.length!==1?'s':''}</span>
+                  </div>
+                  {/* Date range row */}
+                  <div className="flex gap-3 mb-4 flex-wrap items-center">
+                   <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <label className="font-semibold text-xs">Uploaded From:</label>
+                  <input type="date" value={filterFrom} onChange={function(e){setFilterFrom(e.target.value);}} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                  <label className="font-semibold text-xs">To:</label>
+                  <input type="date" value={filterTo} onChange={function(e){setFilterTo(e.target.value);}} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                   </div>
+                   {(filterFrom || filterTo) && (
+                  <button onClick={function(){setFilterFrom('');setFilterTo('');}} className="text-xs text-blue-600 hover:underline">✕ Clear dates</button>
+                   )}
+                   {filterEmp && (filterFrom || filterTo) && (
+                  <div className="ml-auto text-sm font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5">
+                   Collected: {(() => {
+                  const c = filtered.reduce(function(s,p){return{
+                   iqd:s.iqd+(p.collectedIQD||0), usd:s.usd+(p.collectedUSD||0),
+                   gbp:s.gbp+(p.collectedGBP||0), eur:s.eur+(p.collectedEUR||0)
+                  };},{iqd:0,usd:0,gbp:0,eur:0});
+                  return [c.gbp>0?'£'+c.gbp.toFixed(2):'', c.usd>0?'$'+c.usd.toFixed(2):'', c.iqd>0?c.iqd.toLocaleString()+' IQD':'', c.eur>0?'€'+c.eur.toFixed(2):''].filter(Boolean).join(' · ') || '—';
+                   })()}
+                  </div>
+                   )}
                   </div>
 
                   <div className="overflow-x-auto">
