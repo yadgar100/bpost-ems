@@ -6848,14 +6848,17 @@ import React, { useState, useEffect } from 'react';
                    </div>
                    <button onClick={generateReport} className="bg-orange-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-orange-700 text-sm">Generate Report</button>
                    {reportData && <button onClick={exportCSV} className="bg-green-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-green-700 text-sm">Export CSV</button>}
-                   <button onClick={function(){setShowAddForm(!showAddForm);}} className="bg-indigo-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-indigo-700 text-sm flex items-center gap-2">
+                   <button type="button" onClick={function(){setShowAddForm(true);}} className="bg-indigo-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-indigo-700 text-sm flex items-center gap-2">
                   <span className="text-lg leading-none">+</span> Add Collection
                    </button>
                   </div>
 
                   {showAddForm && (
-                  <div className="mx-6 mb-4 bg-indigo-50 border border-indigo-200 rounded-xl p-5">
-                   <h3 className="text-sm font-bold text-indigo-800 mb-4">Manually Add Collection Record</h3>
+                  <div ref={function(el){ if(el) el.scrollIntoView({behavior:'smooth', block:'center'}); }} className="mx-6 mb-4 bg-indigo-50 border-2 border-indigo-300 rounded-xl p-5 shadow-lg">
+                   <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold text-indigo-800">📝 Manually Add Collection Record</h3>
+                  <button type="button" onClick={function(){setShowAddForm(false);}} className="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
+                   </div>
                    <div className="grid grid-cols-2 gap-3 mb-3">
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Employee *</label>
@@ -6905,8 +6908,8 @@ import React, { useState, useEffect } from 'react';
                   </div>
                    </div>
                    <div className="flex gap-2">
-                  <button onClick={handleAddCollection} disabled={addSaving} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">{addSaving?'Saving...':'Save Collection'}</button>
-                  <button onClick={function(){setShowAddForm(false);}} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200">Cancel</button>
+                  <button type="button" onClick={handleAddCollection} disabled={addSaving} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">{addSaving?'Saving...':'Save Collection'}</button>
+                  <button type="button" onClick={function(){setShowAddForm(false);}} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200">Cancel</button>
                    </div>
                   </div>
                   )}
