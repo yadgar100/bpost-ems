@@ -6738,15 +6738,20 @@ import React, { useState, useEffect } from 'react';
                   boxesQty: 0,
                   notes: addNotesRef.current ? addNotesRef.current.value : ''
                    };
-                   await apiCall(API_ENDPOINTS.agentCollections, { method: 'POST', body: JSON.stringify(payload) });
+                   const resp = await apiCall(API_ENDPOINTS.agentCollections, { method: 'POST', body: JSON.stringify(payload) });
+                   if (!resp || (resp.success === false)) throw new Error((resp && resp.error) || 'Server rejected the record');
                    if (onRefresh) await onRefresh();
+                   const savedFor = visEmp.find(function(e){return e.id===parseInt(addEmpId);});
+                   const empName = savedFor ? (savedFor.firstName + ' ' + savedFor.lastName) : 'employee';
                    // Reset controlled fields
                    setAddEmpId(''); setAddAgentId(''); setAddDate(new Date().toISOString().split('T')[0]);
                    // Clear refs
                    [addFromRef, addToRef, addCollectedRef, addPaidRef, addBankRef, addNotesRef].forEach(function(r){ if(r.current) r.current.value = ''; });
                    setShowAddForm(false);
-                   generateReport();
-                  } catch(e) { alert('Failed to add: ' + e.message); }
+                   // Regenerate report so the new record appears immediately
+                   await generateReport();
+                   alert('✅ Collection saved for ' + empName + ' on ' + addDate + '. The report has been refreshed.');
+                  } catch(e) { alert('❌ Failed to save collection: ' + e.message); }
                   setAddSaving(false);
                 };
 
