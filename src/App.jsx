@@ -6674,7 +6674,9 @@ import React, { useState, useEffect } from 'react';
                 );
             };
 
-            const AgentReport = ({ onClose, visibleEmployees: visEmp, onRefresh, persistedState, onStateChange }) => {
+            const AgentReport = ({ onClose, visibleEmployees: visEmp, onRefresh, persistedState, onStateChange, agents: agentsProp, onRefreshAgents }) => {
+                const agentsLocal = agentsProp || [];
+                React.useEffect(function(){ if (onRefreshAgents) onRefreshAgents(); }, []);
                 const today = new Date().toISOString().split('T')[0];
                 const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
                 const adjAmountRef = React.useRef(null);
@@ -6743,6 +6745,7 @@ import React, { useState, useEffect } from 'react';
 
                    // Refresh global state for other parts of the app
                    if (onRefresh) await onRefresh();
+                   if (onRefreshAgents) await onRefreshAgents();
 
                    // Fetch the freshest list DIRECTLY and pass to generateReport — avoids stale closure of agentCollections
                    const refreshed = await apiCall(API_ENDPOINTS.agentCollections);
@@ -6905,7 +6908,7 @@ import React, { useState, useEffect } from 'react';
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Agent *</label>
                    <select value={addAgentId} onChange={function(e){setAddAgentId(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                   <option value="">Select agent...</option>
-                  {agents.map(function(a){return <option key={a.Id||a.id} value={a.Id||a.id}>{a.AgentCode||a.agentCode} — {a.City||a.city}</option>;})}
+                  {agentsLocal.map(function(a){return <option key={a.Id||a.id} value={a.Id||a.id}>{a.AgentCode||a.agentCode} — {a.City||a.city}</option>;})}
                    </select>
                   </div>
                    </div>
@@ -9875,7 +9878,7 @@ import React, { useState, useEffect } from 'react';
                    )}
 
                    {showAgentReport && (
-                  <AgentReport onClose={() => setShowAgentReport(false)} visibleEmployees={visibleEmployees} onRefresh={loadAgentCollectionsFromAPI} persistedState={agentReportState} onStateChange={setAgentReportState} />
+                  <AgentReport onClose={() => setShowAgentReport(false)} visibleEmployees={visibleEmployees} onRefresh={loadAgentCollectionsFromAPI} persistedState={agentReportState} onStateChange={setAgentReportState} agents={agents} onRefreshAgents={loadAgentsFromAPI} />
                    )}
 
                    <div className="bg-indigo-600 text-white p-6 shadow-lg">
