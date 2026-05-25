@@ -6676,7 +6676,6 @@ import React, { useState, useEffect } from 'react';
 
             const AgentReport = ({ onClose, visibleEmployees: visEmp, onRefresh, persistedState, onStateChange, agents: agentsProp, onRefreshAgents }) => {
                 const agentsLocal = agentsProp || [];
-                React.useEffect(function(){ if (onRefreshAgents) onRefreshAgents(); }, []);
                 const today = new Date().toISOString().split('T')[0];
                 const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
                 const adjAmountRef = React.useRef(null);
@@ -9877,7 +9876,8 @@ import React, { useState, useEffect } from 'react';
                   />
                    )}
 
-                   {showAgentReport && (
+                   {showAgentReport && (() => { loadAgentsFromAPI(); return null; })()}
+                  {showAgentReport && (
                   <AgentReport onClose={() => setShowAgentReport(false)} visibleEmployees={visibleEmployees} onRefresh={loadAgentCollectionsFromAPI} persistedState={agentReportState} onStateChange={setAgentReportState} agents={agents} onRefreshAgents={loadAgentsFromAPI} />
                    )}
 
