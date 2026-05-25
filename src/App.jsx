@@ -6674,8 +6674,7 @@ import React, { useState, useEffect } from 'react';
                 );
             };
 
-            const AgentReport = ({ onClose, visibleEmployees: visEmp, onRefresh, persistedState, onStateChange, agents: agentsProp, onRefreshAgents }) => {
-                const agentsLocal = agentsProp || [];
+            const AgentReport = ({ onClose, visibleEmployees: visEmp, onRefresh, persistedState, onStateChange }) => {
                 const today = new Date().toISOString().split('T')[0];
                 const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
                 const adjAmountRef = React.useRef(null);
@@ -6744,7 +6743,6 @@ import React, { useState, useEffect } from 'react';
 
                    // Refresh global state for other parts of the app
                    if (onRefresh) await onRefresh();
-                   if (onRefreshAgents) await onRefreshAgents();
 
                    // Fetch the freshest list DIRECTLY and pass to generateReport — avoids stale closure of agentCollections
                    const refreshed = await apiCall(API_ENDPOINTS.agentCollections);
@@ -6907,7 +6905,7 @@ import React, { useState, useEffect } from 'react';
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Agent *</label>
                    <select value={addAgentId} onChange={function(e){setAddAgentId(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                   <option value="">Select agent...</option>
-                  {agentsLocal.map(function(a){return <option key={a.Id||a.id} value={a.Id||a.id}>{a.AgentCode||a.agentCode} — {a.City||a.city}</option>;})}
+                  {agents.map(function(a){return <option key={a.Id||a.id} value={a.Id||a.id}>{a.AgentCode||a.agentCode} — {a.City||a.city}</option>;})}
                    </select>
                   </div>
                    </div>
@@ -9876,9 +9874,8 @@ import React, { useState, useEffect } from 'react';
                   />
                    )}
 
-                   {showAgentReport && (() => { loadAgentsFromAPI(); return null; })()}
-                  {showAgentReport && (
-                  <AgentReport onClose={() => setShowAgentReport(false)} visibleEmployees={visibleEmployees} onRefresh={loadAgentCollectionsFromAPI} persistedState={agentReportState} onStateChange={setAgentReportState} agents={agents} onRefreshAgents={loadAgentsFromAPI} />
+                   {showAgentReport && (
+                  <AgentReport onClose={() => setShowAgentReport(false)} visibleEmployees={visibleEmployees} onRefresh={loadAgentCollectionsFromAPI} persistedState={agentReportState} onStateChange={setAgentReportState} />
                    )}
 
                    <div className="bg-indigo-600 text-white p-6 shadow-lg">
@@ -9929,7 +9926,7 @@ import React, { useState, useEffect } from 'react';
                   <button onClick={() => { setShowReportGenerator(true); setNavOpen(''); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-amber-50 flex items-center gap-3 text-gray-700"><FileText className="w-4 h-4 text-amber-600" />Payroll Report</button>
                   <button onClick={() => { setShowExpenseReport(true); setNavOpen(''); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-amber-50 flex items-center gap-3 text-gray-700"><Receipt className="w-4 h-4 text-teal-600" />Expense Report</button>
                   {hasPermission('canViewIraqPay') && <button onClick={() => { setShowIraqPay(true); setNavOpen(''); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 flex items-center gap-3 text-gray-700"><span className="text-base">🇮🇶</span>Pay in Iraq</button>}
-                  <button onClick={() => { setShowAgentReport(true); setNavOpen(''); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-amber-50 flex items-center gap-3 text-gray-700"><Truck className="w-4 h-4 text-orange-600" />Collection Report</button>
+                  <button onClick={() => { loadAgentsFromAPI(); setShowAgentReport(true); setNavOpen(''); }} className="w-full text-left px-4 py-2.5 text-sm hover:bg-amber-50 flex items-center gap-3 text-gray-700"><Truck className="w-4 h-4 text-orange-600" />Collection Report</button>
                   </div>
                   )}
                   </div>
