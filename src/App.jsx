@@ -6740,17 +6740,44 @@ import React, { useState, useEffect } from 'react';
                    };
                    const resp = await apiCall(API_ENDPOINTS.agentCollections, { method: 'POST', body: JSON.stringify(payload) });
                    if (!resp || (resp.success === false)) throw new Error((resp && resp.error) || 'Server rejected the record');
+
+                   // Refresh global state for other parts of the app
                    if (onRefresh) await onRefresh();
+
+                   // Fetch the freshest list DIRECTLY and pass to generateReport — avoids stale closure of agentCollections
+                   const refreshed = await apiCall(API_ENDPOINTS.agentCollections);
+                   const freshList = refreshed.success ? (refreshed.collections || []).map(function(c){return{
+                  id: c.Id, employeeId: c.EmployeeId,
+                  employeeName: (c.FirstName||'') + ' ' + (c.LastName||''),
+                  employeeCode: c.EmployeeCode||'',
+                  agentId: c.AgentId, agentCode: c.AgentCode||'', agentCity: c.City||'',
+                  date: (c.Date||'').split('T')[0],
+                  fromCode: c.FromCode||'', toCode: c.ToCode||'',
+                  amountCollected: parseFloat(c.AmountCollected||0),
+                  amountPaid: parseFloat(c.AmountPaid||0),
+                  bankAmount: parseFloat(c.BankAmount||0),
+                  boxesQty: parseInt(c.BoxesQty||0),
+                  currency: c.Currency||'GBP',
+                  notes: c.Notes||''
+                   };}) : [];
+
+                   // Auto-widen date filter if the new record is outside the current window
+                   let needsWiden = false;
+                   if (payload.date < fromDate) { setFromDate(payload.date); needsWiden = true; }
+                   if (payload.date > toDate)   { setToDate(payload.date);   needsWiden = true; }
+
+                   const filtered = generateReport(freshList);
+
                    const savedFor = visEmp.find(function(e){return e.id===parseInt(addEmpId);});
                    const empName = savedFor ? (savedFor.firstName + ' ' + savedFor.lastName) : 'employee';
-                   // Reset controlled fields
+
+                   // Reset form
                    setAddEmpId(''); setAddAgentId(''); setAddDate(new Date().toISOString().split('T')[0]);
-                   // Clear refs
                    [addFromRef, addToRef, addCollectedRef, addPaidRef, addBankRef, addNotesRef].forEach(function(r){ if(r.current) r.current.value = ''; });
                    setShowAddForm(false);
-                   // Regenerate report so the new record appears immediately
-                   await generateReport();
-                   alert('✅ Collection saved for ' + empName + ' on ' + addDate + '. The report has been refreshed.');
+
+                   const widenedMsg = needsWiden ? '\n\n📅 Date filter widened to include ' + payload.date + '.' : '';
+                   alert('✅ Collection saved for ' + empName + ' on ' + payload.date + '. Report refreshed (' + filtered.length + ' records).' + widenedMsg);
                   } catch(e) { alert('❌ Failed to save collection: ' + e.message); }
                   setAddSaving(false);
                 };
@@ -6784,8 +6811,9 @@ import React, { useState, useEffect } from 'react';
                   setSavingId(null);
                 };
 
-                const generateReport = function() {
-                  const filtered = agentCollections.filter(function(c) {
+                const generateReport = function(overrideList) {
+                  const source = Array.isArray(overrideList) ? overrideList : agentCollections;
+                  const filtered = source.filter(function(c) {
                    const emp = visEmp.find(function(e) { return e.id === c.employeeId; });
                    if (!emp) return false;
                    if (empFilter && c.employeeId !== parseInt(empFilter)) return false;
@@ -6794,6 +6822,7 @@ import React, { useState, useEffect } from 'react';
                    return c.date >= fromDate && c.date <= toDate;
                   }).sort(function(a,b) { return a.date < b.date ? -1 : 1; });
                   setReportData(filtered);
+                  return filtered;
                 };
 
                 const exportCSV = function() {
