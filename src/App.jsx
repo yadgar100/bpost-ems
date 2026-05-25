@@ -6770,14 +6770,16 @@ import React, { useState, useEffect } from 'react';
 
                    const savedFor = visEmp.find(function(e){return e.id===parseInt(addEmpId);});
                    const empName = savedFor ? (savedFor.firstName + ' ' + savedFor.lastName) : 'employee';
+                   const savedAgent = agents.find(function(a){return (a.Id||a.id) === parseInt(addAgentId);});
+                   const agentLabel = savedAgent ? ((savedAgent.AgentCode||savedAgent.agentCode) + ' (' + (savedAgent.City||savedAgent.city) + ')') : 'unknown agent (ID ' + addAgentId + ')';
 
                    // Reset form
                    setAddEmpId(''); setAddAgentId(''); setAddDate(new Date().toISOString().split('T')[0]);
                    [addFromRef, addToRef, addCollectedRef, addPaidRef, addBankRef, addNotesRef].forEach(function(r){ if(r.current) r.current.value = ''; });
                    setShowAddForm(false);
 
-                   const widenedMsg = needsWiden ? '\n\n📅 Date filter widened to include ' + payload.date + '.' : '';
-                   alert('✅ Collection saved for ' + empName + ' on ' + payload.date + '. Report refreshed (' + filtered.length + ' records).' + widenedMsg);
+                   const widenedMsg = needsWiden ? '\n\n📅 Date filter was widened to include ' + payload.date + '.' : '';
+                   alert('✅ Collection saved:\n\nEmployee: ' + empName + '\nAgent: ' + agentLabel + '\nDate: ' + payload.date + '\n\nReport refreshed (' + filtered.length + ' records visible).' + widenedMsg);
                   } catch(e) { alert('❌ Failed to save collection: ' + e.message); }
                   setAddSaving(false);
                 };
@@ -6905,7 +6907,7 @@ import React, { useState, useEffect } from 'react';
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Agent *</label>
                    <select value={addAgentId} onChange={function(e){setAddAgentId(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                   <option value="">Select agent...</option>
-                  {agents.map(function(a){return <option key={a.Id||a.id} value={a.Id||a.id}>{a.AgentCode||a.agentCode} — {a.City||a.city}</option>;})}
+                  {[...agents].sort(function(a,b){return (a.AgentCode||a.agentCode||'').localeCompare(b.AgentCode||b.agentCode||'');}).map(function(a){return <option key={a.Id||a.id} value={a.Id||a.id}>{a.AgentCode||a.agentCode} — {a.City||a.city}</option>;})}
                    </select>
                   </div>
                    </div>
