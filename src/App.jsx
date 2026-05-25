@@ -6738,7 +6738,9 @@ import React, { useState, useEffect } from 'react';
                   boxesQty: 0,
                   notes: addNotesRef.current ? addNotesRef.current.value : ''
                    };
+                   console.log('[AddCollection] POST payload:', payload);
                    const resp = await apiCall(API_ENDPOINTS.agentCollections, { method: 'POST', body: JSON.stringify(payload) });
+                   console.log('[AddCollection] Server response:', resp);
                    if (!resp || (resp.success === false)) throw new Error((resp && resp.error) || 'Server rejected the record');
 
                    // Refresh global state for other parts of the app
@@ -6746,6 +6748,7 @@ import React, { useState, useEffect } from 'react';
 
                    // Fetch the freshest list DIRECTLY and pass to generateReport — avoids stale closure of agentCollections
                    const refreshed = await apiCall(API_ENDPOINTS.agentCollections);
+                   console.log('[AddCollection] Fresh fetch returned', refreshed.collections ? refreshed.collections.length : 0, 'collections');
                    const freshList = refreshed.success ? (refreshed.collections || []).map(function(c){return{
                   id: c.Id, employeeId: c.EmployeeId,
                   employeeName: (c.FirstName||'') + ' ' + (c.LastName||''),
@@ -6760,6 +6763,15 @@ import React, { useState, useEffect } from 'react';
                   currency: c.Currency||'GBP',
                   notes: c.Notes||''
                    };}) : [];
+
+                   // Find the new record in the fresh list to confirm DB persistence
+                   const newRecord = freshList.find(function(r){
+                  return r.employeeId === payload.employeeId
+                   && r.agentId === payload.agentId
+                   && r.date === payload.date
+                   && Math.abs(r.amountCollected - payload.amountCollected) < 0.01;
+                   });
+                   console.log('[AddCollection] New record found in fresh list:', newRecord);
 
                    // Auto-widen date filter if the new record is outside the current window
                    let needsWiden = false;
@@ -6815,14 +6827,17 @@ import React, { useState, useEffect } from 'react';
 
                 const generateReport = function(overrideList) {
                   const source = Array.isArray(overrideList) ? overrideList : agentCollections;
+                  const reasons = [];
                   const filtered = source.filter(function(c) {
                    const emp = visEmp.find(function(e) { return e.id === c.employeeId; });
-                   if (!emp) return false;
-                   if (empFilter && c.employeeId !== parseInt(empFilter)) return false;
-                   if (branchFilter && !(emp.branches||[]).includes(branchFilter)) return false;
-                   if (countryFilter && emp.country !== countryFilter) return false;
-                   return c.date >= fromDate && c.date <= toDate;
+                   if (!emp) { reasons.push({id:c.id, why:'no matching employee', employeeId:c.employeeId}); return false; }
+                   if (empFilter && c.employeeId !== parseInt(empFilter)) { reasons.push({id:c.id, why:'employee filter mismatch'}); return false; }
+                   if (branchFilter && !(emp.branches||[]).includes(branchFilter)) { reasons.push({id:c.id, why:'branch filter mismatch', empBranches:emp.branches}); return false; }
+                   if (countryFilter && emp.country !== countryFilter) { reasons.push({id:c.id, why:'country filter mismatch'}); return false; }
+                   if (!(c.date >= fromDate && c.date <= toDate)) { reasons.push({id:c.id, why:'date outside filter', date:c.date, fromDate, toDate}); return false; }
+                   return true;
                   }).sort(function(a,b) { return a.date < b.date ? -1 : 1; });
+                  console.log('[generateReport] Source:', source.length, 'Filtered:', filtered.length, 'Excluded:', reasons);
                   setReportData(filtered);
                   return filtered;
                 };
