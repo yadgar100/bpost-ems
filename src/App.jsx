@@ -7114,6 +7114,10 @@ import React, { useState, useEffect } from 'react';
 
                   const grossBalance = totalCollected - totalPaidToAgents - totalEarned - totalExpenses;
                   const balance = grossBalance - previousPayments - totalAccountCredits;
+                  console.log('[EmployeeAccounting] Balance breakdown:', {
+                   totalCollected, totalPaidToAgents, totalEarned, totalExpenses,
+                   grossBalance, previousPayments, totalAccountCredits, balance
+                  });
 
                   setReport({ tsRows, empExpenses, empCollections, empAdjustments, accountCredits, totalEarned, totalExpenses, totalCollected, totalPaidToAgents, grossBalance, previousPayments, previousBonuses, previousPenalties, totalAccountCredits, pendingCreditsTotal, balance, hourlyRate });
                 };
@@ -7389,10 +7393,14 @@ import React, { useState, useEffect } from 'react';
                   <span className="text-gray-600">Approved Expenses</span>
                   <span className="font-semibold text-red-600">-{sym}{report.totalExpenses.toFixed(2)}</span>
                   </div>
-                  {report.previousPayments > 0 && (
+                  {report.previousPayments !== 0 && (
                   <div className="flex justify-between text-sm border-t border-dashed border-gray-300 pt-2">
-                    <span className="text-gray-600">Previously Settled</span>
-                    <span className="font-semibold text-blue-600">-{sym}{report.previousPayments.toFixed(2)}</span>
+                    <span className="text-gray-600">
+                      {report.previousPayments > 0 ? 'Previously Settled (employee → company)' : 'Previous Company Payment to Employee (advance)'}
+                    </span>
+                    <span className={'font-semibold ' + (report.previousPayments > 0 ? 'text-blue-600' : 'text-orange-600')}>
+                      {report.previousPayments > 0 ? '-' : '+'}{sym}{Math.abs(report.previousPayments).toFixed(2)}
+                    </span>
                   </div>
                   )}
                   {report.previousBonuses > 0 && (
@@ -7483,6 +7491,34 @@ import React, { useState, useEffect } from 'react';
 
                 const countryList = [...new Set(visEmp.filter(function(e) { return !e.isAdmin && e.country; }).map(function(e) { return e.country; }))].sort();
 
+                // Restrict branch & country options based on the current admin's permissions.
+                // If admin has canViewBranchOnly, they may only filter within their assigned branches.
+                // If admin has canViewCountryOnly, they may only filter within their assigned country.
+                const perms = (currentUser && currentUser.adminPermissions) || {};
+                const allowedBranches = (perms.canViewBranchOnly && Array.isArray(perms.restrictedBranches) && perms.restrictedBranches.length > 0)
+                  ? perms.restrictedBranches
+                  : null; // null = no restriction
+                const allowedCountry = perms.canViewCountryOnly
+                  ? ((perms.restrictedCountry || currentUser.country || '').trim() || null)
+                  : null;
+
+                const visibleBranchList = allowedBranches
+                  ? branchList.filter(function(b){ return allowedBranches.includes(b); })
+                  : branchList;
+                const visibleCountryList = allowedCountry
+                  ? countryList.filter(function(c){ return c && c.toLowerCase().trim() === allowedCountry.toLowerCase().trim(); })
+                  : countryList;
+
+                // If the admin is restricted to a single branch/country, auto-select it and lock the field
+                React.useEffect(function(){
+                  if (allowedBranches && allowedBranches.length === 1 && branchFilter !== allowedBranches[0]) {
+                   setBranchFilter(allowedBranches[0]);
+                  }
+                  if (allowedCountry && countryFilter !== allowedCountry) {
+                   setCountryFilter(allowedCountry);
+                  }
+                }, []);
+
                 const handleAddCredit = async function() {
                   const amt = parseFloat(creditAmt);
                   if (!creditEmpId) { alert('Please select an employee'); return; }
@@ -7505,6 +7541,13 @@ import React, { useState, useEffect } from 'react';
                   if (e.isAdmin) return false;
                   if (branchFilter && !(e.branches||[]).includes(branchFilter)) return false;
                   if (countryFilter && e.country !== countryFilter) return false;
+                  // Enforce admin's allowed branches even if no explicit branchFilter is set
+                  if (!branchFilter && allowedBranches) {
+                   if (!(e.branches||[]).some(function(b){return allowedBranches.includes(b);})) return false;
+                  }
+                  if (!countryFilter && allowedCountry) {
+                   if (!e.country || e.country.toLowerCase().trim() !== allowedCountry.toLowerCase().trim()) return false;
+                  }
                   return true;
                 });
 
@@ -7642,21 +7685,26 @@ import React, { useState, useEffect } from 'react';
                     <label className="block text-xs font-semibold text-gray-600 mb-1">End Date</label>
                     <input type="date" value={toDate} onChange={function(e){setToDate(e.target.value);setReport(null);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
-                  {branchList.length > 0 && (
+                  {visibleBranchList.length > 0 && (
                     <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">Branch</label>
-                    <select value={branchFilter} onChange={function(e){setBranchFilter(e.target.value);setReport(null);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                    <option value="">All Branches</option>
-                    {branchList.map(function(b){return <option key={b} value={b}>{b}</option>;})}
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Branch {allowedBranches && <span className="text-amber-600 text-[10px]">(restricted)</span>}</label>
+                    <select value={branchFilter} onChange={function(e){setBranchFilter(e.target.value);setReport(null);}}
+                     disabled={allowedBranches && allowedBranches.length === 1}
+                     className={'border border-gray-300 rounded-lg px-3 py-2 text-sm ' + (allowedBranches && allowedBranches.length === 1 ? 'bg-gray-100 text-gray-700 cursor-not-allowed' : 'bg-white')}>
+                    {!allowedBranches && <option value="">All Branches</option>}
+                    {allowedBranches && allowedBranches.length > 1 && <option value="">All My Branches</option>}
+                    {visibleBranchList.map(function(b){return <option key={b} value={b}>{b}</option>;})}
                     </select>
                     </div>
                   )}
-                  {countryList.length > 0 && (
+                  {visibleCountryList.length > 0 && (
                     <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1">Country</label>
-                    <select value={countryFilter} onChange={function(e){setCountryFilter(e.target.value);setReport(null);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                    <option value="">All Countries</option>
-                    {countryList.map(function(c){return <option key={c} value={c}>{c}</option>;})}
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Country {allowedCountry && <span className="text-amber-600 text-[10px]">(restricted)</span>}</label>
+                    <select value={countryFilter} onChange={function(e){setCountryFilter(e.target.value);setReport(null);}}
+                     disabled={!!allowedCountry}
+                     className={'border border-gray-300 rounded-lg px-3 py-2 text-sm ' + (allowedCountry ? 'bg-gray-100 text-gray-700 cursor-not-allowed' : 'bg-white')}>
+                    {!allowedCountry && <option value="">All Countries</option>}
+                    {visibleCountryList.map(function(c){return <option key={c} value={c}>{c}</option>;})}
                     </select>
                     </div>
                   )}
