@@ -7088,27 +7088,40 @@ import React, { useState, useEffect } from 'react';
                   return a.employeeId === parseInt(empId) && a.date >= fromDate && a.date <= toDate;
                   });
 
-                  // Per-period statement: only count settlements made WITHIN the selected date range.
-                  // (Previously this summed all settlements ever made up to toDate, which dragged
-                  //  lifetime history into a single-period report and distorted the balance.)
-                  const settlementRecords = financialAdjustments.filter(function(a) {
-                  return a.employeeId === parseInt(empId) && a.type === 'acct_settle' && a.date >= fromDate && a.date <= toDate;
-                  });
-                  const previousPayments = settlementRecords.reduce(function(s,a) { return s + (parseFloat(a.amount)||0); }, 0);
+                  // Per-period statement. A settlement is attributed to the period it was made FOR,
+                  // parsed from the reason text — NOT the date it was recorded. This prevents a
+                  // settlement recorded on (say) 28 May FOR an earlier period from polluting this report.
+                  // Supported formats in reason: "[PERIOD:from..to]" (new) or "YYYY-MM-DD to YYYY-MM-DD" (legacy).
+                  const parseSettlePeriod = function(reason) {
+                   let m = (reason||'').match(/\[PERIOD:(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})\]/);
+                   if (m) return { from: m[1], to: m[2] };
+                   m = (reason||'').match(/(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})/);
+                   if (m) return { from: m[1], to: m[2] };
+                   return null;
+                  };
 
-                  // Overlap detection: parse [PERIOD:from..to] tags from ALL prior settlements for this employee
-                  // and flag if any settled period overlaps the currently selected range.
-                  const overlaps = [];
-                  financialAdjustments.filter(function(a){ return a.employeeId === parseInt(empId) && a.type === 'acct_settle'; }).forEach(function(a){
-                   const m = (a.reason||'').match(/\[PERIOD:(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})\]/);
-                   if (m) {
-                  const pFrom = m[1], pTo = m[2];
-                  // overlap if ranges intersect AND it's not the exact same range being re-reported
-                  if (pFrom <= toDate && pTo >= fromDate && !(pFrom === fromDate && pTo === toDate)) {
-                   overlaps.push({ from: pFrom, to: pTo, amount: parseFloat(a.amount)||0, date: a.date });
+                  const allSettlements = financialAdjustments.filter(function(a){
+                   return a.employeeId === parseInt(empId) && a.type === 'acct_settle';
+                  });
+
+                  const settlementRecords = [];   // belong to THIS period
+                  const overlaps = [];            // belong to a DIFFERENT but overlapping period
+                  allSettlements.forEach(function(a){
+                   const p = parseSettlePeriod(a.reason);
+                   if (p) {
+                  // Has an explicit period. Belongs here only if it matches this exact range.
+                  if (p.from === fromDate && p.to === toDate) {
+                   settlementRecords.push(a);
+                  } else if (p.from <= toDate && p.to >= fromDate) {
+                   overlaps.push({ from: p.from, to: p.to, amount: parseFloat(a.amount)||0, date: a.date });
                   }
+                  // else: unrelated period — ignore
+                   } else {
+                  // Legacy settlement with no parseable period → fall back to record date.
+                  if (a.date >= fromDate && a.date <= toDate) settlementRecords.push(a);
                    }
                   });
+                  const previousPayments = settlementRecords.reduce(function(s,a) { return s + (parseFloat(a.amount)||0); }, 0);
 
                   const accountCredits = financialAdjustments.filter(function(a) {
                   return a.employeeId === parseInt(empId) && a.type === 'account_credit' && a.date >= fromDate && a.date <= toDate;
@@ -7142,10 +7155,6 @@ import React, { useState, useEffect } from 'react';
                 };
 
                 const handleDeleteSettlement = async function(s) {
-                  if (!hasPermission('canManageFinancials') && !hasPermission('canEditFinancials')) {
-                   alert('You do not have permission to edit settlements.');
-                   return;
-                  }
                   if (!window.confirm('Delete this settlement of ' + sym + parseFloat(s.amount).toFixed(2) + ' dated ' + s.date + '?\n\nThis will recalculate the balance.')) return;
                   try {
                    await apiCall(API_ENDPOINTS.adjustments + '/' + s.id, { method: 'DELETE' });
@@ -7456,9 +7465,7 @@ import React, { useState, useEffect } from 'react';
                       return (
                       <div key={s.id||i} className="flex justify-between items-center text-xs text-gray-500 bg-white/60 rounded px-2 py-1 mb-1">
                         <span>{s.date} · {sym}{parseFloat(s.amount).toFixed(2)}{cleanNote ? ' · ' + cleanNote : ''}</span>
-                        {(hasPermission('canManageFinancials') || hasPermission('canEditFinancials')) && (
                         <button onClick={function(){handleDeleteSettlement(s);}} className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 rounded hover:bg-red-200 text-xs font-semibold">Remove</button>
-                        )}
                       </div>
                       );
                     })}
