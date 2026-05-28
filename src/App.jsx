@@ -7058,10 +7058,11 @@ import React, { useState, useEffect } from 'react';
                 const [settling, setSettling] = useState(false);
                 const [settleNote, setSettleNote] = useState('');
                 const [settleAmount, setSettleAmount] = useState('');
+                const [settleDate, setSettleDate] = useState('');
 
                 React.useEffect(function() {
-                  if (report) setSettleAmount(Math.abs(report.balance).toFixed(2));
-                  else setSettleAmount('');
+                  if (report) { setSettleAmount(Math.abs(report.balance).toFixed(2)); setSettleDate(toDate); }
+                  else { setSettleAmount(''); setSettleDate(''); }
                 }, [report]);
 
                 const emp = visEmp.find(function(e) { return e.id === parseInt(empId); });
@@ -7182,10 +7183,14 @@ import React, { useState, useEffect } from 'react';
                   const amount = parseFloat(settleAmount);
                   if (!amount || amount <= 0) { alert('Please enter a valid amount'); return; }
                   if (amount > Math.abs(report.balance) + 0.005) { alert('Amount cannot exceed the balance of ' + sym + Math.abs(report.balance).toFixed(2)); return; }
+                  const effectiveDate = settleDate || toDate;
+                  if (effectiveDate < fromDate || effectiveDate > toDate) {
+                   if (!window.confirm('\u26a0\ufe0f The settlement date (' + effectiveDate + ') is OUTSIDE this period (' + fromDate + ' to ' + toDate + ').\n\nIt will appear in a different period. Continue anyway?')) return;
+                  }
                   const isPartial = amount < Math.abs(report.balance) - 0.005;
                   const confirmMsg = isPartial
-                  ? 'Record partial settlement of ' + sym + amount.toFixed(2) + '?\nRemaining balance: ' + sym + (Math.abs(report.balance) - amount).toFixed(2) + ' will carry forward.'
-                  : 'Record full settlement of ' + sym + amount.toFixed(2) + '?';
+                  ? 'Record partial settlement of ' + sym + amount.toFixed(2) + ' dated ' + effectiveDate + '?\nRemaining balance: ' + sym + (Math.abs(report.balance) - amount).toFixed(2) + ' will carry forward.'
+                  : 'Record full settlement of ' + sym + amount.toFixed(2) + ' dated ' + effectiveDate + '?';
                   if (!window.confirm(confirmMsg)) return;
                   setSettling(true);
                   try {
@@ -7193,17 +7198,18 @@ import React, { useState, useEffect } from 'react';
                   const reason = periodTag + ' ' + (settleNote || ((isPartial ? 'Partial accounting settlement' : 'Full accounting settlement') + ' ' + fromDate + ' to ' + toDate));
                   const data = await apiCall(API_ENDPOINTS.adjustments, {
                   method: 'POST',
-                  body: JSON.stringify({ employeeId: parseInt(empId), type: 'acct_settle', amount: amount, reason: reason, date: today })
+                  body: JSON.stringify({ employeeId: parseInt(empId), type: 'acct_settle', amount: amount, reason: reason, date: effectiveDate })
                   });
                   if (data.success) {
                   await loadAdjustmentsFromAPI();
                   alert(isPartial
-                  ? 'Partial settlement of ' + sym + amount.toFixed(2) + ' recorded. Remaining ' + sym + (Math.abs(report.balance) - amount).toFixed(2) + ' carries forward.'
-                  : 'Full settlement recorded successfully.'
+                  ? 'Partial settlement of ' + sym + amount.toFixed(2) + ' recorded on ' + effectiveDate + '. Remaining ' + sym + (Math.abs(report.balance) - amount).toFixed(2) + ' carries forward.'
+                  : 'Full settlement recorded successfully on ' + effectiveDate + '.'
                   );
                   setReport(null);
                   setSettleNote('');
                   setSettleAmount('');
+                  setSettleDate('');
                   } else alert('Error: ' + data.error);
                   } catch(e) { alert('Failed: ' + e.message); }
                   setSettling(false);
@@ -7530,6 +7536,17 @@ import React, { useState, useEffect } from 'react';
                     value={settleAmount}
                     onChange={function(e){setSettleAmount(e.target.value);}}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-semibold"
+                    />
+                    </div>
+                    <div>
+                    <label className="block text-xs text-gray-500 mb-1">Settlement Date</label>
+                    <input
+                    type="date"
+                    value={settleDate}
+                    min={fromDate}
+                    max={toDate}
+                    onChange={function(e){setSettleDate(e.target.value);}}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                     />
                     </div>
                     <div className="flex-1 min-w-48">
