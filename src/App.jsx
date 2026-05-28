@@ -7196,9 +7196,13 @@ import React, { useState, useEffect } from 'react';
                   try {
                   const periodTag = '[PERIOD:' + fromDate + '..' + toDate + ']';
                   const reason = periodTag + ' ' + (settleNote || ((isPartial ? 'Partial accounting settlement' : 'Full accounting settlement') + ' ' + fromDate + ' to ' + toDate));
+                  // Sign the settlement by DIRECTION:
+                  //   balance > 0 (employee owes company) → employee pays → +amount  (reduces positive balance)
+                  //   balance < 0 (company owes employee) → company pays  → -amount  (brings negative balance toward zero)
+                  const signedAmount = report.balance >= 0 ? amount : -amount;
                   const data = await apiCall(API_ENDPOINTS.adjustments, {
                   method: 'POST',
-                  body: JSON.stringify({ employeeId: parseInt(empId), type: 'acct_settle', amount: amount, reason: reason, date: effectiveDate })
+                  body: JSON.stringify({ employeeId: parseInt(empId), type: 'acct_settle', amount: signedAmount, reason: reason, date: effectiveDate })
                   });
                   if (data.success) {
                   await loadAdjustmentsFromAPI();
@@ -7484,16 +7488,18 @@ import React, { useState, useEffect } from 'react';
                   {report.settlementRecords && report.settlementRecords.length > 0 && (
                   <div className="border-t border-dashed border-gray-300 pt-2">
                     <div className="flex justify-between text-sm mb-1">
-                      <span className="text-gray-600 font-semibold">Settled This Period</span>
+                      <span className="text-gray-600 font-semibold">Settled This Period {report.previousPayments < 0 ? '(company → employee)' : report.previousPayments > 0 ? '(employee → company)' : ''}</span>
                       <span className={'font-semibold ' + (report.previousPayments > 0 ? 'text-blue-600' : 'text-orange-600')}>
                         {report.previousPayments > 0 ? '-' : '+'}{sym}{Math.abs(report.previousPayments).toFixed(2)}
                       </span>
                     </div>
                     {report.settlementRecords.map(function(s,i){
                       const cleanNote = (s.reason||'').replace(/\[PERIOD:[^\]]+\]\s*/,'');
+                      const amt = parseFloat(s.amount);
+                      const dir = amt < 0 ? 'Company paid employee' : 'Employee paid company';
                       return (
                       <div key={s.id||i} className="flex justify-between items-center text-xs text-gray-500 bg-white/60 rounded px-2 py-1 mb-1">
-                        <span>{s.date} · {sym}{parseFloat(s.amount).toFixed(2)}{cleanNote ? ' · ' + cleanNote : ''}</span>
+                        <span>{s.date} · {sym}{Math.abs(amt).toFixed(2)} · <span className={amt < 0 ? 'text-orange-600' : 'text-blue-600'}>{dir}</span>{cleanNote ? ' · ' + cleanNote : ''}</span>
                         <button onClick={function(){handleDeleteSettlement(s);}} className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 rounded hover:bg-red-200 text-xs font-semibold">Remove</button>
                       </div>
                       );
