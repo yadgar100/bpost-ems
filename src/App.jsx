@@ -2683,14 +2683,51 @@ import React, { useState, useEffect } from 'react';
                   const myCollections = agentCollections.filter(c => c.employeeId === currentUser.id);
                   if (myCollections.length === 0) return null;
                   const sym = getCurrencySymbol(currentUser.currency || 'GBP');
-                  const [colFrom, setColFrom] = React.useState(() => {
-                   const d = new Date(); d.setDate(1);
-                   return d.toISOString().split('T')[0];
-                  });
+
+                  const myId = currentUser.id;
+                  const rate = parseFloat(currentUser.hourlyRate) || 0;
+                  const otMult = (currentUser.overtimeRate != null && currentUser.overtimeRate !== '') ? parseFloat(currentUser.overtimeRate) : (payrollSettings.overtimeMultiplier || 1.5);
+                  const allColl = myCollections;
+                  const allTs = timesheets.filter(t => t.employeeId === myId && t.status === 'approved');
+                  const allExp = expenses.filter(x => x.employeeId === myId && (x.status === 'approved' || x.status === 'paid'));
+                  const allSettle = financialAdjustments.filter(a => a.employeeId === myId && a.type === 'acct_settle');
+                  const allCredit = financialAdjustments.filter(a => a.employeeId === myId && a.type === 'account_credit');
+
+                  const sumColl = allColl.reduce((s,c) => s + (c.amountCollected||0) - (c.amountPaid||0), 0);
+                  const sumEarned = allTs.reduce((s,t) => s + ((parseFloat(t.regularHours)||0)*rate) + ((parseFloat(t.overtimeHours)||0)*rate*otMult), 0);
+                  const sumExp = allExp.reduce((s,x) => s + (x.amount||0), 0);
+                  const sumSettle = allSettle.reduce((s,a) => s + (parseFloat(a.amount)||0), 0);
+                  const sumCredit = allCredit.reduce((s,a) => s + (parseFloat(a.amount)||0), 0);
+                  const empBalance = sumColl - sumEarned - sumExp - sumSettle - sumCredit;
+
+                  const lastSettleDate = allSettle.length ? allSettle.map(a => a.date).sort().slice(-1)[0] : null;
+                  const unsettledCollections = lastSettleDate ? myCollections.filter(c => c.date > lastSettleDate) : myCollections;
+
+                  const balanceCard = (
+                   <div className="bg-white rounded-xl shadow p-5 mb-6">
+                  <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
+                   <Truck className="w-5 h-5 text-orange-600" />My Account Balance
+                  </h2>
+                  <div className={'rounded-xl border-2 p-5 text-center ' + (empBalance > 0.005 ? 'bg-red-50 border-red-200' : empBalance < -0.005 ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200')}>
+                   <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{color: empBalance > 0.005 ? '#dc2626' : empBalance < -0.005 ? '#16a34a' : '#6b7280'}}>
+                  {empBalance > 0.005 ? 'You Owe The Company' : empBalance < -0.005 ? 'The Company Owes You' : 'Balance Settled'}
+                   </p>
+                   <p className="text-3xl font-bold" style={{color: empBalance > 0.005 ? '#dc2626' : empBalance < -0.005 ? '#16a34a' : '#6b7280'}}>
+                  {Math.abs(empBalance) < 0.005 ? sym + '0.00' : sym + Math.abs(empBalance).toFixed(2)}
+                   </p>
+                   {lastSettleDate && <p className="text-xs text-gray-400 mt-2">Last settled up to {new Date(lastSettleDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</p>}
+                  </div>
+                   </div>
+                  );
+
+                  if (unsettledCollections.length === 0) return balanceCard;
+
+                  const colMin = unsettledCollections.map(c=>c.date).sort()[0];
+                  const [colFrom, setColFrom] = React.useState(() => lastSettleDate || colMin);
                   const [colTo, setColTo] = React.useState(new Date().toISOString().split('T')[0]);
                   const [colAgent, setColAgent] = React.useState('all');
 
-                  const filtered = myCollections.filter(c => {
+                  const filtered = unsettledCollections.filter(c => {
                    if (c.date < colFrom || c.date > colTo) return false;
                    if (colAgent !== 'all' && c.agentId !== parseInt(colAgent)) return false;
                    return true;
@@ -2698,8 +2735,7 @@ import React, { useState, useEffect } from 'react';
 
                   const totalCollected = filtered.reduce((s,c) => s+c.amountCollected, 0);
                   const totalPaid = filtered.reduce((s,c) => s+c.amountPaid, 0);
-
-                  const agentOptions = [...new Map(myCollections.map(c => [c.agentId, {id:c.agentId, code:c.agentCode, city:c.agentCity}])).values()];
+                  const agentOptions = [...new Map(unsettledCollections.map(c => [c.agentId, {id:c.agentId, code:c.agentCode, city:c.agentCity}])).values()];
 
                   const exportCSV = () => {
                    let csv = 'Date,Agent Code,City,From,To,Collected,Paid,Bank Transfer\n';
@@ -2713,31 +2749,32 @@ import React, { useState, useEffect } from 'react';
                   };
 
                   return (
+                   <React.Fragment>
+                  {balanceCard}
                    <div className="bg-white rounded-xl shadow p-5 mb-6">
                   <div className="flex items-center justify-between mb-4">
                    <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                  <Truck className="w-5 h-5 text-orange-600" />My Agent Collections
+                  <Truck className="w-5 h-5 text-orange-600" />Unsettled Collections
                    </h2>
                    <button onClick={exportCSV} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-green-700 transition">
                   Export CSV
                    </button>
                   </div>
-
+                  {lastSettleDate && <p className="text-xs text-gray-400 mb-3">Showing activity since last settlement ({new Date(lastSettleDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}). Settled records are archived.</p>}
                   <div className="grid grid-cols-3 gap-2 mb-4">
                    <div className="bg-green-50 border border-green-200 rounded-lg p-2.5 text-center">
                   <p className="text-xs text-green-600 font-semibold">Cash Collected</p>
-                  <p className="text-lg font-bold text-green-700">{sym}{myCollections.reduce((s,c)=>s+c.amountCollected,0).toFixed(2)}</p>
+                  <p className="text-lg font-bold text-green-700">{sym}{unsettledCollections.reduce((s,c)=>s+c.amountCollected,0).toFixed(2)}</p>
                    </div>
                    <div className="bg-red-50 border border-red-200 rounded-lg p-2.5 text-center">
                   <p className="text-xs text-red-600 font-semibold">Paid Out</p>
-                  <p className="text-lg font-bold text-red-700">{sym}{myCollections.reduce((s,c)=>s+c.amountPaid,0).toFixed(2)}</p>
+                  <p className="text-lg font-bold text-red-700">{sym}{unsettledCollections.reduce((s,c)=>s+c.amountPaid,0).toFixed(2)}</p>
                    </div>
                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-center">
                   <p className="text-xs text-blue-600 font-semibold">Bank Transfer</p>
-                  <p className="text-lg font-bold text-blue-700">{sym}{myCollections.reduce((s,c)=>s+(c.bankAmount||0),0).toFixed(2)}</p>
+                  <p className="text-lg font-bold text-blue-700">{sym}{unsettledCollections.reduce((s,c)=>s+(c.bankAmount||0),0).toFixed(2)}</p>
                    </div>
                   </div>
-
                   <div className="flex flex-wrap gap-2 mb-4 pb-4 border-b border-gray-100">
                    <div>
                   <label className="block text-xs text-gray-500 mb-1">From</label>
@@ -2755,7 +2792,6 @@ import React, { useState, useEffect } from 'react';
                   </select>
                    </div>
                   </div>
-
                   {filtered.length === 0 ? (
                    <p className="text-center text-gray-400 text-sm py-4">No collection records found for this period</p>
                   ) : (
@@ -2792,6 +2828,7 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   )}
                    </div>
+                   </React.Fragment>
                   );
                    })()}
 
