@@ -7104,24 +7104,21 @@ import React, { useState, useEffect } from 'react';
                    return a.employeeId === parseInt(empId) && a.type === 'acct_settle';
                   });
 
-                  const settlementRecords = [];   // belong to THIS period
-                  const overlaps = [];            // belong to a DIFFERENT but overlapping period
-                  allSettlements.forEach(function(a){
+                  // Settled This Period = settlements RECORDED within the period (consistent with
+                  // opening-balance which also uses record date). Using record date everywhere is the
+                  // only way to keep a running ledger free of double-counting.
+                  const settlementRecords = allSettlements.filter(function(a){ return a.date >= fromDate && a.date <= toDate; });
+                  const previousPayments = settlementRecords.reduce(function(s,a) { return s + (parseFloat(a.amount)||0); }, 0);
+
+                  // Informational only (does NOT affect the maths): warn if a settlement's tagged
+                  // period differs from where its record date places it — helps spot mis-dated entries.
+                  const overlaps = [];
+                  settlementRecords.forEach(function(a){
                    const p = parseSettlePeriod(a.reason);
-                   if (p) {
-                  // Has an explicit period. Belongs here only if it matches this exact range.
-                  if (p.from === fromDate && p.to === toDate) {
-                   settlementRecords.push(a);
-                  } else if (p.from <= toDate && p.to >= fromDate) {
-                   overlaps.push({ from: p.from, to: p.to, amount: parseFloat(a.amount)||0, date: a.date });
-                  }
-                  // else: unrelated period — ignore
-                   } else {
-                  // Legacy settlement with no parseable period → fall back to record date.
-                  if (a.date >= fromDate && a.date <= toDate) settlementRecords.push(a);
+                   if (p && (p.from < fromDate || p.to > toDate)) {
+                  overlaps.push({ from: p.from, to: p.to, amount: parseFloat(a.amount)||0, date: a.date });
                    }
                   });
-                  const previousPayments = settlementRecords.reduce(function(s,a) { return s + (parseFloat(a.amount)||0); }, 0);
 
                   const accountCredits = financialAdjustments.filter(function(a) {
                   return a.employeeId === parseInt(empId) && a.type === 'account_credit' && a.date >= fromDate && a.date <= toDate;
@@ -7184,8 +7181,8 @@ import React, { useState, useEffect } from 'react';
                   if (!report) return;
                   const amount = parseFloat(settleAmount);
                   if (!amount || amount <= 0) { alert('Please enter a valid amount'); return; }
-                  if (amount > Math.abs(report.balance)) { alert('Amount cannot exceed the balance of ' + sym + Math.abs(report.balance).toFixed(2)); return; }
-                  const isPartial = amount < Math.abs(report.balance);
+                  if (amount > Math.abs(report.balance) + 0.005) { alert('Amount cannot exceed the balance of ' + sym + Math.abs(report.balance).toFixed(2)); return; }
+                  const isPartial = amount < Math.abs(report.balance) - 0.005;
                   const confirmMsg = isPartial
                   ? 'Record partial settlement of ' + sym + amount.toFixed(2) + '?\nRemaining balance: ' + sym + (Math.abs(report.balance) - amount).toFixed(2) + ' will carry forward.'
                   : 'Record full settlement of ' + sym + amount.toFixed(2) + '?';
