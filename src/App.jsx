@@ -7144,14 +7144,31 @@ import React, { useState, useEffect } from 'react';
                   const totalCollected = empCollections.reduce(function(s,c) { return s+c.amountCollected; }, 0);
                   const totalPaidToAgents = empCollections.reduce(function(s,c) { return s+c.amountPaid; }, 0);
 
-                  const grossBalance = totalCollected - totalPaidToAgents - totalEarned - totalExpenses;
+                  // ── Opening balance (carry-forward) ───────────────────────────────────────
+                  // Net unsettled balance from ALL activity strictly BEFORE this period's start.
+                  // Positive = employee owed company at period start; negative = company owed employee.
+                  const priorCollections = agentCollections.filter(function(c){ return c.employeeId === parseInt(empId) && c.date < fromDate; });
+                  const priorCollected   = priorCollections.reduce(function(s,c){ return s + (c.amountCollected||0); }, 0);
+                  const priorPaidAgents  = priorCollections.reduce(function(s,c){ return s + (c.amountPaid||0); }, 0);
+                  const priorEarned = timesheets.filter(function(ts){ return ts.employeeId === parseInt(empId) && ts.status === 'approved' && ts.date < fromDate; })
+                   .reduce(function(s,ts){ const reg=parseFloat(ts.regularHours)||0, ot=parseFloat(ts.overtimeHours)||0; return s + (reg*hourlyRate)+(ot*hourlyRate*overtimeMultiplier); }, 0);
+                  const priorExpenses = expenses.filter(function(ex){ return ex.employeeId === parseInt(empId) && (ex.status==='approved'||ex.status==='paid') && ex.date < fromDate; })
+                   .reduce(function(s,ex){ return s + (ex.amount||0); }, 0);
+                  const priorSettlements = allSettlements.filter(function(a){ return a.date < fromDate; })
+                   .reduce(function(s,a){ return s + (parseFloat(a.amount)||0); }, 0);
+                  const priorCredits = financialAdjustments.filter(function(a){ return a.employeeId === parseInt(empId) && a.type === 'account_credit' && a.date < fromDate; })
+                   .reduce(function(s,a){ return s + (parseFloat(a.amount)||0); }, 0);
+                  const openingBalance = (priorCollected - priorPaidAgents - priorEarned - priorExpenses) - priorSettlements - priorCredits;
+
+                  const periodActivity = totalCollected - totalPaidToAgents - totalEarned - totalExpenses;
+                  const grossBalance = openingBalance + periodActivity;
                   const balance = grossBalance - previousPayments - totalAccountCredits;
                   console.log('[EmployeeAccounting] Balance breakdown:', {
-                   totalCollected, totalPaidToAgents, totalEarned, totalExpenses,
+                   openingBalance, periodActivity, totalCollected, totalPaidToAgents, totalEarned, totalExpenses,
                    grossBalance, previousPayments, totalAccountCredits, balance
                   });
 
-                  setReport({ tsRows, empExpenses, empCollections, empAdjustments, accountCredits, totalEarned, totalExpenses, totalCollected, totalPaidToAgents, grossBalance, previousPayments, previousBonuses, previousPenalties, totalAccountCredits, pendingCreditsTotal, balance, hourlyRate, settlementRecords, overlaps });
+                  setReport({ tsRows, empExpenses, empCollections, empAdjustments, accountCredits, totalEarned, totalExpenses, totalCollected, totalPaidToAgents, grossBalance, previousPayments, previousBonuses, previousPenalties, totalAccountCredits, pendingCreditsTotal, balance, hourlyRate, settlementRecords, overlaps, openingBalance, periodActivity });
                 };
 
                 const handleDeleteSettlement = async function(s) {
@@ -7216,6 +7233,7 @@ import React, { useState, useEffect } from 'react';
                   +(report.tsRows.length>0?'<div class="sec"><div class="sec-title"><span>Earnings from Timesheets</span><span>'+sym+report.totalEarned.toFixed(2)+'</span></div><table><thead><tr><th>Date</th><th>Regular</th><th>Overtime</th><th>Rate</th><th>Earned</th></tr></thead><tbody>'+tsRows+'<tr style="background:#eff6ff;font-weight:bold;"><td colspan="4" style="text-align:right;padding-right:8px;">Total</td><td>'+sym+report.totalEarned.toFixed(2)+'</td></tr></tbody></table></div>':'')
                   +(report.empExpenses.length>0?'<div class="sec"><div class="sec-title"><span>Approved Expenses</span><span>'+sym+report.totalExpenses.toFixed(2)+'</span></div><table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Status</th><th>Amount</th></tr></thead><tbody>'+expRows+'<tr style="background:#f0fdfa;font-weight:bold;"><td colspan="4" style="text-align:right;padding-right:8px;">Total</td><td>'+sym+report.totalExpenses.toFixed(2)+'</td></tr></tbody></table></div>':'')
                   +'<div class="sum"><div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:10px;">Final Balance Summary</div>'
+                  +(Math.abs(report.openingBalance)>=0.01?'<div class="srow" style="border-bottom:1px dashed #e5e7eb;padding-bottom:5px;margin-bottom:3px;"><span style="font-weight:600;">Opening Balance (carried forward)</span><span style="color:'+(report.openingBalance>0?'#dc2626':'#16a34a')+';font-weight:600;">'+(report.openingBalance>0?'+':'-')+sym+Math.abs(report.openingBalance).toFixed(2)+'</span></div>':'')
                   +'<div class="srow"><span>Agent Collections Received</span><span style="color:#16a34a;font-weight:600;">+'+sym+report.totalCollected.toFixed(2)+'</span></div>'
                   +(report.totalPaidToAgents>0?'<div class="srow"><span>Paid to Agents</span><span style="color:#dc2626;font-weight:600;">-'+sym+report.totalPaidToAgents.toFixed(2)+'</span></div>':'')
                   +'<div class="srow"><span>Earnings (timesheets)</span><span style="color:#dc2626;font-weight:600;">-'+sym+report.totalEarned.toFixed(2)+'</span></div>'
@@ -7428,6 +7446,14 @@ import React, { useState, useEffect } from 'react';
                   <div className={'rounded-2xl border-2 p-6 mb-6 ' + (report.balance > 0 ? 'bg-red-50 border-red-300' : report.balance < 0 ? 'bg-green-50 border-green-300' : 'bg-gray-50 border-gray-300')}>
                   <p className="text-sm font-bold text-gray-600 uppercase tracking-wider mb-4">Final Balance Summary</p>
                   <div className="space-y-2 mb-4">
+                  {Math.abs(report.openingBalance) >= 0.01 && (
+                  <div className="flex justify-between text-sm pb-2 mb-1 border-b border-dashed border-gray-300">
+                  <span className="text-gray-600 font-semibold">Opening Balance (carried forward)</span>
+                  <span className={'font-semibold ' + (report.openingBalance > 0 ? 'text-red-600' : 'text-green-600')}>
+                    {report.openingBalance > 0 ? '+' : '−'}{sym}{Math.abs(report.openingBalance).toFixed(2)}
+                  </span>
+                  </div>
+                  )}
                   <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Agent Collections Received</span>
                   <span className="font-semibold text-green-700">+{sym}{report.totalCollected.toFixed(2)}</span>
