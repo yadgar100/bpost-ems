@@ -7091,9 +7091,25 @@ import React, { useState, useEffect } from 'react';
                   // Per-period statement: only count settlements made WITHIN the selected date range.
                   // (Previously this summed all settlements ever made up to toDate, which dragged
                   //  lifetime history into a single-period report and distorted the balance.)
-                  const previousPayments = financialAdjustments.filter(function(a) {
+                  const settlementRecords = financialAdjustments.filter(function(a) {
                   return a.employeeId === parseInt(empId) && a.type === 'acct_settle' && a.date >= fromDate && a.date <= toDate;
-                  }).reduce(function(s,a) { return s + (parseFloat(a.amount)||0); }, 0);
+                  });
+                  const previousPayments = settlementRecords.reduce(function(s,a) { return s + (parseFloat(a.amount)||0); }, 0);
+
+                  // Overlap detection: parse [PERIOD:from..to] tags from ALL prior settlements for this employee
+                  // and flag if any settled period overlaps the currently selected range.
+                  const overlaps = [];
+                  financialAdjustments.filter(function(a){ return a.employeeId === parseInt(empId) && a.type === 'acct_settle'; }).forEach(function(a){
+                   const m = (a.reason||'').match(/\[PERIOD:(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})\]/);
+                   if (m) {
+                  const pFrom = m[1], pTo = m[2];
+                  // overlap if ranges intersect AND it's not the exact same range being re-reported
+                  if (pFrom <= toDate && pTo >= fromDate && !(pFrom === fromDate && pTo === toDate)) {
+                   overlaps.push({ from: pFrom, to: pTo, amount: parseFloat(a.amount)||0, date: a.date });
+                  }
+                   }
+                  });
+
                   const accountCredits = financialAdjustments.filter(function(a) {
                   return a.employeeId === parseInt(empId) && a.type === 'account_credit' && a.date >= fromDate && a.date <= toDate;
                   });
@@ -7122,7 +7138,20 @@ import React, { useState, useEffect } from 'react';
                    grossBalance, previousPayments, totalAccountCredits, balance
                   });
 
-                  setReport({ tsRows, empExpenses, empCollections, empAdjustments, accountCredits, totalEarned, totalExpenses, totalCollected, totalPaidToAgents, grossBalance, previousPayments, previousBonuses, previousPenalties, totalAccountCredits, pendingCreditsTotal, balance, hourlyRate });
+                  setReport({ tsRows, empExpenses, empCollections, empAdjustments, accountCredits, totalEarned, totalExpenses, totalCollected, totalPaidToAgents, grossBalance, previousPayments, previousBonuses, previousPenalties, totalAccountCredits, pendingCreditsTotal, balance, hourlyRate, settlementRecords, overlaps });
+                };
+
+                const handleDeleteSettlement = async function(s) {
+                  if (!hasPermission('canManageFinancials') && !hasPermission('canEditFinancials')) {
+                   alert('You do not have permission to edit settlements.');
+                   return;
+                  }
+                  if (!window.confirm('Delete this settlement of ' + sym + parseFloat(s.amount).toFixed(2) + ' dated ' + s.date + '?\n\nThis will recalculate the balance.')) return;
+                  try {
+                   await apiCall(API_ENDPOINTS.adjustments + '/' + s.id, { method: 'DELETE' });
+                   await loadAdjustmentsFromAPI();
+                   generateReport();
+                  } catch(e) { alert('Failed to delete: ' + e.message); }
                 };
 
                 const handleSettle = async function() {
@@ -7137,7 +7166,8 @@ import React, { useState, useEffect } from 'react';
                   if (!window.confirm(confirmMsg)) return;
                   setSettling(true);
                   try {
-                  const reason = settleNote || ((isPartial ? 'Partial accounting settlement' : 'Full accounting settlement') + ' ' + fromDate + ' to ' + toDate);
+                  const periodTag = '[PERIOD:' + fromDate + '..' + toDate + ']';
+                  const reason = periodTag + ' ' + (settleNote || ((isPartial ? 'Partial accounting settlement' : 'Full accounting settlement') + ' ' + fromDate + ' to ' + toDate));
                   const data = await apiCall(API_ENDPOINTS.adjustments, {
                   method: 'POST',
                   body: JSON.stringify({ employeeId: parseInt(empId), type: 'acct_settle', amount: amount, reason: reason, date: today })
@@ -7369,6 +7399,23 @@ import React, { useState, useEffect } from 'react';
                   )}
                   </Section>
 
+                  {report.overlaps && report.overlaps.length > 0 && (
+                  <div className="rounded-xl border-2 border-amber-400 bg-amber-50 p-4 mb-4">
+                    <div className="flex items-start gap-3">
+                    <span className="text-2xl">⚠️</span>
+                    <div className="flex-1">
+                      <p className="font-bold text-amber-800 text-sm mb-1">Date Range Overlap Warning</p>
+                      <p className="text-xs text-amber-700 mb-2">This period overlaps with {report.overlaps.length} already-settled period{report.overlaps.length>1?'s':''}. Collections, earnings, or expenses on the overlapping days may be counted twice. Review before settling:</p>
+                      <ul className="text-xs text-amber-800 space-y-1">
+                      {report.overlaps.map(function(o,i){
+                       return <li key={i} className="bg-amber-100 rounded px-2 py-1">• Already settled <b>{o.from}</b> to <b>{o.to}</b> ({sym}{o.amount.toFixed(2)}) on {o.date}</li>;
+                      })}
+                      </ul>
+                    </div>
+                    </div>
+                  </div>
+                  )}
+
                   <div className={'rounded-2xl border-2 p-6 mb-6 ' + (report.balance > 0 ? 'bg-red-50 border-red-300' : report.balance < 0 ? 'bg-green-50 border-green-300' : 'bg-gray-50 border-gray-300')}>
                   <p className="text-sm font-bold text-gray-600 uppercase tracking-wider mb-4">Final Balance Summary</p>
                   <div className="space-y-2 mb-4">
@@ -7396,14 +7443,25 @@ import React, { useState, useEffect } from 'react';
                   <span className="text-gray-600">Approved Expenses</span>
                   <span className="font-semibold text-red-600">-{sym}{report.totalExpenses.toFixed(2)}</span>
                   </div>
-                  {report.previousPayments !== 0 && (
-                  <div className="flex justify-between text-sm border-t border-dashed border-gray-300 pt-2">
-                    <span className="text-gray-600">
-                      {report.previousPayments > 0 ? 'Settled This Period (employee → company)' : 'Company Payment This Period (advance)'}
-                    </span>
-                    <span className={'font-semibold ' + (report.previousPayments > 0 ? 'text-blue-600' : 'text-orange-600')}>
-                      {report.previousPayments > 0 ? '-' : '+'}{sym}{Math.abs(report.previousPayments).toFixed(2)}
-                    </span>
+                  {report.settlementRecords && report.settlementRecords.length > 0 && (
+                  <div className="border-t border-dashed border-gray-300 pt-2">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-gray-600 font-semibold">Settled This Period</span>
+                      <span className={'font-semibold ' + (report.previousPayments > 0 ? 'text-blue-600' : 'text-orange-600')}>
+                        {report.previousPayments > 0 ? '-' : '+'}{sym}{Math.abs(report.previousPayments).toFixed(2)}
+                      </span>
+                    </div>
+                    {report.settlementRecords.map(function(s,i){
+                      const cleanNote = (s.reason||'').replace(/\[PERIOD:[^\]]+\]\s*/,'');
+                      return (
+                      <div key={s.id||i} className="flex justify-between items-center text-xs text-gray-500 bg-white/60 rounded px-2 py-1 mb-1">
+                        <span>{s.date} · {sym}{parseFloat(s.amount).toFixed(2)}{cleanNote ? ' · ' + cleanNote : ''}</span>
+                        {(hasPermission('canManageFinancials') || hasPermission('canEditFinancials')) && (
+                        <button onClick={function(){handleDeleteSettlement(s);}} className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 rounded hover:bg-red-200 text-xs font-semibold">Remove</button>
+                        )}
+                      </div>
+                      );
+                    })}
                   </div>
                   )}
                   {report.previousBonuses > 0 && (
