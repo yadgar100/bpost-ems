@@ -7088,8 +7088,11 @@ import React, { useState, useEffect } from 'react';
                   return a.employeeId === parseInt(empId) && a.date >= fromDate && a.date <= toDate;
                   });
 
+                  // Per-period statement: only count settlements made WITHIN the selected date range.
+                  // (Previously this summed all settlements ever made up to toDate, which dragged
+                  //  lifetime history into a single-period report and distorted the balance.)
                   const previousPayments = financialAdjustments.filter(function(a) {
-                  return a.employeeId === parseInt(empId) && a.type === 'acct_settle' && a.date <= toDate;
+                  return a.employeeId === parseInt(empId) && a.type === 'acct_settle' && a.date >= fromDate && a.date <= toDate;
                   }).reduce(function(s,a) { return s + (parseFloat(a.amount)||0); }, 0);
                   const accountCredits = financialAdjustments.filter(function(a) {
                   return a.employeeId === parseInt(empId) && a.type === 'account_credit' && a.date >= fromDate && a.date <= toDate;
@@ -7178,7 +7181,7 @@ import React, { useState, useEffect } from 'react';
                   +(report.totalPaidToAgents>0?'<div class="srow"><span>Paid to Agents</span><span style="color:#dc2626;font-weight:600;">-'+sym+report.totalPaidToAgents.toFixed(2)+'</span></div>':'')
                   +'<div class="srow"><span>Earnings (timesheets)</span><span style="color:#dc2626;font-weight:600;">-'+sym+report.totalEarned.toFixed(2)+'</span></div>'
                   +'<div class="srow"><span>Approved Expenses</span><span style="color:#dc2626;font-weight:600;">-'+sym+report.totalExpenses.toFixed(2)+'</span></div>'
-                  +(report.previousPayments>0?'<div class="srow" style="border-top:1px dashed #e5e7eb;padding-top:5px;margin-top:3px;"><span>Previously Settled</span><span style="color:#2563eb;font-weight:600;">-'+sym+report.previousPayments.toFixed(2)+'</span></div>':'')
+                  +(report.previousPayments!==0?'<div class="srow" style="border-top:1px dashed #e5e7eb;padding-top:5px;margin-top:3px;"><span>'+(report.previousPayments>0?'Settled This Period':'Company Payment This Period')+'</span><span style="color:'+(report.previousPayments>0?'#2563eb':'#ea580c')+';font-weight:600;">'+(report.previousPayments>0?'-':'+')+sym+Math.abs(report.previousPayments).toFixed(2)+'</span></div>':'')
                   +'<div class="stotal"><span style="color:'+balanceColor+'">'+balanceLabel+'</span><span style="color:'+balanceColor+';">'+(report.balance>0?'+':'')+sym+Math.abs(report.balance).toFixed(2)+'</span></div></div>'
                   +'<div class="footer">B-Post Employee Management System &nbsp;·&nbsp; Printed '+new Date().toLocaleString('en-GB')+'</div>';
                   const w = window.open('','_blank','width=860,height=1100');
@@ -7396,7 +7399,7 @@ import React, { useState, useEffect } from 'react';
                   {report.previousPayments !== 0 && (
                   <div className="flex justify-between text-sm border-t border-dashed border-gray-300 pt-2">
                     <span className="text-gray-600">
-                      {report.previousPayments > 0 ? 'Previously Settled (employee → company)' : 'Previous Company Payment to Employee (advance)'}
+                      {report.previousPayments > 0 ? 'Settled This Period (employee → company)' : 'Company Payment This Period (advance)'}
                     </span>
                     <span className={'font-semibold ' + (report.previousPayments > 0 ? 'text-blue-600' : 'text-orange-600')}>
                       {report.previousPayments > 0 ? '-' : '+'}{sym}{Math.abs(report.previousPayments).toFixed(2)}
