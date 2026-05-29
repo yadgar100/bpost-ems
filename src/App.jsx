@@ -5978,6 +5978,29 @@ import React, { useState, useEffect } from 'react';
                   return visEmp.some(function(e) { return e.id === exp.employeeId; }) && exp.status === 'pending';
                 }).reduce(function(s,e) { return s+e.amount; }, 0);
 
+                const [bulkPaying, setBulkPaying] = useState(false);
+                const handleBulkPayApproved = async () => {
+                  // Pay every APPROVED expense currently visible under the active filters.
+                  const toPay = allFiltered.filter(function(e){ return e.status === 'approved'; });
+                  if (!toPay.length) { alert('No approved expenses to pay under the current filter.'); return; }
+                  const total = toPay.reduce(function(s,e){ return s + (e.amount||0); }, 0);
+                  const who = expEmpFilter ? (visEmp.find(function(e){return e.id===parseInt(expEmpFilter);})||{}).firstName + "'s" : 'all employees\\'';
+                  if (!window.confirm('Mark ' + toPay.length + ' approved expense(s) for ' + who + ' as PAID?\\n\\nTotal: ' + getCurrencySymbol((toPay[0]&&toPay[0].currency)||'GBP') + total.toFixed(2))) return;
+                  setBulkPaying(true);
+                  const paidBy = currentUser.firstName + ' ' + currentUser.lastName;
+                  let ok = 0, fail = 0;
+                  for (const exp of toPay) {
+                   try {
+                  const data = await apiCall(API_ENDPOINTS.expenses + '/' + exp.id, { method: 'PUT', body: JSON.stringify({ status: 'paid', paidBy: paidBy }) });
+                  if (data.success) ok++; else fail++;
+                   } catch(e) { fail++; }
+                  }
+                  await loadExpensesFromAPI();
+                  setActiveTab('paid');
+                  setBulkPaying(false);
+                  alert('✅ ' + ok + ' expense(s) marked as paid' + (fail ? '\\n⚠️ ' + fail + ' failed.' : '.'));
+                };
+
                 const handleAction = async (id, status, extra) => {
                   const payload = Object.assign({ status: status }, extra || {});
                   try {
@@ -6126,6 +6149,11 @@ import React, { useState, useEffect } from 'react';
                   <option value="">All Branches</option>
                   {branchList.map(function(b) { return <option key={b} value={b}>{b}</option>; })}
                    </select>
+                  )}
+                  {allFiltered.some(function(e){return e.status==='approved';}) && (
+                   <button onClick={handleBulkPayApproved} disabled={bulkPaying} className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5">
+                  {bulkPaying ? 'Paying…' : '💳 Pay All Approved (' + allFiltered.filter(function(e){return e.status==='approved';}).length + ')'}
+                   </button>
                   )}
                    </div>
                   </div>
@@ -7285,16 +7313,21 @@ import React, { useState, useEffect } from 'react';
                   const expRows = report.empExpenses.map(function(e) {
                   return '<tr><td>'+new Date(e.date).toLocaleDateString('en-GB')+'</td><td>'+e.category+'</td><td>'+(e.description||'—')+'</td><td>'+e.status+'</td><td><b>'+sym+e.amount.toFixed(2)+'</b></td></tr>';
                   }).join('');
+                  const creditRows = (report.accountCredits||[]).map(function(cr) {
+                  return '<tr><td>'+new Date(cr.date).toLocaleDateString('en-GB')+'</td><td>'+(cr.reason||'Cash to accountant')+'</td><td><b>'+sym+(parseFloat(cr.amount)||0).toFixed(2)+'</b></td></tr>';
+                  }).join('');
                   const css = '<style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:Arial,sans-serif;font-size:10px;color:#1f2937;padding:16px;}h1{font-size:16px;color:#4338ca;margin-bottom:3px;}.meta{display:flex;justify-content:space-between;padding:8px 12px;background:#f3f4f6;border-radius:6px;margin:8px 0 14px;}.sec-title{font-size:9px;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;color:#374151;margin-bottom:4px;padding-bottom:3px;border-bottom:2px solid #e5e7eb;display:flex;justify-content:space-between;}.sec{margin-bottom:12px;}table{width:100%;border-collapse:collapse;font-size:9px;}th{background:#f9fafb;text-align:left;padding:3px 6px;font-size:8px;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb;}td{padding:3px 6px;border-bottom:1px solid #f3f4f6;}.sum{background:#fef2f2;border:2px solid #fecaca;border-radius:6px;padding:10px;margin-top:12px;}.srow{display:flex;justify-content:space-between;padding:2px 0;font-size:10px;}.stotal{display:flex;justify-content:space-between;padding-top:7px;margin-top:6px;border-top:2px solid #e5e7eb;font-size:13px;font-weight:bold;}.footer{margin-top:14px;text-align:center;font-size:8px;color:#9ca3af;}@page{size:A4 portrait;margin:10mm;}@media print{html,body{height:100%;width:100%;}body{padding:8px;font-size:9px;}h1{font-size:14px;}.meta{padding:6px 10px;margin:6px 0 10px;}.sec{margin-bottom:8px;}.sum{padding:8px;margin-top:8px;}.footer{margin-top:8px;}}</style>';
                   const body = '<h1>Employee Accounting Report</h1><p style="color:#6b7280;font-size:11px;margin-bottom:4px;">Generated: '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})+'</p>'
                   +'<div class="meta"><div><b style="font-size:15px;">'+emp.firstName+' '+emp.lastName+'</b><br><span style="color:#6b7280;">'+emp.employeeId+' · '+emp.department+' · '+sym+(parseFloat(emp.hourlyRate)||0).toFixed(2)+'/hr</span></div><div style="text-align:right;"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;">Period</span><br><b>'+periodStr+'</b></div></div>'
                   +(report.empCollections.length>0?'<div class="sec"><div class="sec-title"><span>Agent Collections</span><span>'+sym+report.totalCollected.toFixed(2)+'</span></div><table><thead><tr><th>Date</th><th>Agent</th><th>From</th><th>To</th><th>Collected</th><th>Paid to Agent</th></tr></thead><tbody>'+collRows+'<tr style="background:#f0fdf4;font-weight:bold;"><td colspan="4" style="text-align:right;padding-right:8px;">Net</td><td>'+sym+report.totalCollected.toFixed(2)+'</td><td style="color:#dc2626;">-'+sym+report.totalPaidToAgents.toFixed(2)+'</td></tr></tbody></table></div>':'')
                   +(report.tsRows.length>0?'<div class="sec"><div class="sec-title"><span>Earnings from Timesheets</span><span>'+sym+report.totalEarned.toFixed(2)+'</span></div><table><thead><tr><th>Date</th><th>Regular</th><th>Overtime</th><th>Rate</th><th>Earned</th></tr></thead><tbody>'+tsRows+'<tr style="background:#eff6ff;font-weight:bold;"><td colspan="4" style="text-align:right;padding-right:8px;">Total</td><td>'+sym+report.totalEarned.toFixed(2)+'</td></tr></tbody></table></div>':'')
                   +(report.empExpenses.length>0?'<div class="sec"><div class="sec-title"><span>Approved Expenses</span><span>'+sym+report.totalExpenses.toFixed(2)+'</span></div><table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Status</th><th>Amount</th></tr></thead><tbody>'+expRows+'<tr style="background:#f0fdfa;font-weight:bold;"><td colspan="4" style="text-align:right;padding-right:8px;">Total</td><td>'+sym+report.totalExpenses.toFixed(2)+'</td></tr></tbody></table></div>':'')
+                  +((report.accountCredits&&report.accountCredits.length>0)?'<div class="sec"><div class="sec-title"><span>Account Credits (Cash to Accountant)</span><span>'+sym+report.totalAccountCredits.toFixed(2)+'</span></div><table><thead><tr><th>Date</th><th>Note</th><th>Amount</th></tr></thead><tbody>'+creditRows+'<tr style="background:#eef2ff;font-weight:bold;"><td colspan="2" style="text-align:right;padding-right:8px;">Total</td><td>'+sym+report.totalAccountCredits.toFixed(2)+'</td></tr></tbody></table></div>':'')
                   +'<div class="sum"><div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:10px;">Final Balance Summary</div>'
                   +(Math.abs(report.openingBalance)>=0.01?'<div class="srow" style="border-bottom:1px dashed #e5e7eb;padding-bottom:5px;margin-bottom:3px;"><span style="font-weight:600;">Opening Balance (carried forward)</span><span style="color:'+(report.openingBalance>0?'#dc2626':'#16a34a')+';font-weight:600;">'+(report.openingBalance>0?'+':'-')+sym+Math.abs(report.openingBalance).toFixed(2)+'</span></div>':'')
                   +'<div class="srow"><span>Agent Collections Received</span><span style="color:#16a34a;font-weight:600;">+'+sym+report.totalCollected.toFixed(2)+'</span></div>'
                   +(report.totalPaidToAgents>0?'<div class="srow"><span>Paid to Agents</span><span style="color:#dc2626;font-weight:600;">-'+sym+report.totalPaidToAgents.toFixed(2)+'</span></div>':'')
+                  +(report.totalAccountCredits>0?'<div class="srow"><span>Account Credits (Cash to Accountant)</span><span style="color:#7c3aed;font-weight:600;">-'+sym+report.totalAccountCredits.toFixed(2)+'</span></div>':'')
                   +'<div class="srow"><span>Earnings (timesheets)</span><span style="color:#dc2626;font-weight:600;">-'+sym+report.totalEarned.toFixed(2)+'</span></div>'
                   +'<div class="srow"><span>Approved Expenses</span><span style="color:#dc2626;font-weight:600;">-'+sym+report.totalExpenses.toFixed(2)+'</span></div>'
                   +(report.previousPayments!==0?'<div class="srow" style="border-top:1px dashed #e5e7eb;padding-top:5px;margin-top:3px;"><span>'+(report.previousPayments>0?'Settled This Period':'Company Payment This Period')+'</span><span style="color:'+(report.previousPayments>0?'#2563eb':'#ea580c')+';font-weight:600;">'+(report.previousPayments>0?'-':'+')+sym+Math.abs(report.previousPayments).toFixed(2)+'</span></div>':'')
@@ -7314,6 +7347,7 @@ import React, { useState, useEffect } from 'react';
                   report.tsRows.forEach(function(r) { csv += '"Timesheet","'+r.date+'","'+r.regularHours+'h reg + '+r.overtimeHours+'h OT",'+r.earned.toFixed(2)+'\n'; });
                   report.empExpenses.forEach(function(e) { csv += '"Expense","'+e.date+'","'+e.category+(e.description?' - '+e.description:'')+'",'+e.amount.toFixed(2)+'\n'; });
                   report.empCollections.forEach(function(c) { csv += '"Collection","'+c.date+'","'+c.agentCode+' '+c.agentCity+' ('+c.fromCode+'-'+c.toCode+')",'+c.amountCollected.toFixed(2)+'\n'; });
+                  (report.accountCredits||[]).forEach(function(cr) { csv += '"Account Credit","'+cr.date+'","'+(cr.reason||'Cash to accountant').replace(/"/g,'')+'",'+(parseFloat(cr.amount)||0).toFixed(2)+'\n'; });
                   csv += '"","","FINAL BALANCE",'+report.balance.toFixed(2)+'\n';
                   const blob = new Blob([csv], {type:'text/csv'});
                   const url = URL.createObjectURL(blob);
