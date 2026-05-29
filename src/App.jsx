@@ -1102,7 +1102,7 @@ import React, { useState, useEffect } from 'react';
                 }
             };
 
-            const calculateHours = (startTime, finishTime, employeeId) => {
+            const calculateHours = (startTime, finishTime, employeeId, breakMinutes) => {
                 if (!startTime || !finishTime) return { regular: 0, overtime: 0 };
 
                 const start = new Date(`2000-01-01T${startTime}`);
@@ -1110,6 +1110,10 @@ import React, { useState, useEffect } from 'react';
                 let totalHours = (finish - start) / (1000 * 60 * 60);
 
                 if (totalHours < 0) totalHours += 24;
+
+                // Deduct break time (in minutes) from worked hours before splitting reg/OT.
+                const brk = (parseInt(breakMinutes) || 0) / 60;
+                totalHours = Math.max(totalHours - brk, 0);
 
                 const emp = employeeId ? employees.find(e => e.id === employeeId) : null;
                 const threshold = (emp && emp.standardHours) ? emp.standardHours : payrollSettings.regularHoursThreshold;
@@ -1502,7 +1506,7 @@ import React, { useState, useEffect } from 'react';
                 if (isSubmittingTimesheet) return;
                 setIsSubmittingTimesheet(true);
                 setShowBreakModal(false);
-                const { regular, overtime } = calculateHours(newTimesheet.startTime, newTimesheet.finishTime);
+                const { regular, overtime } = calculateHours(newTimesheet.startTime, newTimesheet.finishTime, currentUser.id, breakMins);
                 const today = new Date().toISOString().split('T')[0];
                 try {
                   const checkInLocStr = newTimesheet.checkInLocation
@@ -1581,7 +1585,7 @@ import React, { useState, useEffect } from 'react';
                   return;
                 }
 
-                const { regular, overtime } = calculateHours(manualEntryData.startTime, manualEntryData.finishTime);
+                const { regular, overtime } = calculateHours(manualEntryData.startTime, manualEntryData.finishTime, parseInt(manualEntryData.employeeId), manualEntryData.breakMinutes || 0);
 
                 const timesheet = {
                   id: timesheets.length + 1,
@@ -1616,7 +1620,7 @@ import React, { useState, useEffect } from 'react';
             };
 
             const handleManualTimesheetEntry = async (employeeId, entryData) => {
-                const { regular, overtime } = calculateHours(entryData.startTime, entryData.finishTime);
+                const { regular, overtime } = calculateHours(entryData.startTime, entryData.finishTime, parseInt(employeeId), entryData.breakMinutes || 0);
                 const notes = entryData.notes ? entryData.notes + ' (Added manually by admin)' : '(Added manually by admin)';
                 const data = await apiCall(API_ENDPOINTS.timesheets, {
                   method: 'POST',
@@ -4711,6 +4715,15 @@ import React, { useState, useEffect } from 'react';
                    const overtimePay = totalOvertime * employee.hourlyRate * empOtMult;
                    const basePay = regularPay + overtimePay;
 
+                   // Break deduction — mirrors calculatePayroll so report matches employee portal.
+                   const totalBreakMinutes = empTimesheets.reduce((sum, ts) => {
+                  const manualBreak = ts.breakMinutes || 0;
+                  const tHours = (ts.regularHours || 0) + (ts.overtimeHours || 0);
+                  const autoBreak = manualBreak === 0 ? getAutoBreakMinutes(tHours) : 0;
+                  return sum + (manualBreak > 0 ? manualBreak : autoBreak);
+                   }, 0);
+                   const breakDeduction = (totalBreakMinutes / 60) * (employee.hourlyRate || 0);
+
                    const empAdjustments = financialAdjustments.filter(adj => {
                   const adjDate = new Date(adj.date);
                   const start = new Date(startDate);
@@ -4723,7 +4736,7 @@ import React, { useState, useEffect } from 'react';
                    const sickPay = empAdjustments.filter(a => a.type === 'sick_pay').reduce((sum, a) => sum + a.amount, 0);
                    const totalAdjustments = bonuses - penalties - advances + sickPay;
 
-                   const totalPay = basePay + totalAdjustments;
+                   const totalPay = basePay - breakDeduction + totalAdjustments;
 
                    const approvedShifts = empTimesheets.filter(ts => ts.status === 'approved').length;
                    const pendingShifts = empTimesheets.filter(ts => ts.status === 'pending').length;
@@ -4738,6 +4751,8 @@ import React, { useState, useEffect } from 'react';
                   regularPay,
                   overtimePay,
                   basePay,
+                  breakDeduction,
+                  totalBreakMinutes,
                   bonuses,
                   penalties,
                   advances,
