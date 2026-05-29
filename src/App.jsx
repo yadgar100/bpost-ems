@@ -5984,8 +5984,8 @@ import React, { useState, useEffect } from 'react';
                   const toPay = allFiltered.filter(function(e){ return e.status === 'approved'; });
                   if (!toPay.length) { alert('No approved expenses to pay under the current filter.'); return; }
                   const total = toPay.reduce(function(s,e){ return s + (e.amount||0); }, 0);
-                  const who = expEmpFilter ? (visEmp.find(function(e){return e.id===parseInt(expEmpFilter);})||{}).firstName + "'s" : 'all employees\\'';
-                  if (!window.confirm('Mark ' + toPay.length + ' approved expense(s) for ' + who + ' as PAID?\\n\\nTotal: ' + getCurrencySymbol((toPay[0]&&toPay[0].currency)||'GBP') + total.toFixed(2))) return;
+                  const who = expEmpFilter ? ((visEmp.find(function(e){return e.id===parseInt(expEmpFilter);})||{}).firstName + "'s") : "all employees'";
+                  if (!window.confirm('Mark ' + toPay.length + ' approved expense(s) for ' + who + ' as PAID?\n\nTotal: ' + getCurrencySymbol((toPay[0]&&toPay[0].currency)||'GBP') + total.toFixed(2))) return;
                   setBulkPaying(true);
                   const paidBy = currentUser.firstName + ' ' + currentUser.lastName;
                   let ok = 0, fail = 0;
@@ -5998,7 +5998,7 @@ import React, { useState, useEffect } from 'react';
                   await loadExpensesFromAPI();
                   setActiveTab('paid');
                   setBulkPaying(false);
-                  alert('✅ ' + ok + ' expense(s) marked as paid' + (fail ? '\\n⚠️ ' + fail + ' failed.' : '.'));
+                  alert('✅ ' + ok + ' expense(s) marked as paid' + (fail ? '\n⚠️ ' + fail + ' failed.' : '.'));
                 };
 
                 const handleAction = async (id, status, extra) => {
