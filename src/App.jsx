@@ -4786,7 +4786,7 @@ import React, { useState, useEffect } from 'react';
                 const exportToCSV = () => {
                   if (!generatedReport) return;
 
-                  let csv = 'Employee ID,Name,Department,Position,Total Hours,Regular Hours,Overtime Hours,Hourly Rate,Regular Pay,Overtime Pay,Total Pay,Approved Shifts,Pending Shifts,Rejected Shifts\n';
+                  let csv = 'Employee ID,Name,Department,Position,Total Hours,Regular Hours,Overtime Hours,Break Minutes,Hourly Rate,Regular Pay,Overtime Pay,Break Deduction,Total Pay,Approved Shifts,Pending Shifts,Rejected Shifts\n';
 
                   generatedReport.data.forEach(row => {
                    csv += `${row.employee.employeeId},`;
@@ -4796,9 +4796,11 @@ import React, { useState, useEffect } from 'react';
                    csv += `${row.totalHours.toFixed(2)},`;
                    csv += `${row.totalRegular.toFixed(2)},`;
                    csv += `${row.totalOvertime.toFixed(2)},`;
+                   csv += `${row.totalBreakMinutes||0},`;
                    csv += `${row.employee.hourlyRate.toFixed(2)},`;
                    csv += `${row.regularPay.toFixed(2)},`;
                    csv += `${row.overtimePay.toFixed(2)},`;
+                   csv += `${(row.breakDeduction||0).toFixed(2)},`;
                    csv += `${row.totalPay.toFixed(2)},`;
                    csv += `${row.approvedShifts},`;
                    csv += `${row.pendingShifts},`;
@@ -4992,7 +4994,9 @@ import React, { useState, useEffect } from 'react';
                   <td className="px-4 py-3 text-sm font-medium text-amber-600">{row.totalOvertime.toFixed(1)}</td>
                   <td className="px-4 py-3 text-sm font-bold">{row.totalHours.toFixed(1)}</td>
                   <td className="px-4 py-3 text-sm">{getCurrencySymbol(row.employee.currency || "GBP")}{row.employee.hourlyRate.toFixed(2)}</td>
-                  <td className="px-4 py-3 text-sm font-bold text-green-700">{getCurrencySymbol(row.employee.currency || "GBP")}{row.totalPay.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-sm font-bold text-green-700">{getCurrencySymbol(row.employee.currency || "GBP")}{row.totalPay.toFixed(2)}
+                   {row.totalBreakMinutes > 0 && <div className="text-xs font-normal text-gray-400">incl. {row.totalBreakMinutes}m break (-{getCurrencySymbol(row.employee.currency || "GBP")}{row.breakDeduction.toFixed(2)})</div>}
+                  </td>
                   <td className="px-4 py-3 text-xs text-indigo-600 font-medium">{expandedEmp === row.employee.id ? 'Hide ▲' : 'Show ▼'}</td>
                    </tr>
                    {expandedEmp === row.employee.id && (
@@ -5006,6 +5010,7 @@ import React, { useState, useEffect } from 'react';
                    <th className="py-2 text-left">Finish</th>
                    <th className="py-2 text-left">Regular</th>
                    <th className="py-2 text-left">Overtime</th>
+                   <th className="py-2 text-left">Break</th>
                    <th className="py-2 text-left">Total</th>
                    <th className="py-2 text-left">Pay</th>
                    <th className="py-2 text-left">Status</th>
@@ -5013,7 +5018,9 @@ import React, { useState, useEffect } from 'react';
                    </thead>
                    <tbody>
                   {row.timesheets.sort((a,b) => new Date(a.date)-new Date(b.date)).map(ts => {
-                   const shiftPay = ((ts.regularHours||0) + (ts.overtimeHours||0)) * (row.employee.hourlyRate||0);
+                   const tHrs = (ts.regularHours||0) + (ts.overtimeHours||0);
+                   const shiftBreakMin = (ts.breakMinutes||0) > 0 ? ts.breakMinutes : getAutoBreakMinutes(tHrs);
+                   const shiftPay = Math.max(tHrs * (row.employee.hourlyRate||0) - (shiftBreakMin/60)*(row.employee.hourlyRate||0), 0);
                    const sym = getCurrencySymbol(row.employee.currency||'GBP');
                    return (
                    <tr key={ts.id} className="border-b border-indigo-100 last:border-0">
@@ -5032,7 +5039,8 @@ import React, { useState, useEffect } from 'react';
                   </td>
                   <td className="py-1.5">{(ts.regularHours||0).toFixed(1)}h</td>
                   <td className="py-1.5 text-amber-600">{(ts.overtimeHours||0).toFixed(1)}h</td>
-                  <td className="py-1.5 font-semibold">{((ts.regularHours||0)+(ts.overtimeHours||0)).toFixed(1)}h</td>
+                  <td className="py-1.5 text-gray-500">{shiftBreakMin > 0 ? shiftBreakMin + 'm' : '—'}</td>
+                  <td className="py-1.5 font-semibold">{tHrs.toFixed(1)}h</td>
                   <td className="py-1.5 text-green-700 font-semibold">{sym}{shiftPay.toFixed(2)}</td>
                   <td className="py-1.5">
                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${ts.status==='approved'?'bg-green-100 text-green-700':ts.status==='rejected'?'bg-red-100 text-red-700':'bg-yellow-100 text-yellow-700'}`}>
