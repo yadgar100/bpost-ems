@@ -7216,8 +7216,14 @@ import React, { useState, useEffect } from 'react';
                   const tsRows = empTimesheets.map(function(ts) {
                   const reg = parseFloat(ts.regularHours) || 0;
                   const ot = parseFloat(ts.overtimeHours) || 0;
-                  const earned = (reg * hourlyRate) + (ot * hourlyRate * overtimeMultiplier);
-                  return { date: ts.date, regularHours: reg, overtimeHours: ot, earned: earned };
+                  // Deduct break (manual, else auto rule) — mirrors the Payroll Report so the two reconcile.
+                  const manualBreak = parseInt(ts.breakMinutes) || 0;
+                  const breakMin = manualBreak > 0 ? manualBreak : getAutoBreakMinutes(reg + ot);
+                  const breakHrs = breakMin / 60;
+                  const grossEarned = (reg * hourlyRate) + (ot * hourlyRate * overtimeMultiplier);
+                  const breakDeduction = breakHrs * hourlyRate;
+                  const earned = Math.max(grossEarned - breakDeduction, 0);
+                  return { date: ts.date, regularHours: reg, overtimeHours: ot, breakMinutes: breakMin, earned: earned };
                   });
 
                   const totalEarned = tsRows.reduce(function(s,r) { return s+r.earned; }, 0);
@@ -7232,7 +7238,7 @@ import React, { useState, useEffect } from 'react';
                   const priorCollected   = priorCollections.reduce(function(s,c){ return s + (c.amountCollected||0); }, 0);
                   const priorPaidAgents  = priorCollections.reduce(function(s,c){ return s + (c.amountPaid||0); }, 0);
                   const priorEarned = timesheets.filter(function(ts){ return ts.employeeId === parseInt(empId) && ts.status === 'approved' && ts.date < fromDate; })
-                   .reduce(function(s,ts){ const reg=parseFloat(ts.regularHours)||0, ot=parseFloat(ts.overtimeHours)||0; return s + (reg*hourlyRate)+(ot*hourlyRate*overtimeMultiplier); }, 0);
+                   .reduce(function(s,ts){ const reg=parseFloat(ts.regularHours)||0, ot=parseFloat(ts.overtimeHours)||0; const mb=parseInt(ts.breakMinutes)||0; const bm=mb>0?mb:getAutoBreakMinutes(reg+ot); const gross=(reg*hourlyRate)+(ot*hourlyRate*overtimeMultiplier); return s + Math.max(gross - (bm/60)*hourlyRate, 0); }, 0);
                   const priorExpenses = expenses.filter(function(ex){ return ex.employeeId === parseInt(empId) && (ex.status==='approved'||ex.status==='paid') && ex.date < fromDate; })
                    .reduce(function(s,ex){ return s + (ex.amount||0); }, 0);
                   const priorSettlements = allSettlements.filter(function(a){ return a.date < fromDate; })
