@@ -6878,7 +6878,7 @@ import React, { useState, useEffect } from 'react';
 
                 const startEdit = function(col) {
                   setEditingId(col.id);
-                  setEditVals({ fromCode: col.fromCode, toCode: col.toCode, amountCollected: col.amountCollected, amountPaid: col.amountPaid, bankAmount: col.bankAmount || 0, boxesQty: col.boxesQty });
+                  setEditVals({ date: col.date, fromCode: col.fromCode, toCode: col.toCode, amountCollected: col.amountCollected, amountPaid: col.amountPaid, bankAmount: col.bankAmount || 0, boxesQty: col.boxesQty });
                 };
 
                 const saveEdit = async function(col) {
@@ -6887,6 +6887,7 @@ import React, { useState, useEffect } from 'react';
                    const data = await apiCall(API_ENDPOINTS.agentCollections + '/' + col.id, {
                   method: 'PUT',
                   body: JSON.stringify({
+                   date: editVals.date || col.date,
                    fromCode: editVals.fromCode,
                    toCode: editVals.toCode,
                    amountCollected: parseFloat(editVals.amountCollected) || 0,
@@ -7069,7 +7070,9 @@ import React, { useState, useEffect } from 'react';
                    return (
                   <tr key={col.id} className={'hover:bg-orange-50 ' + (isEditing ? 'bg-amber-50' : '')}>
                    <td className="px-4 py-3"><div className="font-medium text-gray-800">{col.employeeName}</div><div className="text-xs text-gray-500">{col.employeeCode}</div></td>
-                   <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{new Date(col.date).toLocaleDateString('en-GB')}</td>
+                   <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                  {isEditing ? <input type="date" value={editVals.date} onChange={function(e){setEditVals(Object.assign({},editVals,{date:e.target.value}));}} className="px-2 py-1 border border-orange-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-orange-400" /> : new Date(col.date).toLocaleDateString('en-GB')}
+                   </td>
                    <td className="px-4 py-3"><span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-bold">{col.agentCode}</span><div className="text-xs text-gray-400">{col.agentCity}</div></td>
                    <td className="px-4 py-3 font-semibold text-gray-700">
                   {isEditing ? <input value={editVals.fromCode} onChange={function(e){setEditVals(Object.assign({},editVals,{fromCode:e.target.value}));}} className={ic} /> : (col.fromCode||'—')}
