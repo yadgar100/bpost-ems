@@ -8147,8 +8147,6 @@ import React, { useState, useEffect } from 'react';
                     </div>
                     )}
                     </div>
-                  </div>
-                  )}
 
                   <div className="rounded-2xl border-2 border-indigo-200 bg-indigo-50 p-6 mt-6">
                   <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-4">Branch Cash Settlement — {report.branchName}</p>
@@ -8199,6 +8197,7 @@ import React, { useState, useEffect } from 'react';
                     <p className="text-xs text-gray-400 mt-2">{parseFloat(coSettleAmount) >= Math.abs(report.branchCashDue) - 0.005 ? 'Full balance will be cleared.' : 'Remaining ' + sym + (Math.abs(report.branchCashDue) - (parseFloat(coSettleAmount)||0)).toFixed(2) + ' carries forward.'}</p>
                   </div>
                   )}
+                  </div>
                   </div>
                   )}
                   </div>
