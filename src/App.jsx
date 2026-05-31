@@ -7705,6 +7705,11 @@ import React, { useState, useEffect } from 'react';
                 const collapsed = persistedState ? persistedState.collapsed : {collections:false,payroll:false,expenses:false,summary:false};
                 const setCollapsed = mk('collapsed');
                 const toggleSection = function(key) { setCollapsed(function(prev) { return Object.assign({}, prev, {[key]: !prev[key]}); }); };
+                const [coSettling, setCoSettling] = useState(false);
+                const [coSettleAmount, setCoSettleAmount] = useState('');
+                const [coSettleDate, setCoSettleDate] = useState('');
+                const [coSettleNote, setCoSettleNote] = useState('');
+                const sym = '£';
 
                 const countryList = [...new Set(visEmp.filter(function(e) { return !e.isAdmin && e.country; }).map(function(e) { return e.country; }))].sort();
 
@@ -7776,7 +7781,9 @@ import React, { useState, useEffect } from 'react';
                   const totalBankCollected = cols.reduce(function(s,c) { return s + (c.bankAmount||0); }, 0);
                   const totalPaidToAgents = cols.reduce(function(s,c) { return s + c.amountPaid; }, 0);
                   const totalCollections = totalCashCollected + totalBankCollected;
-                  const netCollections = totalCollections - totalPaidToAgents;
+                  // Bank transfers go straight into the company's MAIN account, not through the branch,
+                  // so they are excluded from the branch's net collections and profit. Cash only.
+                  const netCollections = totalCashCollected - totalPaidToAgents;
 
                   const exps = expenses.filter(function(e) {
                   return filteredEmp.some(function(v) { return v.id === e.employeeId; }) && (e.status === 'approved' || e.status === 'paid') && e.date >= fromDate && e.date <= toDate;
@@ -7816,7 +7823,65 @@ import React, { useState, useEffect } from 'react';
 
                   const margin = netCollections - totalExpenses - totalPayroll;
 
-                  setReport({ totalCashCollected, totalBankCollected, totalCollections, totalPaidToAgents, netCollections, totalExpenses, totalPayroll, empPayroll, margin, byAgent: Object.values(byAgent), exps, periodStart: fromDate, periodEnd: toDate });
+                  // Branch cash settlements: cash the branch has handed over to the company HQ.
+                  // Tagged by branch name so each branch settles independently. Bank transfers are
+                  // excluded from what the branch owes (they already went to the main account).
+                  const branchKey = branchFilter || '__ALL__';
+                  const branchSettlements = financialAdjustments.filter(function(a){
+                   if (a.type !== 'branch_settle') return false;
+                   const m = (a.reason||'').match(/\[BRANCH:([^\]]*)\]/);
+                   const bk = m ? m[1] : '__ALL__';
+                   return bk === branchKey && a.date >= fromDate && a.date <= toDate;
+                  });
+                  const totalSettled = branchSettlements.reduce(function(s,a){ return s + (parseFloat(a.amount)||0); }, 0);
+                  // Cash the branch should hand to company = net cash collections (cash - paid to agents).
+                  // Outstanding = that, minus expenses/payroll paid out of branch cash, minus already settled.
+                  const branchCashDue = netCollections - totalExpenses - totalPayroll - totalSettled;
+
+                  setReport({ totalCashCollected, totalBankCollected, totalCollections, totalPaidToAgents, netCollections, totalExpenses, totalPayroll, empPayroll, margin, byAgent: Object.values(byAgent), exps, periodStart: fromDate, periodEnd: toDate, branchSettlements, totalSettled, branchCashDue, branchName: branchFilter || 'All Branches' });
+                };
+
+                React.useEffect(function(){
+                  if (report) { setCoSettleAmount(Math.abs(report.branchCashDue).toFixed(2)); setCoSettleDate(toDate); }
+                  else { setCoSettleAmount(''); setCoSettleDate(''); }
+                }, [report]);
+
+                const handleBranchSettle = async function() {
+                  if (!report) return;
+                  const amount = parseFloat(coSettleAmount);
+                  if (!amount || amount <= 0) { alert('Please enter a valid amount'); return; }
+                  if (amount > Math.abs(report.branchCashDue) + 0.005) { alert('Amount cannot exceed the outstanding cash of ' + sym + Math.abs(report.branchCashDue).toFixed(2)); return; }
+                  const effDate = coSettleDate || toDate;
+                  if (effDate < fromDate || effDate > toDate) {
+                   if (!window.confirm('\u26a0\ufe0f The settlement date (' + effDate + ') is outside this period (' + fromDate + ' to ' + toDate + '). Continue?')) return;
+                  }
+                  const isPartial = amount < Math.abs(report.branchCashDue) - 0.005;
+                  if (!window.confirm((isPartial ? 'Record partial branch settlement of ' : 'Record full branch settlement of ') + sym + amount.toFixed(2) + ' for ' + report.branchName + ' dated ' + effDate + '?\nThis records cash handed from the branch to the company main account.')) return;
+                  setCoSettling(true);
+                  try {
+                   const branchTag = '[BRANCH:' + (branchFilter || '__ALL__') + ']';
+                   const reason = branchTag + ' ' + (coSettleNote || ('Branch cash settlement ' + report.branchName + ' ' + fromDate + ' to ' + toDate));
+                   const data = await apiCall(API_ENDPOINTS.adjustments, {
+                  method: 'POST',
+                  body: JSON.stringify({ employeeId: currentUser.id, type: 'branch_settle', amount: amount, reason: reason, date: effDate })
+                   });
+                   if (data.success) {
+                  await loadAdjustmentsFromAPI();
+                  alert('\u2705 Branch settlement of ' + sym + amount.toFixed(2) + ' recorded for ' + report.branchName + ' on ' + effDate + '.');
+                  setCoSettleNote('');
+                  generateReport();
+                   } else alert('Error: ' + (data.error || 'failed'));
+                  } catch(e) { alert('Failed: ' + e.message); }
+                  setCoSettling(false);
+                };
+
+                const handleDeleteBranchSettle = async function(s) {
+                  if (!window.confirm('Delete this branch settlement of ' + sym + parseFloat(s.amount).toFixed(2) + ' dated ' + s.date + '?')) return;
+                  try {
+                   await apiCall(API_ENDPOINTS.adjustments + '/' + s.id, { method: 'DELETE' });
+                   await loadAdjustmentsFromAPI();
+                   generateReport();
+                  } catch(e) { alert('Failed to delete: ' + e.message); }
                 };
 
                 const exportCSV = function() {
@@ -7844,7 +7909,7 @@ import React, { useState, useEffect } from 'react';
                   if (!report) return;
                   const marginColor = report.margin >= 0 ? '#16a34a' : '#dc2626';
                   const agentRows = report.byAgent.map(function(a) {
-                  return '<tr><td>'+a.code+'</td><td>'+a.city+'</td><td>'+a.count+'</td><td>£'+a.cash.toFixed(2)+'</td><td>'+(a.bank>0?'£'+a.bank.toFixed(2):'—')+'</td><td>'+(a.paid>0?'-£'+a.paid.toFixed(2):'—')+'</td><td><b>£'+(a.cash+a.bank-a.paid).toFixed(2)+'</b></td></tr>';
+                  return '<tr><td>'+a.code+'</td><td>'+a.city+'</td><td>'+a.count+'</td><td>£'+a.cash.toFixed(2)+'</td><td>'+(a.bank>0?'£'+a.bank.toFixed(2):'—')+'</td><td>'+(a.paid>0?'-£'+a.paid.toFixed(2):'—')+'</td><td><b>£'+(a.cash-a.paid).toFixed(2)+'</b></td></tr>';
                   }).join('');
                   const payRows = report.empPayroll.map(function(e) {
                   return '<tr><td>'+e.name+'</td><td>'+e.code+'</td><td><b>'+e.currency+e.pay.toFixed(2)+'</b></td></tr>';
@@ -7882,8 +7947,6 @@ import React, { useState, useEffect } from 'react';
                   w.focus();
                   setTimeout(function() { w.print(); }, 500);
                 };
-
-                const sym = '£';
 
                 return (
                   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
@@ -7955,6 +8018,7 @@ import React, { useState, useEffect } from 'react';
                     <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
                     <p className="text-xs text-blue-600 font-semibold uppercase">Bank Transfer</p>
                     <p className="text-xl font-bold text-blue-700 mt-1">{sym}{report.totalBankCollected.toFixed(2)}</p>
+                    <p className="text-[10px] text-blue-400 mt-1">→ company main account (excluded from branch net)</p>
                     </div>
                     <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
                     <p className="text-xs text-red-600 font-semibold uppercase">Payroll + Expenses</p>
@@ -7988,7 +8052,7 @@ import React, { useState, useEffect } from 'react';
                       <td className="px-3 py-2 font-semibold text-green-700">{sym}{a.cash.toFixed(2)}</td>
                       <td className="px-3 py-2 font-semibold text-blue-600">{a.bank > 0 ? sym+a.bank.toFixed(2) : '—'}</td>
                       <td className="px-3 py-2 text-red-500">{a.paid > 0 ? '-'+sym+a.paid.toFixed(2) : '—'}</td>
-                      <td className="px-3 py-2 font-bold text-gray-800">{sym}{(a.cash+a.bank-a.paid).toFixed(2)}</td>
+                      <td className="px-3 py-2 font-bold text-gray-800">{sym}{(a.cash-a.paid).toFixed(2)}</td>
                       </tr>
                       );
                     })}
@@ -8071,7 +8135,7 @@ import React, { useState, useEffect } from 'react';
                     <div className={'p-6 ' + (report.margin >= 0 ? 'bg-emerald-50' : 'bg-red-50')}>
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm"><span className="text-gray-600">Cash Collected</span><span className="font-semibold text-green-700">+{sym}{report.totalCashCollected.toFixed(2)}</span></div>
-                      <div className="flex justify-between text-sm"><span className="text-gray-600">Bank Transfers</span><span className="font-semibold text-green-700">+{sym}{report.totalBankCollected.toFixed(2)}</span></div>
+                      <div className="flex justify-between text-sm"><span className="text-gray-400">Bank Transfers <span className="text-[10px]">(to main account — not in branch profit)</span></span><span className="font-semibold text-gray-400">{sym}{report.totalBankCollected.toFixed(2)}</span></div>
                       {report.totalPaidToAgents > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Paid to Agents</span><span className="font-semibold text-red-600">-{sym}{report.totalPaidToAgents.toFixed(2)}</span></div>}
                       <div className="flex justify-between text-sm"><span className="text-gray-600">Total Payroll</span><span className="font-semibold text-red-600">-{sym}{report.totalPayroll.toFixed(2)}</span></div>
                       <div className="flex justify-between text-sm"><span className="text-gray-600">Total Expenses</span><span className="font-semibold text-red-600">-{sym}{report.totalExpenses.toFixed(2)}</span></div>
@@ -8083,6 +8147,58 @@ import React, { useState, useEffect } from 'react';
                     </div>
                     )}
                     </div>
+                  </div>
+                  )}
+
+                  <div className="rounded-2xl border-2 border-indigo-200 bg-indigo-50 p-6 mt-6">
+                  <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-4">Branch Cash Settlement — {report.branchName}</p>
+                  <div className="space-y-2 mb-4">
+                    <div className="flex justify-between text-sm"><span className="text-gray-600">Net Cash Collected (cash − paid to agents)</span><span className="font-semibold text-green-700">+{sym}{(report.totalCashCollected - report.totalPaidToAgents).toFixed(2)}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-gray-600">Less: Payroll paid from branch cash</span><span className="font-semibold text-red-600">-{sym}{report.totalPayroll.toFixed(2)}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-gray-600">Less: Expenses paid from branch cash</span><span className="font-semibold text-red-600">-{sym}{report.totalExpenses.toFixed(2)}</span></div>
+                    {report.totalSettled !== 0 && (
+                    <div className="border-t border-dashed border-indigo-300 pt-2">
+                      <div className="flex justify-between text-sm"><span className="text-gray-600 font-semibold">Already Settled to Company</span><span className="font-semibold text-blue-600">-{sym}{report.totalSettled.toFixed(2)}</span></div>
+                      {report.branchSettlements.map(function(s,i){
+                       const cleanNote = (s.reason||'').replace(/\[BRANCH:[^\]]*\]\s*/,'');
+                       return (
+                       <div key={s.id||i} className="flex justify-between items-center text-xs text-gray-500 bg-white/70 rounded px-2 py-1 mt-1">
+                      <span>{s.date} · {sym}{parseFloat(s.amount).toFixed(2)}{cleanNote ? ' · ' + cleanNote : ''}</span>
+                      <button onClick={function(){handleDeleteBranchSettle(s);}} className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 rounded hover:bg-red-200 text-xs font-semibold">Remove</button>
+                       </div>
+                       );
+                      })}
+                    </div>
+                    )}
+                    <div className={'flex justify-between font-bold text-lg border-t-2 border-indigo-300 pt-3 mt-2 ' + (Math.abs(report.branchCashDue) < 0.005 ? 'text-gray-600' : report.branchCashDue > 0 ? 'text-red-700' : 'text-green-700')}>
+                      <span>{Math.abs(report.branchCashDue) < 0.005 ? 'Fully Settled' : report.branchCashDue > 0 ? 'Cash Owed to Company' : 'Company Owes Branch'}</span>
+                      <span>{sym}{Math.abs(report.branchCashDue).toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  {Math.abs(report.branchCashDue) >= 0.005 && (
+                  <div className="bg-white rounded-xl p-4 border border-indigo-200">
+                    <p className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-3">Settle Branch Cash</p>
+                    <div className="flex flex-wrap gap-3 items-end">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Amount ({sym})</label>
+                      <input type="number" min="0.01" step="0.01" max={Math.abs(report.branchCashDue).toFixed(2)} value={coSettleAmount} onChange={function(e){setCoSettleAmount(e.target.value);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-36 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Settlement Date</label>
+                      <input type="date" value={coSettleDate} min={report.periodStart} max={report.periodEnd} onChange={function(e){setCoSettleDate(e.target.value);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                    </div>
+                    <div className="flex-1 min-w-48">
+                      <label className="block text-xs text-gray-500 mb-1">Note (optional)</label>
+                      <input value={coSettleNote} onChange={function(e){setCoSettleNote(e.target.value);}} placeholder="e.g. Cash handed to HQ 31/05" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                    </div>
+                    <button onClick={handleBranchSettle} disabled={coSettling} className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">
+                      {coSettling ? 'Settling…' : 'Settle ' + sym + (parseFloat(coSettleAmount)||0).toFixed(2)}
+                    </button>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">{parseFloat(coSettleAmount) >= Math.abs(report.branchCashDue) - 0.005 ? 'Full balance will be cleared.' : 'Remaining ' + sym + (Math.abs(report.branchCashDue) - (parseFloat(coSettleAmount)||0)).toFixed(2) + ' carries forward.'}</p>
+                  </div>
+                  )}
                   </div>
                   )}
                   </div>
