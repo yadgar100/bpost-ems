@@ -7793,7 +7793,12 @@ import React, { useState, useEffect } from 'react';
                   const otMult = (emp.overtimeRate != null && emp.overtimeRate !== '') ? parseFloat(emp.overtimeRate) : (payrollSettings.overtimeMultiplier || 1.5);
                   let pay = 0;
                   empTs.forEach(function(ts) {
-                  pay += (parseFloat(ts.regularHours)||0) * rate + (parseFloat(ts.overtimeHours)||0) * rate * otMult;
+                  const reg = parseFloat(ts.regularHours)||0;
+                  const ot = parseFloat(ts.overtimeHours)||0;
+                  const manualBreak = parseInt(ts.breakMinutes)||0;
+                  const breakMin = manualBreak > 0 ? manualBreak : getAutoBreakMinutes(reg + ot);
+                  const gross = reg * rate + ot * rate * otMult;
+                  pay += Math.max(gross - (breakMin/60)*rate, 0);
                   });
                   if (pay > 0) empPayroll.push({ name: emp.firstName + ' ' + emp.lastName, code: emp.employeeId, currency: getCurrencySymbol(emp.currency), pay: pay });
                   });
