@@ -2246,7 +2246,12 @@ import React, { useState, useEffect } from 'react';
             };
 
             const EmployeeDashboard = () => {
-                const myTimesheets = timesheets.filter(ts => ts.employeeId === currentUser.id);
+                // Once an accounting period is settled, archive everything up to the settlement date
+                // (same rule as collections): hide timesheets dated on/before the last settlement.
+                const mySettlements = financialAdjustments.filter(a => a.employeeId === currentUser.id && a.type === 'acct_settle');
+                const lastSettleDateTs = mySettlements.length ? mySettlements.map(a => a.date).sort().slice(-1)[0] : null;
+                const allMyTimesheets = timesheets.filter(ts => ts.employeeId === currentUser.id);
+                const myTimesheets = lastSettleDateTs ? allMyTimesheets.filter(ts => ts.date > lastSettleDateTs) : allMyTimesheets;
                 const payroll = calculatePayroll(currentUser.id);
                 const currentLocationData = newTimesheet.locationId
                   ? workLocations.find(loc => loc.id === newTimesheet.locationId)
@@ -2634,7 +2639,11 @@ import React, { useState, useEffect } from 'react';
                   })()}
 
                   <div className="bg-white rounded-xl shadow p-6">
-                   <h2 className="text-xl font-bold text-gray-800 mb-4">Timesheet History</h2>
+                   <h2 className="text-xl font-bold text-gray-800 mb-1">Timesheet History</h2>
+                   {lastSettleDateTs && <p className="text-xs text-gray-400 mb-3">Showing shifts since last settlement ({new Date(lastSettleDateTs).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}). Settled shifts are archived.</p>}
+                   {myTimesheets.length === 0 ? (
+                  <p className="text-gray-400 text-sm py-6 text-center">{lastSettleDateTs ? 'No shifts since the last settlement.' : 'No timesheets yet.'}</p>
+                   ) : (
                    <div className="overflow-x-auto">
                   <table className="w-full">
                    <thead className="bg-gray-50">
@@ -2679,6 +2688,7 @@ import React, { useState, useEffect } from 'react';
                    </tbody>
                   </table>
                    </div>
+                   )}
                   </div>
 
                    </div>
