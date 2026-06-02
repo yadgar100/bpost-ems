@@ -6945,6 +6945,12 @@ import React, { useState, useEffect } from 'react';
 
                 const totalCollected = reportData ? reportData.reduce(function(s,c) { return s+c.amountCollected; }, 0) : 0;
                 const totalPaid = reportData ? reportData.reduce(function(s,c) { return s+c.amountPaid; }, 0) : 0;
+                // All collections in a branch/country report share one currency. Use the data's
+                // currency (falls back to the selected employee's, then GBP) so totals match the rows.
+                const _curEmp = empFilter ? visEmp.find(function(e){ return e.id === parseInt(empFilter); }) : null;
+                const reportCurrency = (reportData && reportData.length > 0 && reportData[0].currency)
+                  ? reportData[0].currency
+                  : (_curEmp && _curEmp.currency ? _curEmp.currency : 'GBP');
 
                 return (
                   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
@@ -7062,8 +7068,8 @@ import React, { useState, useEffect } from 'react';
                    ) : (
                   <div>
                    <div className="grid grid-cols-2 gap-4 mb-6 max-w-lg">
-                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center"><p className="text-xs text-green-600 font-semibold uppercase">Total Collected</p><p className="text-2xl font-bold text-green-700 mt-1">{getCurrencySymbol('GBP')}{totalCollected.toFixed(2)}</p></div>
-                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center"><p className="text-xs text-red-600 font-semibold uppercase">Total Paid</p><p className="text-2xl font-bold text-red-700 mt-1">{getCurrencySymbol('GBP')}{totalPaid.toFixed(2)}</p></div>
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center"><p className="text-xs text-green-600 font-semibold uppercase">Total Collected</p><p className="text-2xl font-bold text-green-700 mt-1">{getCurrencySymbol(reportCurrency)}{totalCollected.toFixed(2)}</p></div>
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center"><p className="text-xs text-red-600 font-semibold uppercase">Total Paid</p><p className="text-2xl font-bold text-red-700 mt-1">{getCurrencySymbol(reportCurrency)}{totalPaid.toFixed(2)}</p></div>
                    </div>
                    <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -7119,9 +7125,9 @@ import React, { useState, useEffect } from 'react';
                   })}
                   <tr className="bg-orange-50 font-bold border-t-2 border-orange-200">
                    <td colSpan="5" className="px-4 py-3 text-right text-gray-700 uppercase text-xs tracking-wide">TOTAL</td>
-                   <td className="px-4 py-3 text-green-700">{getCurrencySymbol('GBP')}{totalCollected.toFixed(2)}</td>
-                   <td className="px-4 py-3 text-red-600">{getCurrencySymbol('GBP')}{totalPaid.toFixed(2)}</td>
-                   <td className="px-4 py-3 text-blue-600">{getCurrencySymbol('GBP')}{(reportData.reduce(function(s,c){return s+(c.bankAmount||0);},0)).toFixed(2)}</td>
+                   <td className="px-4 py-3 text-green-700">{getCurrencySymbol(reportCurrency)}{totalCollected.toFixed(2)}</td>
+                   <td className="px-4 py-3 text-red-600">{getCurrencySymbol(reportCurrency)}{totalPaid.toFixed(2)}</td>
+                   <td className="px-4 py-3 text-blue-600">{getCurrencySymbol(reportCurrency)}{(reportData.reduce(function(s,c){return s+(c.bankAmount||0);},0)).toFixed(2)}</td>
                    {hasPermission('canManageAgentCollections') && <td></td>}
                   </tr>
                    </tbody>
