@@ -3216,13 +3216,44 @@ import React, { useState, useEffect } from 'react';
                 const [moveBatchAssignedEmpName, setMoveBatchAssignedEmpName] = useState('');
 
                 // ── Add Shipment Manually states ─────────────────────
-                const [showAddShipment, setShowAddShipment]   = useState(false);
-                const [addShipForm, setAddShipForm]           = useState({
+                // Persist the draft to localStorage so a refresh (or accidental nav) keeps the
+                // half-filled form until it's submitted. Draft is cleared only on success/cancel.
+                const ADD_SHIP_DRAFT_KEY = 'bpost_add_shipment_draft';
+                const _loadShipDraft = function() {
+                  try {
+                   const raw = localStorage.getItem(ADD_SHIP_DRAFT_KEY);
+                   if (raw) return JSON.parse(raw);
+                  } catch (e) {}
+                  return null;
+                };
+                const _savedShipDraft = _loadShipDraft();
+                const [showAddShipment, setShowAddShipment]   = useState(_savedShipDraft ? true : false);
+                const [addShipForm, setAddShipForm]           = useState(_savedShipDraft || {
                   batchName: '', employeeId: '', shipmentCode: '',
                   receiverName: '', receiverMobile: '', toOffice: '',
                   amountIQD: '', amountUSD: '', amountGBP: '', amountEUR: '', notes: ''
                 });
                 const [addShipSaving, setAddShipSaving] = useState(false);
+
+                // Save draft on every form change while the modal is open.
+                React.useEffect(function() {
+                  if (showAddShipment) {
+                   try { localStorage.setItem(ADD_SHIP_DRAFT_KEY, JSON.stringify(addShipForm)); } catch (e) {}
+                  }
+                }, [addShipForm, showAddShipment]);
+
+                const clearShipDraft = function() {
+                  try { localStorage.removeItem(ADD_SHIP_DRAFT_KEY); } catch (e) {}
+                };
+
+                const closeAddShipment = function() {
+                  // Warn before discarding a half-filled form so a stray click never loses data.
+                  const f = addShipForm;
+                  const hasContent = (f.shipmentCode||'').trim() || (f.receiverName||'').trim() || (f.receiverMobile||'').trim() || (f.toOffice||'').trim() || (f.notes||'').trim() || (f.amountIQD||'') || (f.amountUSD||'') || (f.amountGBP||'') || (f.amountEUR||'');
+                  if (hasContent && !window.confirm('Discard this unsaved shipment? Your entered details will be lost.')) return;
+                  clearShipDraft();
+                  setShowAddShipment(false);
+                };
 
                 const openAddShipmentModal = function() {
                   setAddShipForm({
@@ -3258,6 +3289,7 @@ import React, { useState, useEffect } from 'react';
                    };
                    await apiCall(API_ENDPOINTS.iraqPay, { method:'POST', body: JSON.stringify(body) });
                    await loadIraqPaymentsFromAPI();
+                   clearShipDraft();
                    setShowAddShipment(false);
                    alert('✅ Shipment ' + body.shipmentCode + ' added to batch "' + body.batchName + '"');
                   } catch(e) { alert('Add failed: ' + e.message); }
@@ -3868,15 +3900,15 @@ import React, { useState, useEffect } from 'react';
 
                   {/* ── Add Shipment Manually Modal ── */}
                   {showAddShipment && (
-                   <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" onClick={function(){setShowAddShipment(false);}}>
-                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-screen overflow-y-auto" onClick={function(e){e.stopPropagation();}}>
+                   <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-screen overflow-y-auto">
                    {/* Header */}
                    <div className="bg-gradient-to-r from-emerald-600 to-green-600 rounded-t-2xl px-6 py-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                    <span className="text-2xl">➕</span>
                    <h3 className="text-lg font-bold text-white">Add Shipment Manually</h3>
                   </div>
-                  <button type="button" onClick={function(){setShowAddShipment(false);}} className="bg-green-700 hover:bg-green-800 text-white px-4 py-1.5 rounded-lg font-semibold text-sm flex items-center gap-1"><X className="w-3 h-3"/>Close</button>
+                  <button type="button" onClick={closeAddShipment} className="bg-green-700 hover:bg-green-800 text-white px-4 py-1.5 rounded-lg font-semibold text-sm flex items-center gap-1"><X className="w-3 h-3"/>Close</button>
                    </div>
 
                    <div className="p-6 space-y-4">
@@ -3983,7 +4015,7 @@ import React, { useState, useEffect } from 'react';
 
                   {/* Actions */}
                   <div className="flex justify-end gap-3 pt-2">
-                   <button type="button" onClick={function(){setShowAddShipment(false);}} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 text-sm">Cancel</button>
+                   <button type="button" onClick={closeAddShipment} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 text-sm">Cancel</button>
                    <button type="button" onClick={submitAddShipment} disabled={addShipSaving}
                   className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white rounded-lg font-bold text-sm flex items-center gap-2">
                   {addShipSaving ? 'Saving…' : '✅ Add Shipment'}
