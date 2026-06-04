@@ -1134,8 +1134,33 @@ import React, { useState, useEffect } from 'react';
             };
 
             const getCurrencySymbol = (code) => {
-                const symbols = { GBP: '£', USD: '$', EUR: '€', IQD: 'IQD ' };
+                const symbols = { GBP: '£', USD: '$', EUR: '€', IQD: 'IQD ', TRY: '₺', AED: 'AED ' };
                 return symbols[code] || '£';
+            };
+
+            // Map a country of operation to its currency code. This is the source of truth so
+            // expenses/collections always use the right currency even if an employee record's
+            // stored currency field is stale or missing.
+            const getCurrencyForCountry = (country) => {
+                const map = {
+                  'United Kingdom': 'GBP',
+                  'Iraq': 'IQD',
+                  'United States': 'USD',
+                  'Germany': 'EUR',
+                  'France': 'EUR',
+                  'Netherlands': 'EUR',
+                  'Belgium': 'EUR',
+                  'Turkey': 'TRY',
+                  'UAE': 'AED'
+                };
+                return map[country] || null;
+            };
+
+            // Resolve an employee's currency: prefer their country of operation, then their stored
+            // currency field, then GBP as a last resort.
+            const resolveEmployeeCurrency = (emp) => {
+                if (!emp) return 'GBP';
+                return getCurrencyForCountry(emp.country) || emp.currency || 'GBP';
             };
 
             const getEmployeeCurrency = (employeeId) => {
@@ -5985,7 +6010,7 @@ import React, { useState, useEffect } from 'react';
                    category: addForm.category,
                    description: addForm.description,
                    amount: parseFloat(addForm.amount),
-                   currency: (visEmp.find(function(e) { return e.id === parseInt(addForm.employeeId); }) || {}).currency || 'GBP',
+                   currency: resolveEmployeeCurrency(visEmp.find(function(e) { return e.id === parseInt(addForm.employeeId); })),
                    receiptNote: addForm.receiptNote,
                   })
                    });
@@ -6028,6 +6053,16 @@ import React, { useState, useEffect } from 'react';
                   return visEmp.some(function(e) { return e.id === exp.employeeId; }) && exp.status === 'pending';
                 }).reduce(function(s,e) { return s+e.amount; }, 0);
 
+                // Currency for the summary cards: derive from the active employee/branch filter, or
+                // from the filtered set if it's all one currency; otherwise show no symbol (mixed).
+                const summaryCurrency = (function() {
+                  if (expEmpFilter) { return resolveEmployeeCurrency(visEmp.find(function(e){return e.id===parseInt(expEmpFilter);})); }
+                  const setCur = new Set(allFiltered.map(function(exp){ const em = visEmp.find(function(e){return e.id===exp.employeeId;}); return (em && getCurrencyForCountry(em.country)) || exp.currency || 'GBP'; }));
+                  if (setCur.size === 1) return Array.from(setCur)[0];
+                  return null; // mixed currencies — don't imply a single symbol
+                })();
+                const summarySym = summaryCurrency ? getCurrencySymbol(summaryCurrency) : '';
+
                 const [bulkPaying, setBulkPaying] = useState(false);
                 const handleBulkPayApproved = async () => {
                   // Pay every APPROVED expense currently visible under the active filters.
@@ -6035,7 +6070,7 @@ import React, { useState, useEffect } from 'react';
                   if (!toPay.length) { alert('No approved expenses to pay under the current filter.'); return; }
                   const total = toPay.reduce(function(s,e){ return s + (e.amount||0); }, 0);
                   const who = expEmpFilter ? ((visEmp.find(function(e){return e.id===parseInt(expEmpFilter);})||{}).firstName + "'s") : "all employees'";
-                  if (!window.confirm('Mark ' + toPay.length + ' approved expense(s) for ' + who + ' as PAID?\n\nTotal: ' + getCurrencySymbol((toPay[0]&&toPay[0].currency)||'GBP') + total.toFixed(2))) return;
+                  if (!window.confirm('Mark ' + toPay.length + ' approved expense(s) for ' + who + ' as PAID?\n\nTotal: ' + getCurrencySymbol(resolveEmployeeCurrency(visEmp.find(function(e){return toPay[0] && e.id===toPay[0].employeeId;})) || (toPay[0]&&toPay[0].currency) || 'GBP') + total.toFixed(2))) return;
                   setBulkPaying(true);
                   const paidBy = currentUser.firstName + ' ' + currentUser.lastName;
                   let ok = 0, fail = 0;
@@ -6160,15 +6195,15 @@ import React, { useState, useEffect } from 'react';
                   <div className="grid grid-cols-3 gap-4 p-6 border-b border-gray-200">
                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
                   <p className="text-xs text-amber-600 font-semibold uppercase tracking-wide">Awaiting Approval</p>
-                  <p className="text-2xl font-bold text-amber-700 mt-1">{getCurrencySymbol("GBP")}{totalPending.toFixed(2)}</p>
+                  <p className="text-2xl font-bold text-amber-700 mt-1">{summarySym}{totalPending.toFixed(2)}</p>
                    </div>
                    <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
                   <p className="text-xs text-green-600 font-semibold uppercase tracking-wide">Approved - Unpaid Balance</p>
-                  <p className="text-2xl font-bold text-green-700 mt-1">{getCurrencySymbol("GBP")}{totalBalance.toFixed(2)}</p>
+                  <p className="text-2xl font-bold text-green-700 mt-1">{summarySym}{totalBalance.toFixed(2)}</p>
                    </div>
                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
                   <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide">Total Paid Out</p>
-                  <p className="text-2xl font-bold text-blue-700 mt-1">{getCurrencySymbol("GBP")}{totalPaid.toFixed(2)}</p>
+                  <p className="text-2xl font-bold text-blue-700 mt-1">{summarySym}{totalPaid.toFixed(2)}</p>
                    </div>
                   </div>
 
@@ -6230,6 +6265,8 @@ import React, { useState, useEffect } from 'react';
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                    {allFiltered.map(function(exp) {
+                  const _expEmp = visEmp.find(function(e){ return e.id === exp.employeeId; });
+                  const expCur = (_expEmp && getCurrencyForCountry(_expEmp.country)) || exp.currency || 'GBP';
                   return (
                    <tr key={exp.id} className="hover:bg-gray-50">
                   <td className="px-3 py-3">
@@ -6241,7 +6278,7 @@ import React, { useState, useEffect } from 'react';
                    <span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-semibold">{exp.category}</span>
                   </td>
                   <td className="px-3 py-3 text-gray-600 max-w-xs truncate">{exp.description || ''}</td>
-                  <td className="px-3 py-3 font-bold text-gray-800 whitespace-nowrap">{getCurrencySymbol(exp.currency)}{exp.amount.toFixed(2)}</td>
+                  <td className="px-3 py-3 font-bold text-gray-800 whitespace-nowrap">{getCurrencySymbol(expCur)}{exp.amount.toFixed(2)}</td>
                   <td className="px-3 py-3">
                    {exp.receiptImage ? (
                   <img src={exp.receiptImage} alt="Receipt"
