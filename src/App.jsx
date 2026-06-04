@@ -779,6 +779,9 @@ import React, { useState, useEffect } from 'react';
 
             useEffect(() => {
                 const handleVisibilityChange = () => {
+                  // Don't refresh (which re-renders and would close an open form) while the
+                  // employee is filling in a collection or expense.
+                  if (showAgentCollectionForm || showExpenseForm) return;
                   if (document.visibilityState === 'visible' && currentUser) {
                    loadTimesheetsFromAPI();
                    loadAdjustmentsFromAPI();
@@ -787,19 +790,21 @@ import React, { useState, useEffect } from 'react';
                 };
                 document.addEventListener('visibilitychange', handleVisibilityChange);
                 return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-            }, [currentUser]);
+            }, [currentUser, showAgentCollectionForm, showExpenseForm]);
 
             // Auto-refresh timesheets every 60s so Currently Working stays live
             useEffect(() => {
                 if (!currentUser) return;
                 const interval = setInterval(() => {
+                  // Skip the refresh while an employee form is open so it isn't remounted/closed.
+                  if (showAgentCollectionForm || showExpenseForm) return;
                   if (document.visibilityState === 'visible') {
                    loadTimesheetsFromAPI();
                    loadIraqPaymentsFromAPI();
                   }
                 }, 60000);
                 return () => clearInterval(interval);
-            }, [currentUser]);
+            }, [currentUser, showAgentCollectionForm, showExpenseForm]);
 
             const [manualEntryData, setManualEntryData] = useState({
                 employeeId: '',
