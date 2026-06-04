@@ -1142,18 +1142,20 @@ import React, { useState, useEffect } from 'react';
             // expenses/collections always use the right currency even if an employee record's
             // stored currency field is stale or missing.
             const getCurrencyForCountry = (country) => {
+                if (!country) return null;
+                const c = country.trim().toLowerCase();
                 const map = {
-                  'United Kingdom': 'GBP',
-                  'Iraq': 'IQD',
-                  'United States': 'USD',
-                  'Germany': 'EUR',
-                  'France': 'EUR',
-                  'Netherlands': 'EUR',
-                  'Belgium': 'EUR',
-                  'Turkey': 'TRY',
-                  'UAE': 'AED'
+                  'united kingdom': 'GBP', 'uk': 'GBP', 'england': 'GBP', 'britain': 'GBP', 'great britain': 'GBP',
+                  'iraq': 'IQD',
+                  'united states': 'USD', 'usa': 'USD', 'us': 'USD',
+                  'germany': 'EUR',
+                  'france': 'EUR',
+                  'netherlands': 'EUR', 'netherland': 'EUR', 'holland': 'EUR',
+                  'belgium': 'EUR',
+                  'turkey': 'TRY',
+                  'uae': 'AED', 'united arab emirates': 'AED'
                 };
-                return map[country] || null;
+                return map[c] || null;
             };
 
             // Resolve an employee's currency: prefer their country of operation, then their stored
@@ -6057,7 +6059,7 @@ import React, { useState, useEffect } from 'react';
                 // from the filtered set if it's all one currency; otherwise show no symbol (mixed).
                 const summaryCurrency = (function() {
                   if (expEmpFilter) { return resolveEmployeeCurrency(visEmp.find(function(e){return e.id===parseInt(expEmpFilter);})); }
-                  const setCur = new Set(allFiltered.map(function(exp){ const em = visEmp.find(function(e){return e.id===exp.employeeId;}); return (em && getCurrencyForCountry(em.country)) || exp.currency || 'GBP'; }));
+                  const setCur = new Set(allFiltered.map(function(exp){ const em = visEmp.find(function(e){return e.id===exp.employeeId;}); return em ? resolveEmployeeCurrency(em) : (exp.currency || 'GBP'); }));
                   if (setCur.size === 1) return Array.from(setCur)[0];
                   return null; // mixed currencies — don't imply a single symbol
                 })();
@@ -6266,7 +6268,7 @@ import React, { useState, useEffect } from 'react';
                   <tbody className="divide-y divide-gray-100">
                    {allFiltered.map(function(exp) {
                   const _expEmp = visEmp.find(function(e){ return e.id === exp.employeeId; });
-                  const expCur = (_expEmp && getCurrencyForCountry(_expEmp.country)) || exp.currency || 'GBP';
+                  const expCur = _expEmp ? resolveEmployeeCurrency(_expEmp) : (exp.currency || 'GBP');
                   return (
                    <tr key={exp.id} className="hover:bg-gray-50">
                   <td className="px-3 py-3">
