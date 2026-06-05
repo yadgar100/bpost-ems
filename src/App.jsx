@@ -6355,7 +6355,7 @@ import React, { useState, useEffect } from 'react';
                   const byEmployee = {};
                   filtered.forEach(function(exp) {
                    if (!byEmployee[exp.employeeId]) {
-                  byEmployee[exp.employeeId] = { employeeName: exp.employeeName, employeeCode: exp.employeeCode, items: [], totalPending: 0, totalApproved: 0, totalPaid: 0, totalRejected: 0 };
+                  byEmployee[exp.employeeId] = { employeeId: exp.employeeId, employeeName: exp.employeeName, employeeCode: exp.employeeCode, items: [], totalPending: 0, totalApproved: 0, totalPaid: 0, totalRejected: 0 };
                    }
                    byEmployee[exp.employeeId].items.push(exp);
                    if (exp.status === 'pending') byEmployee[exp.employeeId].totalPending += exp.amount;
@@ -6390,6 +6390,13 @@ import React, { useState, useEffect } from 'react';
                 const grandTotal = reportData ? reportData.reduce(function(s,r) {
                   return s + r.items.filter(function(e) { return e.status !== 'rejected'; }).reduce(function(ss,e) { return ss+e.amount; }, 0);
                 }, 0) : 0;
+                // Grand-total currency: from the employee/branch filter, or the report set if uniform.
+                const grandSym = (function() {
+                  if (empFilter) { return getCurrencySymbol(resolveEmployeeCurrency(visEmp.find(function(e){return e.id===parseInt(empFilter);}))); }
+                  if (!reportData || reportData.length === 0) return getCurrencySymbol('GBP');
+                  const curs = new Set(reportData.map(function(r){ const em = visEmp.find(function(e){return e.id===r.employeeId;}); return em ? resolveEmployeeCurrency(em) : ((r.items[0] && r.items[0].currency) || 'GBP'); }));
+                  return curs.size === 1 ? getCurrencySymbol(Array.from(curs)[0]) : '';
+                })();
 
                 return (
                   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
@@ -6449,10 +6456,12 @@ import React, { useState, useEffect } from 'react';
                   <div className="space-y-6">
                    <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 text-center mb-6">
                   <p className="text-xs text-teal-600 font-semibold uppercase">Total Expenses ({fromDate} to {toDate})</p>
-                  <p className="text-3xl font-bold text-teal-700 mt-1">{getCurrencySymbol("GBP")}{grandTotal.toFixed(2)}</p>
+                  <p className="text-3xl font-bold text-teal-700 mt-1">{grandSym}{grandTotal.toFixed(2)}</p>
                    </div>
                    {reportData.map(function(row, idx) {
                   const rowTotal = row.items.filter(function(e) { return e.status !== 'rejected'; }).reduce(function(s,e) { return s+e.amount; }, 0);
+                  const _rowEmp = visEmp.find(function(e){ return e.id === row.employeeId || e.employeeId === row.employeeCode; });
+                  const rowSym = getCurrencySymbol(_rowEmp ? resolveEmployeeCurrency(_rowEmp) : ((row.items[0] && row.items[0].currency) || 'GBP'));
                   return (
                    <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
                   <div className="bg-gray-50 px-5 py-3 flex justify-between items-center flex-wrap gap-2">
@@ -6461,10 +6470,10 @@ import React, { useState, useEffect } from 'react';
                   <span className="text-gray-500 text-sm ml-2">{row.employeeCode}</span>
                    </div>
                    <div className="flex gap-4 text-xs flex-wrap">
-                  {row.totalPending > 0 && <span className="text-amber-600 font-semibold">Pending: {getCurrencySymbol("GBP")}{row.totalPending.toFixed(2)}</span>}
-                  {row.totalApproved > 0 && <span className="text-green-600 font-semibold">Approved: {getCurrencySymbol("GBP")}{row.totalApproved.toFixed(2)}</span>}
-                  {row.totalPaid > 0 && <span className="text-blue-600 font-semibold">Paid: {getCurrencySymbol("GBP")}{row.totalPaid.toFixed(2)}</span>}
-                  {row.totalRejected > 0 && <span className="text-red-400 font-semibold">Rejected: {getCurrencySymbol("GBP")}{row.totalRejected.toFixed(2)}</span>}
+                  {row.totalPending > 0 && <span className="text-amber-600 font-semibold">Pending: {rowSym}{row.totalPending.toFixed(2)}</span>}
+                  {row.totalApproved > 0 && <span className="text-green-600 font-semibold">Approved: {rowSym}{row.totalApproved.toFixed(2)}</span>}
+                  {row.totalPaid > 0 && <span className="text-blue-600 font-semibold">Paid: {rowSym}{row.totalPaid.toFixed(2)}</span>}
+                  {row.totalRejected > 0 && <span className="text-red-400 font-semibold">Rejected: {rowSym}{row.totalRejected.toFixed(2)}</span>}
                    </div>
                   </div>
                   <table className="w-full text-sm">
@@ -6486,7 +6495,7 @@ import React, { useState, useEffect } from 'react';
                   <span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-semibold">{exp.category}</span>
                    </td>
                    <td className="px-4 py-2 text-gray-600">{exp.description || ''}</td>
-                   <td className="px-4 py-2 font-bold text-gray-800">{getCurrencySymbol(exp.currency)}{exp.amount.toFixed(2)}</td>
+                   <td className="px-4 py-2 font-bold text-gray-800">{rowSym}{exp.amount.toFixed(2)}</td>
                    <td className="px-4 py-2">
                   <span className={'px-2 py-0.5 rounded-full text-xs font-semibold capitalize ' + getStatusBadgeClass(exp.status)}>{exp.status}</span>
                    </td>
@@ -6495,7 +6504,7 @@ import React, { useState, useEffect } from 'react';
                   })}
                   <tr className="bg-gray-50 font-bold border-t-2 border-gray-300">
                    <td colSpan="3" className="px-4 py-2 text-right text-gray-700">TOTAL</td>
-                   <td className="px-4 py-2 text-gray-800">{getCurrencySymbol("GBP")}{rowTotal.toFixed(2)}</td>
+                   <td className="px-4 py-2 text-gray-800">{rowSym}{rowTotal.toFixed(2)}</td>
                    <td></td>
                   </tr>
                    </tbody>
