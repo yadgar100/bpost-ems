@@ -2398,7 +2398,10 @@ import React, { useState, useEffect } from 'react';
                   <div className="space-y-2">
                    <div className="flex justify-between text-sm"><span className="text-gray-600">Total Earnings</span><span className="font-semibold">{getCurrencySymbol(currentUser.currency)}{payroll.totalPay.toFixed(2)}</span></div>
                    {payroll.payments > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Paid</span><span className="font-semibold text-blue-600">-{getCurrencySymbol(currentUser.currency)}{payroll.payments.toFixed(2)}</span></div>}
-                   {payroll.totalAdjustments !== 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Adjustments</span><span className="font-semibold">{payroll.totalAdjustments >= 0 ? '+' : ''}{getCurrencySymbol(currentUser.currency)}{payroll.totalAdjustments.toFixed(2)}</span></div>}
+                   {payroll.bonuses > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Bonus</span><span className="font-semibold text-emerald-600">+{getCurrencySymbol(currentUser.currency)}{payroll.bonuses.toFixed(2)}</span></div>}
+                   {payroll.sickPay > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Sick Pay</span><span className="font-semibold text-emerald-600">+{getCurrencySymbol(currentUser.currency)}{payroll.sickPay.toFixed(2)}</span></div>}
+                   {payroll.penalties > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Penalty</span><span className="font-semibold text-red-500">-{getCurrencySymbol(currentUser.currency)}{payroll.penalties.toFixed(2)}</span></div>}
+                   {payroll.advances > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Advance</span><span className="font-semibold text-red-500">-{getCurrencySymbol(currentUser.currency)}{payroll.advances.toFixed(2)}</span></div>}
                    {payroll.breakDeduction > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Break Deduction</span><span className="font-semibold text-amber-600">-{getCurrencySymbol(currentUser.currency)}{payroll.breakDeduction.toFixed(2)}</span></div>}
                    <div className="flex justify-between text-sm font-bold border-t border-gray-100 pt-2 mt-2"><span>Balance Owed</span><span className="text-green-700">{getCurrencySymbol(currentUser.currency)}{payroll.balance.toFixed(2)}</span></div>
                   </div>
@@ -4860,7 +4863,7 @@ import React, { useState, useEffect } from 'react';
                 const exportToCSV = () => {
                   if (!generatedReport) return;
 
-                  let csv = 'Employee ID,Name,Department,Position,Total Hours,Regular Hours,Overtime Hours,Break Minutes,Hourly Rate,Regular Pay,Overtime Pay,Break Deduction,Total Pay,Approved Shifts,Pending Shifts,Rejected Shifts\n';
+                  let csv = 'Employee ID,Name,Department,Position,Total Hours,Regular Hours,Overtime Hours,Break Minutes,Hourly Rate,Regular Pay,Overtime Pay,Break Deduction,Bonus,Sick Pay,Penalty,Advance,Total Pay,Approved Shifts,Pending Shifts,Rejected Shifts\n';
 
                   generatedReport.data.forEach(row => {
                    csv += `${row.employee.employeeId},`;
@@ -4875,6 +4878,10 @@ import React, { useState, useEffect } from 'react';
                    csv += `${row.regularPay.toFixed(2)},`;
                    csv += `${row.overtimePay.toFixed(2)},`;
                    csv += `${(row.breakDeduction||0).toFixed(2)},`;
+                   csv += `${(row.bonuses||0).toFixed(2)},`;
+                   csv += `${(row.sickPay||0).toFixed(2)},`;
+                   csv += `${(row.penalties||0).toFixed(2)},`;
+                   csv += `${(row.advances||0).toFixed(2)},`;
                    csv += `${row.totalPay.toFixed(2)},`;
                    csv += `${row.approvedShifts},`;
                    csv += `${row.pendingShifts},`;
@@ -5070,6 +5077,10 @@ import React, { useState, useEffect } from 'react';
                   <td className="px-4 py-3 text-sm">{getCurrencySymbol(row.employee.currency || "GBP")}{row.employee.hourlyRate.toFixed(2)}</td>
                   <td className="px-4 py-3 text-sm font-bold text-green-700">{getCurrencySymbol(row.employee.currency || "GBP")}{row.totalPay.toFixed(2)}
                    {row.totalBreakMinutes > 0 && <div className="text-xs font-normal text-gray-400">incl. {row.totalBreakMinutes}m break (-{getCurrencySymbol(row.employee.currency || "GBP")}{row.breakDeduction.toFixed(2)})</div>}
+                   {row.bonuses > 0 && <div className="text-xs font-normal text-emerald-600">incl. bonus +{getCurrencySymbol(row.employee.currency || "GBP")}{row.bonuses.toFixed(2)}</div>}
+                   {row.sickPay > 0 && <div className="text-xs font-normal text-emerald-600">incl. sick pay +{getCurrencySymbol(row.employee.currency || "GBP")}{row.sickPay.toFixed(2)}</div>}
+                   {row.penalties > 0 && <div className="text-xs font-normal text-red-500">less penalty -{getCurrencySymbol(row.employee.currency || "GBP")}{row.penalties.toFixed(2)}</div>}
+                   {row.advances > 0 && <div className="text-xs font-normal text-red-500">less advance -{getCurrencySymbol(row.employee.currency || "GBP")}{row.advances.toFixed(2)}</div>}
                   </td>
                   <td className="px-4 py-3 text-xs text-indigo-600 font-medium">{expandedEmp === row.employee.id ? 'Hide ▲' : 'Show ▼'}</td>
                    </tr>
@@ -5124,11 +5135,22 @@ import React, { useState, useEffect } from 'react';
                    </tr>
                    );
                   })}
+                  {(row.bonuses > 0 || row.sickPay > 0 || row.penalties > 0 || row.advances > 0) && (
+                   <tr className="border-t-2 border-indigo-200 bg-indigo-50/50">
+                  <td className="py-1.5 font-semibold text-gray-600" colSpan="6">Adjustments</td>
+                  <td className="py-1.5 font-semibold" colSpan="3">
+                   {row.bonuses > 0 && <span className="text-emerald-600 mr-3">Bonus +{getCurrencySymbol(row.employee.currency||'GBP')}{row.bonuses.toFixed(2)}</span>}
+                   {row.sickPay > 0 && <span className="text-emerald-600 mr-3">Sick Pay +{getCurrencySymbol(row.employee.currency||'GBP')}{row.sickPay.toFixed(2)}</span>}
+                   {row.penalties > 0 && <span className="text-red-500 mr-3">Penalty -{getCurrencySymbol(row.employee.currency||'GBP')}{row.penalties.toFixed(2)}</span>}
+                   {row.advances > 0 && <span className="text-red-500 mr-3">Advance -{getCurrencySymbol(row.employee.currency||'GBP')}{row.advances.toFixed(2)}</span>}
+                  </td>
+                   </tr>
+                  )}
                    </tbody>
                   </table>
                    </td>
                   </tr>
-                   )}
+                  )}
                    </React.Fragment>
                   ))}
                   <tr className="bg-gray-100 font-bold">
