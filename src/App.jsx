@@ -6718,7 +6718,7 @@ import React, { useState, useEffect } from 'react';
                    amountPaid: parseFloat(amountPaidRef.current ? amountPaidRef.current.value : '') || 0,
                    bankAmount: parseFloat(bankAmountRef.current ? bankAmountRef.current.value : '') || 0,
                    boxesQty: 0,
-                   currency: currentUser.currency || 'GBP',
+                   currency: resolveEmployeeCurrency(currentUser),
                    notes: notesRef.current ? notesRef.current.value : ''
                   })
                    });
@@ -7031,12 +7031,15 @@ import React, { useState, useEffect } from 'react';
 
                 const totalCollected = reportData ? reportData.reduce(function(s,c) { return s+c.amountCollected; }, 0) : 0;
                 const totalPaid = reportData ? reportData.reduce(function(s,c) { return s+c.amountPaid; }, 0) : 0;
-                // All collections in a branch/country report share one currency. Use the data's
-                // currency (falls back to the selected employee's, then GBP) so totals match the rows.
-                const _curEmp = empFilter ? visEmp.find(function(e){ return e.id === parseInt(empFilter); }) : null;
-                const reportCurrency = (reportData && reportData.length > 0 && reportData[0].currency)
-                  ? reportData[0].currency
-                  : (_curEmp && _curEmp.currency ? _curEmp.currency : 'GBP');
+                // All collections in a branch/country report share one currency. Derive it from the
+                // employee's country of operation (source of truth), so totals match the rows even if
+                // a collection's stored currency is stale.
+                const _curEmp = empFilter
+                  ? visEmp.find(function(e){ return e.id === parseInt(empFilter); })
+                  : (reportData && reportData.length > 0 ? visEmp.find(function(e){ return e.id === reportData[0].employeeId; }) : null);
+                const reportCurrency = _curEmp
+                  ? resolveEmployeeCurrency(_curEmp)
+                  : ((reportData && reportData.length > 0 && reportData[0].currency) ? reportData[0].currency : 'GBP');
 
                 return (
                   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
@@ -7164,7 +7167,8 @@ import React, { useState, useEffect } from 'react';
                    </thead>
                    <tbody className="divide-y divide-gray-100">
                   {reportData.map(function(col) {
-                   const sym = getCurrencySymbol(col.currency);
+                   const _colEmp = visEmp.find(function(e){ return e.id === col.employeeId; });
+                   const sym = getCurrencySymbol(_colEmp ? resolveEmployeeCurrency(_colEmp) : (col.currency || 'GBP'));
                    const isEditing = editingId === col.id;
                    const ic = 'w-20 px-2 py-1 border border-orange-300 rounded text-sm text-center focus:outline-none focus:ring-1 focus:ring-orange-400';
                    return (
