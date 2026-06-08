@@ -6927,6 +6927,29 @@ import React, { useState, useEffect } from 'react';
                   } catch(e) { alert('Failed to delete: ' + e.message); }
                 };
 
+                // Bank payment approval — purely a "this transfer has been verified/received" flag.
+                // Persisted via a [BANK_OK] marker in the record's notes so it survives without any
+                // DB schema change, and is intentionally NOT factored into any accounting totals.
+                const BANK_OK_TAG = '[BANK_OK]';
+                const isBankApproved = function(col) { return (col.notes || '').indexOf(BANK_OK_TAG) !== -1; };
+                const cleanNote = function(notes) { return (notes || '').replace(BANK_OK_TAG, '').trim(); };
+
+                const toggleBankApproved = async function(col) {
+                  const currentlyApproved = isBankApproved(col);
+                  const base = cleanNote(col.notes);
+                  const newNotes = currentlyApproved ? base : (base ? base + ' ' + BANK_OK_TAG : BANK_OK_TAG);
+                  // optimistic UI update
+                  setReportData(function(prev) { return prev ? prev.map(function(c) { return c.id === col.id ? Object.assign({}, c, { notes: newNotes }) : c; }) : prev; });
+                  try {
+                   await apiCall(API_ENDPOINTS.agentCollections + '/' + col.id, { method: 'PUT', body: JSON.stringify({ notes: newNotes }) });
+                   if (onRefresh) await onRefresh();
+                  } catch(e) {
+                   // revert on failure
+                   setReportData(function(prev) { return prev ? prev.map(function(c) { return c.id === col.id ? Object.assign({}, c, { notes: col.notes }) : c; }) : prev; });
+                   alert('Failed to update bank approval: ' + e.message);
+                  }
+                };
+
                 const handleAddCollection = async function() {
                   if (!addEmpId || !addAgentId) { alert('Please select an employee and an agent'); return; }
                   if (!addDate) { alert('Please select a date'); return; }
@@ -7315,7 +7338,17 @@ import React, { useState, useEffect } from 'react';
                   {isEditing ? <input type="number" value={editVals.amountPaid} onChange={function(e){setEditVals(Object.assign({},editVals,{amountPaid:e.target.value}));}} className={ic} /> : (col.amountPaid > 0 ? sym+col.amountPaid.toFixed(2) : '—')}
                    </td>
                    <td className="px-4 py-3 font-bold text-blue-600">
-                  {isEditing ? <input type="number" min="0" step="0.01" value={editVals.bankAmount} onChange={function(e){setEditVals(Object.assign({},editVals,{bankAmount:e.target.value}));}} className={ic} /> : (col.bankAmount > 0 ? <span className="flex items-center gap-1"><span className="text-xs">🏦</span>{sym}{(col.bankAmount||0).toFixed(2)}</span> : <span className="text-gray-300">—</span>)}
+                  {isEditing ? <input type="number" min="0" step="0.01" value={editVals.bankAmount} onChange={function(e){setEditVals(Object.assign({},editVals,{bankAmount:e.target.value}));}} className={ic} /> : (col.bankAmount > 0 ? (
+                   <div className="flex flex-col gap-1">
+                  <span className="flex items-center gap-1"><span className="text-xs">🏦</span>{sym}{(col.bankAmount||0).toFixed(2)}</span>
+                  {hasPermission('canManageAgentCollections') ? (
+                   <label className="flex items-center gap-1 cursor-pointer select-none">
+                  <input type="checkbox" checked={isBankApproved(col)} onChange={function(){ toggleBankApproved(col); }} className="w-3.5 h-3.5 accent-green-600" />
+                  <span className={'text-xs font-semibold ' + (isBankApproved(col) ? 'text-green-600' : 'text-gray-400')}>{isBankApproved(col) ? '✓ Approved' : 'Approve'}</span>
+                   </label>
+                  ) : (isBankApproved(col) && <span className="text-xs font-semibold text-green-600">✓ Approved</span>)}
+                   </div>
+                  ) : <span className="text-gray-300">—</span>)}
                    </td>
                    {hasPermission('canManageAgentCollections') && (
                   <td className="px-4 py-3">
