@@ -6890,6 +6890,7 @@ import React, { useState, useEffect } from 'react';
                 const empFilter = persistedState ? persistedState.empFilter : ''; const setEmpFilter = mk('empFilter');
                 const branchFilter = persistedState ? persistedState.branchFilter : ''; const setBranchFilter = mk('branchFilter');
                 const countryFilter = persistedState ? persistedState.countryFilter : ''; const setCountryFilter = mk('countryFilter');
+                const agentFilter = persistedState ? persistedState.agentFilter : ''; const setAgentFilter = mk('agentFilter');
                 const reportData = persistedState ? persistedState.reportData : null; const setReportData = mk('reportData');
                 const [editingId, setEditingId] = useState(null);
                 const [editVals, setEditVals] = useState({});
@@ -7040,6 +7041,7 @@ import React, { useState, useEffect } from 'react';
                    if (empFilter && c.employeeId !== parseInt(empFilter)) { reasons.push({id:c.id, why:'employee filter mismatch'}); return false; }
                    if (branchFilter && !(emp.branches||[]).includes(branchFilter)) { reasons.push({id:c.id, why:'branch filter mismatch', empBranches:emp.branches}); return false; }
                    if (countryFilter && emp.country !== countryFilter) { reasons.push({id:c.id, why:'country filter mismatch'}); return false; }
+                   if (agentFilter && c.agentCode !== agentFilter) { reasons.push({id:c.id, why:'agent filter mismatch'}); return false; }
                    if (!(c.date >= fromDate && c.date <= toDate)) { reasons.push({id:c.id, why:'date outside filter', date:c.date, fromDate, toDate}); return false; }
                    return true;
                   }).sort(function(a,b) { return a.date < b.date ? -1 : 1; });
@@ -7071,6 +7073,61 @@ import React, { useState, useEffect } from 'react';
                 const reportCurrency = _curEmp
                   ? resolveEmployeeCurrency(_curEmp)
                   : ((reportData && reportData.length > 0 && reportData[0].currency) ? reportData[0].currency : 'GBP');
+
+                // ── Sequence-gap detection ──────────────────────────────────────
+                // For each agent, the shipment codes follow a prefix+number pattern (e.g. CV10..CV18).
+                // We collect every covered number from each record's From..To range, then look for
+                // missing numbers within the agent's overall min..max span. Gaps usually mean a
+                // collection was skipped/lost and should be investigated.
+                const parseCode = function(code) {
+                  if (!code) return null;
+                  const m = String(code).trim().match(/^(.*?)(\d+)\s*$/); // prefix + trailing number
+                  if (!m) return null;
+                  return { prefix: (m[1]||'').toUpperCase().replace(/\s+$/,''), num: parseInt(m[2], 10), width: m[2].length };
+                };
+                const sequenceGaps = (function() {
+                  if (!reportData || reportData.length === 0) return [];
+                  // Group covered numbers by agentCode + code-prefix.
+                  const groups = {};
+                  reportData.forEach(function(c) {
+                   const f = parseCode(c.fromCode); const t = parseCode(c.toCode);
+                   if (!f && !t) return;
+                   // Use whichever parses; if both, they should share a prefix.
+                   const base = f || t;
+                   const key = c.agentCode + '||' + base.prefix;
+                   if (!groups[key]) groups[key] = { agentCode: c.agentCode, agentCity: c.agentCity, prefix: base.prefix, width: base.width, covered: new Set(), ranges: [] };
+                   const lo = f ? f.num : t.num;
+                   const hi = t ? t.num : f.num;
+                   const a = Math.min(lo, hi), b = Math.max(lo, hi);
+                   groups[key].ranges.push({ from: c.fromCode, to: c.toCode, date: c.date, id: c.id });
+                   for (let n = a; n <= b; n++) groups[key].covered.add(n);
+                  });
+                  const out = [];
+                  Object.keys(groups).forEach(function(key) {
+                   const g = groups[key];
+                   const nums = Array.from(g.covered).sort(function(x,y){return x-y;});
+                   if (nums.length < 2) return;
+                   const min = nums[0], max = nums[nums.length-1];
+                   const missing = [];
+                   for (let n = min; n <= max; n++) { if (!g.covered.has(n)) missing.push(n); }
+                   if (missing.length > 0) {
+                  // Compress consecutive missing numbers into ranges for a tidy message.
+                  const segments = [];
+                  let segStart = missing[0], prev = missing[0];
+                  for (let i = 1; i < missing.length; i++) {
+                   if (missing[i] === prev + 1) { prev = missing[i]; }
+                   else { segments.push([segStart, prev]); segStart = missing[i]; prev = missing[i]; }
+                  }
+                  segments.push([segStart, prev]);
+                  const pad = function(n){ return g.width > 1 ? String(n).padStart(g.width,'0') : String(n); };
+                  const label = segments.map(function(s){ return s[0]===s[1] ? (g.prefix+pad(s[0])) : (g.prefix+pad(s[0])+'–'+g.prefix+pad(s[1])); }).join(', ');
+                  out.push({ agentCode: g.agentCode, agentCity: g.agentCity, prefix: g.prefix, missingCount: missing.length, label: label, rangeText: g.prefix+pad(min)+' → '+g.prefix+pad(max) });
+                   }
+                  });
+                  return out;
+                })();
+                // Agent codes that have a gap — used to highlight their rows.
+                const gapAgents = new Set(sequenceGaps.map(function(x){ return x.agentCode; }));
 
                 return (
                   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
@@ -7110,6 +7167,18 @@ import React, { useState, useEffect } from 'react';
                    && (!branchFilter || (e.branches||[]).includes(branchFilter))
                    && (!countryFilter || e.country === countryFilter);
                    }).map(function(e) { return <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>; })}
+                  </select>
+                   </div>
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Agent</label>
+                  <select value={agentFilter} onChange={function(e) { setAgentFilter(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                   <option value="">All Agents</option>
+                   {Array.from(new Set(agentCollections
+                  .filter(function(c){ return (!empFilter || c.employeeId === parseInt(empFilter)); })
+                  .map(function(c){ return c.agentCode; })
+                  .filter(Boolean)))
+                  .sort()
+                  .map(function(code) { return <option key={code} value={code}>{code}</option>; })}
                   </select>
                    </div>
                    <button onClick={generateReport} className="bg-orange-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-orange-700 text-sm">Generate Report</button>
@@ -7191,6 +7260,30 @@ import React, { useState, useEffect } from 'react';
                   <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center"><p className="text-xs text-green-600 font-semibold uppercase">Total Collected</p><p className="text-2xl font-bold text-green-700 mt-1">{getCurrencySymbol(reportCurrency)}{totalCollected.toFixed(2)}</p></div>
                   <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center"><p className="text-xs text-red-600 font-semibold uppercase">Total Paid</p><p className="text-2xl font-bold text-red-700 mt-1">{getCurrencySymbol(reportCurrency)}{totalPaid.toFixed(2)}</p></div>
                    </div>
+                   {sequenceGaps.length > 0 && (
+                   <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 mb-6">
+                  <div className="flex items-start gap-2">
+                   <span className="text-xl">⚠️</span>
+                   <div className="flex-1">
+                  <p className="text-sm font-bold text-amber-800">Sequence gaps detected — {sequenceGaps.length} agent{sequenceGaps.length>1?'s':''} with missing shipment numbers</p>
+                  <p className="text-xs text-amber-600 mb-2">These numbers fall inside the agent's collected range but were never recorded. Investigate or add the missing collections.</p>
+                  <div className="space-y-1">
+                   {sequenceGaps.map(function(g, i) {
+                  return (
+                   <div key={i} className="text-sm bg-white/70 rounded-lg px-3 py-2 flex flex-wrap items-center gap-x-2">
+                  <span className="font-bold text-amber-900">{g.agentCode}</span>
+                  {g.agentCity && <span className="text-xs text-gray-500">({g.agentCity})</span>}
+                  <span className="text-gray-600">range {g.rangeText} —</span>
+                  <span className="font-semibold text-red-600">missing: {g.label}</span>
+                  <span className="text-xs text-gray-400">({g.missingCount} number{g.missingCount>1?'s':''})</span>
+                   </div>
+                  );
+                   })}
+                  </div>
+                   </div>
+                  </div>
+                   </div>
+                   )}
                    <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                    <thead className="bg-orange-50">
@@ -7203,7 +7296,7 @@ import React, { useState, useEffect } from 'react';
                    const isEditing = editingId === col.id;
                    const ic = 'w-20 px-2 py-1 border border-orange-300 rounded text-sm text-center focus:outline-none focus:ring-1 focus:ring-orange-400';
                    return (
-                  <tr key={col.id} className={'hover:bg-orange-50 ' + (isEditing ? 'bg-amber-50' : '')}>
+                  <tr key={col.id} className={'hover:bg-orange-50 ' + (isEditing ? 'bg-amber-50' : (gapAgents.has(col.agentCode) ? 'bg-amber-50/40 border-l-4 border-amber-400' : ''))}>
                    <td className="px-4 py-3"><div className="font-medium text-gray-800">{col.employeeName}</div><div className="text-xs text-gray-500">{col.employeeCode}</div></td>
                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                   {isEditing ? <input type="date" value={editVals.date} onChange={function(e){setEditVals(Object.assign({},editVals,{date:e.target.value}));}} className="px-2 py-1 border border-orange-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-orange-400" /> : new Date(col.date).toLocaleDateString('en-GB')}
