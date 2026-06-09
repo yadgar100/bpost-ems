@@ -1743,12 +1743,9 @@ import React, { useState, useEffect } from 'react';
                 const basePay = regularPay + overtimePay;
 
                 const totalBreakMinutes = employeeTimesheets.reduce((sum, ts) => {
-                  const manualBreak = ts.breakMinutes || 0;
-                  const totalHours = (ts.regularHours || 0) + (ts.overtimeHours || 0);
-                  const autoBreak = manualBreak === 0 ? getAutoBreakMinutes(totalHours) : 0;
-                  return sum + (manualBreak > 0 ? manualBreak : autoBreak);
+                  return sum + (ts.breakMinutes || 0);
                 }, 0);
-                const breakDeduction = (totalBreakMinutes / 60) * (employee.hourlyRate || 0);
+                const breakDeduction = 0; // hours stored are already net of break; do not re-deduct
 
                 const empAdjustments = financialAdjustments.filter(adj => adj.employeeId === employeeId);
                 const bonuses = empAdjustments.filter(a => a.type === 'bonus' || a.type === 'annual_leave').reduce((sum, a) => sum + a.amount, 0);
@@ -4792,14 +4789,13 @@ import React, { useState, useEffect } from 'react';
                    const overtimePay = totalOvertime * employee.hourlyRate * empOtMult;
                    const basePay = regularPay + overtimePay;
 
-                   // Break deduction — mirrors calculatePayroll so report matches employee portal.
+                   // Break minutes are shown for transparency only. The stored regular/overtime hours
+                   // are ALREADY net of the break that was entered at submission (calculateHours
+                   // subtracts it before saving), so we must NOT deduct it again here.
                    const totalBreakMinutes = empTimesheets.reduce((sum, ts) => {
-                  const manualBreak = ts.breakMinutes || 0;
-                  const tHours = (ts.regularHours || 0) + (ts.overtimeHours || 0);
-                  const autoBreak = manualBreak === 0 ? getAutoBreakMinutes(tHours) : 0;
-                  return sum + (manualBreak > 0 ? manualBreak : autoBreak);
+                  return sum + (ts.breakMinutes || 0);
                    }, 0);
-                   const breakDeduction = (totalBreakMinutes / 60) * (employee.hourlyRate || 0);
+                   const breakDeduction = 0; // not re-deducted; hours are already net of break
 
                    const empAdjustments = financialAdjustments.filter(adj => {
                   const adjDate = new Date(adj.date);
@@ -5076,7 +5072,7 @@ import React, { useState, useEffect } from 'react';
                   <td className="px-4 py-3 text-sm font-bold">{row.totalHours.toFixed(1)}</td>
                   <td className="px-4 py-3 text-sm">{getCurrencySymbol(row.employee.currency || "GBP")}{row.employee.hourlyRate.toFixed(2)}</td>
                   <td className="px-4 py-3 text-sm font-bold text-green-700">{getCurrencySymbol(row.employee.currency || "GBP")}{row.totalPay.toFixed(2)}
-                   {row.totalBreakMinutes > 0 && <div className="text-xs font-normal text-gray-400">incl. {row.totalBreakMinutes}m break (-{getCurrencySymbol(row.employee.currency || "GBP")}{row.breakDeduction.toFixed(2)})</div>}
+                   {row.totalBreakMinutes > 0 && <div className="text-xs font-normal text-gray-400">{row.totalBreakMinutes}m break (already excluded from hours)</div>}
                    {row.bonuses > 0 && <div className="text-xs font-normal text-emerald-600">incl. bonus +{getCurrencySymbol(row.employee.currency || "GBP")}{row.bonuses.toFixed(2)}</div>}
                    {row.sickPay > 0 && <div className="text-xs font-normal text-emerald-600">incl. sick pay +{getCurrencySymbol(row.employee.currency || "GBP")}{row.sickPay.toFixed(2)}</div>}
                    {row.penalties > 0 && <div className="text-xs font-normal text-red-500">less penalty -{getCurrencySymbol(row.employee.currency || "GBP")}{row.penalties.toFixed(2)}</div>}
@@ -5105,7 +5101,7 @@ import React, { useState, useEffect } from 'react';
                   {row.timesheets.sort((a,b) => new Date(a.date)-new Date(b.date)).map(ts => {
                    const tHrs = (ts.regularHours||0) + (ts.overtimeHours||0);
                    const shiftBreakMin = (ts.breakMinutes||0) > 0 ? ts.breakMinutes : getAutoBreakMinutes(tHrs);
-                   const shiftPay = Math.max(tHrs * (row.employee.hourlyRate||0) - (shiftBreakMin/60)*(row.employee.hourlyRate||0), 0);
+                   const shiftPay = tHrs * (row.employee.hourlyRate||0);
                    const sym = getCurrencySymbol(row.employee.currency||'GBP');
                    return (
                    <tr key={ts.id} className="border-b border-indigo-100 last:border-0">
@@ -7477,13 +7473,10 @@ import React, { useState, useEffect } from 'react';
                   const tsRows = empTimesheets.map(function(ts) {
                   const reg = parseFloat(ts.regularHours) || 0;
                   const ot = parseFloat(ts.overtimeHours) || 0;
-                  // Deduct break (manual, else auto rule) — mirrors the Payroll Report so the two reconcile.
-                  const manualBreak = parseInt(ts.breakMinutes) || 0;
-                  const breakMin = manualBreak > 0 ? manualBreak : getAutoBreakMinutes(reg + ot);
-                  const breakHrs = breakMin / 60;
-                  const grossEarned = (reg * hourlyRate) + (ot * hourlyRate * overtimeMultiplier);
-                  const breakDeduction = breakHrs * hourlyRate;
-                  const earned = Math.max(grossEarned - breakDeduction, 0);
+                  // Stored hours are already net of break (deducted at submission), so earned is
+                  // simply hours × rate. Break minutes kept for display only.
+                  const breakMin = parseInt(ts.breakMinutes) || 0;
+                  const earned = (reg * hourlyRate) + (ot * hourlyRate * overtimeMultiplier);
                   return { date: ts.date, regularHours: reg, overtimeHours: ot, breakMinutes: breakMin, earned: earned };
                   });
 
@@ -7499,7 +7492,7 @@ import React, { useState, useEffect } from 'react';
                   const priorCollected   = priorCollections.reduce(function(s,c){ return s + (c.amountCollected||0); }, 0);
                   const priorPaidAgents  = priorCollections.reduce(function(s,c){ return s + (c.amountPaid||0); }, 0);
                   const priorEarned = timesheets.filter(function(ts){ return ts.employeeId === parseInt(empId) && ts.status === 'approved' && ts.date < fromDate; })
-                   .reduce(function(s,ts){ const reg=parseFloat(ts.regularHours)||0, ot=parseFloat(ts.overtimeHours)||0; const mb=parseInt(ts.breakMinutes)||0; const bm=mb>0?mb:getAutoBreakMinutes(reg+ot); const gross=(reg*hourlyRate)+(ot*hourlyRate*overtimeMultiplier); return s + Math.max(gross - (bm/60)*hourlyRate, 0); }, 0);
+                   .reduce(function(s,ts){ const reg=parseFloat(ts.regularHours)||0, ot=parseFloat(ts.overtimeHours)||0; return s + (reg*hourlyRate)+(ot*hourlyRate*overtimeMultiplier); }, 0);
                   const priorExpenses = expenses.filter(function(ex){ return ex.employeeId === parseInt(empId) && (ex.status==='approved'||ex.status==='paid') && ex.date < fromDate; })
                    .reduce(function(s,ex){ return s + (ex.amount||0); }, 0);
                   const priorSettlements = allSettlements.filter(function(a){ return a.date < fromDate; })
@@ -8055,10 +8048,8 @@ import React, { useState, useEffect } from 'react';
                   empTs.forEach(function(ts) {
                   const reg = parseFloat(ts.regularHours)||0;
                   const ot = parseFloat(ts.overtimeHours)||0;
-                  const manualBreak = parseInt(ts.breakMinutes)||0;
-                  const breakMin = manualBreak > 0 ? manualBreak : getAutoBreakMinutes(reg + ot);
-                  const gross = reg * rate + ot * rate * otMult;
-                  pay += Math.max(gross - (breakMin/60)*rate, 0);
+                  // Stored hours already exclude break; pay is simply hours × rate.
+                  pay += reg * rate + ot * rate * otMult;
                   });
                   if (pay > 0) empPayroll.push({ name: emp.firstName + ' ' + emp.lastName, code: emp.employeeId, currency: getCurrencySymbol(emp.currency), pay: pay });
                   });
