@@ -8078,11 +8078,41 @@ import React, { useState, useEffect } from 'react';
                    return bk === branchKey && a.date >= fromDate && a.date <= toDate;
                   });
                   const totalSettled = branchSettlements.reduce(function(s,a){ return s + (parseFloat(a.amount)||0); }, 0);
-                  // Cash the branch should hand to company = net cash collections (cash - paid to agents).
-                  // Outstanding = that, minus expenses/payroll paid out of branch cash, minus already settled.
-                  const branchCashDue = netCollections - totalExpenses - totalPayroll - totalSettled;
 
-                  setReport({ totalCashCollected, totalBankCollected, totalCollections, totalPaidToAgents, netCollections, totalExpenses, totalPayroll, empPayroll, margin, byAgent: Object.values(byAgent), exps, periodStart: fromDate, periodEnd: toDate, branchSettlements, totalSettled, branchCashDue, branchName: branchFilter || 'All Branches' });
+                  // ── Carry-forward opening balance ──────────────────────────────
+                  // Everything the branch owed from BEFORE this period that wasn't settled yet.
+                  // = (net cash − payroll − expenses) for all dates < fromDate, minus settlements < fromDate.
+                  // This mirrors the Employee Accounting running ledger so unsettled cash rolls forward.
+                  const calcBranchPosition = function(empSet, dateFilter) {
+                   const pCols = agentCollections.filter(function(c){ return empSet.some(function(e){return e.id===c.employeeId;}) && dateFilter(c.date); });
+                   const pCash = pCols.reduce(function(s,c){ return s + c.amountCollected; }, 0);
+                   const pPaid = pCols.reduce(function(s,c){ return s + c.amountPaid; }, 0);
+                   const pNet = pCash - pPaid;
+                   const pExp = expenses.filter(function(e){ return empSet.some(function(v){return v.id===e.employeeId;}) && (e.status==='approved'||e.status==='paid') && dateFilter(e.date); })
+                  .reduce(function(s,e){ return s + e.amount; }, 0);
+                   let pPay = 0;
+                   empSet.forEach(function(emp){
+                  const rate = parseFloat(emp.hourlyRate)||0;
+                  const otMult = (emp.overtimeRate != null && emp.overtimeRate !== '') ? parseFloat(emp.overtimeRate) : (payrollSettings.overtimeMultiplier || 1.5);
+                  timesheets.filter(function(ts){ return ts.employeeId===emp.id && ts.status==='approved' && dateFilter(ts.date); })
+                   .forEach(function(ts){ pPay += (parseFloat(ts.regularHours)||0)*rate + (parseFloat(ts.overtimeHours)||0)*rate*otMult; });
+                   });
+                   return pNet - pExp - pPay;
+                  };
+                  const priorActivity = calcBranchPosition(filteredEmp, function(d){ return d < fromDate; });
+                  const priorSettled = financialAdjustments.filter(function(a){
+                   if (a.type !== 'branch_settle') return false;
+                   const m = (a.reason||'').match(/\[BRANCH:([^\]]*)\]/);
+                   const bk = m ? m[1] : '__ALL__';
+                   return bk === branchKey && a.date < fromDate;
+                  }).reduce(function(s,a){ return s + (parseFloat(a.amount)||0); }, 0);
+                  const openingBalance = priorActivity - priorSettled;
+
+                  // Cash the branch should hand to company = brought-forward balance + this period's net,
+                  // minus expenses/payroll paid from branch cash this period, minus this period's settlements.
+                  const branchCashDue = openingBalance + netCollections - totalExpenses - totalPayroll - totalSettled;
+
+                  setReport({ totalCashCollected, totalBankCollected, totalCollections, totalPaidToAgents, netCollections, totalExpenses, totalPayroll, empPayroll, margin, byAgent: Object.values(byAgent), exps, periodStart: fromDate, periodEnd: toDate, branchSettlements, totalSettled, branchCashDue, openingBalance, branchName: branchFilter || 'All Branches' });
                 };
 
                 React.useEffect(function(){
@@ -8395,6 +8425,12 @@ import React, { useState, useEffect } from 'react';
                   <div className="rounded-2xl border-2 border-indigo-200 bg-indigo-50 p-6 mt-6">
                   <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-4">Branch Cash Settlement — {report.branchName}</p>
                   <div className="space-y-2 mb-4">
+                    {Math.abs(report.openingBalance || 0) >= 0.005 && (
+                    <div className="flex justify-between text-sm border-b border-dashed border-indigo-200 pb-2 mb-1">
+                      <span className="text-gray-600 font-semibold">Brought forward (unsettled from before {new Date(report.periodStart).toLocaleDateString('en-GB',{day:'2-digit',month:'short'})})</span>
+                      <span className={'font-semibold ' + (report.openingBalance >= 0 ? 'text-red-600' : 'text-green-700')}>{report.openingBalance >= 0 ? '+' : ''}{sym}{report.openingBalance.toFixed(2)}</span>
+                    </div>
+                    )}
                     <div className="flex justify-between text-sm"><span className="text-gray-600">Net Cash Collected (cash − paid to agents)</span><span className="font-semibold text-green-700">+{sym}{(report.totalCashCollected - report.totalPaidToAgents).toFixed(2)}</span></div>
                     <div className="flex justify-between text-sm"><span className="text-gray-600">Less: Payroll paid from branch cash</span><span className="font-semibold text-red-600">-{sym}{report.totalPayroll.toFixed(2)}</span></div>
                     <div className="flex justify-between text-sm"><span className="text-gray-600">Less: Expenses paid from branch cash</span><span className="font-semibold text-red-600">-{sym}{report.totalExpenses.toFixed(2)}</span></div>
