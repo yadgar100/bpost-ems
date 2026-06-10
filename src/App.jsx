@@ -2281,6 +2281,10 @@ import React, { useState, useEffect } from 'react';
                 const lastSettleDateTs = mySettlements.length ? mySettlements.map(a => a.date).sort().slice(-1)[0] : null;
                 const allMyTimesheets = timesheets.filter(ts => ts.employeeId === currentUser.id);
                 const myTimesheets = lastSettleDateTs ? allMyTimesheets.filter(ts => ts.date > lastSettleDateTs) : allMyTimesheets;
+                // Hours not yet settled/paid — only approved shifts after the last settlement.
+                const unpaidApproved = myTimesheets.filter(ts => ts.status === 'approved');
+                const unpaidRegularHours = unpaidApproved.reduce((s, ts) => s + (ts.regularHours || 0), 0);
+                const unpaidOvertimeHours = unpaidApproved.reduce((s, ts) => s + (ts.overtimeHours || 0), 0);
                 const payroll = calculatePayroll(currentUser.id);
                 const currentLocationData = newTimesheet.locationId
                   ? workLocations.find(loc => loc.id === newTimesheet.locationId)
@@ -2370,12 +2374,12 @@ import React, { useState, useEffect } from 'react';
 
                   <div className="max-w-2xl mx-auto px-4 pb-5 grid grid-cols-3 gap-3">
                    <div className="bg-white bg-opacity-15 rounded-xl p-3 text-center">
-                  <p className="text-indigo-200 text-xs font-semibold uppercase tracking-wide">Total Hours</p>
-                  <p className="text-xl font-bold mt-0.5">{(payroll.regularHours + payroll.overtimeHours).toFixed(1)}</p>
+                  <p className="text-indigo-200 text-xs font-semibold uppercase tracking-wide">Unpaid Hours</p>
+                  <p className="text-xl font-bold mt-0.5">{(unpaidRegularHours + unpaidOvertimeHours).toFixed(1)}</p>
                    </div>
                    <div className="bg-white bg-opacity-15 rounded-xl p-3 text-center">
                   <p className="text-indigo-200 text-xs font-semibold uppercase tracking-wide">Overtime</p>
-                  <p className="text-xl font-bold mt-0.5 text-amber-300">{payroll.overtimeHours.toFixed(1)}</p>
+                  <p className="text-xl font-bold mt-0.5 text-amber-300">{unpaidOvertimeHours.toFixed(1)}</p>
                    </div>
                    <div className="bg-white bg-opacity-15 rounded-xl p-3 text-center">
                   <p className="text-indigo-200 text-xs font-semibold uppercase tracking-wide">Balance</p>
