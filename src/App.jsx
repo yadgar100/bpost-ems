@@ -1207,6 +1207,7 @@ import React, { useState, useEffect } from 'react';
                   manualEntry: ts.ManualEntry || ts.manualEntry || false
                    }));
                    setTimesheets(mapped);
+                   return mapped;
 
                   }
                 } catch (error) {
@@ -1550,13 +1551,28 @@ import React, { useState, useEffect } from 'react';
 
 
                   let activeId = localStorage.getItem('bpost_active_checkin_id');
+                  // Pull the freshest list so the lookup below isn't fooled by stale local state
+                  // (a common cause of duplicate records).
+                  let freshTs = timesheets;
+                  try { const reloaded = await loadTimesheetsFromAPI(); if (reloaded) freshTs = reloaded; } catch(e) {}
                   if (!activeId) {
-                   const existingCheckin = timesheets.find(function(ts) {
-                  return ts.employeeId === currentUser.id &&
-                   (ts.date === today) &&
-                   ts.status === 'checkedin';
-                   });
-                   if (existingCheckin) activeId = existingCheckin.id;
+                   // Fallback: find this employee's open check-in so we UPDATE it instead of creating a
+                   // duplicate. Match any 'checkedin' record (not just today's) — an employee can only
+                   // have one open check-in at a time, and a date/timezone mismatch must not spawn a
+                   // second record that would later show as a stray pending copy on the portal.
+                   const openRecords = freshTs
+                  .filter(function(ts) { return ts.employeeId === currentUser.id && ts.status === 'checkedin'; })
+                  .sort(function(a, b) { return new Date(b.date) - new Date(a.date); });
+                   if (openRecords.length > 0) activeId = openRecords[0].id;
+                  } else {
+                   // Verify the stored id still exists and is open; if it was already submitted/approved,
+                   // don't reuse it — fall back to a fresh open record or a clean POST.
+                   const stored = freshTs.find(function(ts){ return String(ts.id) === String(activeId); });
+                   if (stored && stored.status !== 'checkedin') {
+                  const stillOpen = freshTs.filter(function(ts){ return ts.employeeId === currentUser.id && ts.status === 'checkedin'; })
+                   .sort(function(a,b){ return new Date(b.date) - new Date(a.date); });
+                  activeId = stillOpen.length > 0 ? stillOpen[0].id : null;
+                   }
                   }
 
                   let data;
@@ -2280,7 +2296,20 @@ import React, { useState, useEffect } from 'react';
                 const mySettlements = financialAdjustments.filter(a => a.employeeId === currentUser.id && a.type === 'acct_settle');
                 const lastSettleDateTs = mySettlements.length ? mySettlements.map(a => a.date).sort().slice(-1)[0] : null;
                 const allMyTimesheets = timesheets.filter(ts => ts.employeeId === currentUser.id);
-                const myTimesheets = lastSettleDateTs ? allMyTimesheets.filter(ts => ts.date > lastSettleDateTs) : allMyTimesheets;
+                // Defensive de-dup: if duplicate records exist for the same shift (same date + start time),
+                // keep only the most-progressed one so the employee never sees both a pending and an
+                // approved copy of the same shift. Status priority: approved > pending > rejected > checkedin.
+                const statusRank = { approved: 4, pending: 3, rejected: 2, checkedin: 1 };
+                const dedupMyTimesheets = (function() {
+                  const best = {};
+                  allMyTimesheets.forEach(function(ts) {
+                   const key = ts.date + '|' + (ts.startTime || '');
+                   const cur = best[key];
+                   if (!cur || (statusRank[ts.status] || 0) > (statusRank[cur.status] || 0)) best[key] = ts;
+                  });
+                  return Object.values(best);
+                })();
+                const myTimesheets = lastSettleDateTs ? dedupMyTimesheets.filter(ts => ts.date > lastSettleDateTs) : dedupMyTimesheets;
                 // Hours not yet settled/paid — only approved shifts after the last settlement.
                 const unpaidApproved = myTimesheets.filter(ts => ts.status === 'approved');
                 const unpaidRegularHours = unpaidApproved.reduce((s, ts) => s + (ts.regularHours || 0), 0);
