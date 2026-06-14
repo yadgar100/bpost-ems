@@ -3884,11 +3884,10 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   <div>
                    <label className="block text-sm font-semibold text-gray-700 mb-1">Move to Batch</label>
-                   <input list="reassign-batch-list" value={reassignBatch} onChange={function(e){ setReassignBatch(e.target.value); }} placeholder="Type a new batch name or pick existing" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
-                   <datalist id="reassign-batch-list">
-                  {[...new Set(iraqPayments.map(function(p){return p.batchName;}))].filter(Boolean).sort().map(function(b){ return <option key={b} value={b} />; })}
-                   </datalist>
-                   <p className="text-xs text-gray-400 mt-1">Leave as-is to keep the same batch, or choose/enter a different one.</p>
+                   <select value={reassignBatch} onChange={function(e){ setReassignBatch(e.target.value); }} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-400">
+                  {[...new Set(iraqPayments.map(function(p){return p.batchName;}))].filter(Boolean).sort().map(function(b){ return <option key={b} value={b}>{b}</option>; })}
+                   </select>
+                   <p className="text-xs text-gray-400 mt-1">Leave as-is to keep the same batch, or select a different one.</p>
                   </div>
                   <div className="flex gap-2 justify-end pt-2">
                    <button onClick={closeReassign} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 text-sm">Cancel</button>
