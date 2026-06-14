@@ -3264,6 +3264,48 @@ import React, { useState, useEffect } from 'react';
                   catch(e) { alert('Failed: ' + e.message); }
                 };
 
+                // ── Reassign a shipment to a different employee and/or batch in one step ──
+                // This UPDATES the same record's EmployeeId/BatchName, so it moves cleanly from the
+                // old employee to the new one — all amounts, collected values and status are preserved.
+                const [reassignRec, setReassignRec] = useState(null);
+                const [reassignEmp, setReassignEmp] = useState('');
+                const [reassignBatch, setReassignBatch] = useState('');
+                const [reassigning, setReassigning] = useState(false);
+
+                const openReassign = function(p) {
+                  setReassignRec(p);
+                  setReassignEmp(p.employeeId ? String(p.employeeId) : '');
+                  setReassignBatch(p.batchName || '');
+                };
+                const closeReassign = function() { setReassignRec(null); setReassignEmp(''); setReassignBatch(''); };
+
+                const handleReassign = async function() {
+                  if (!reassignRec) return;
+                  if (!reassignEmp) { alert('Please select an employee to assign to.'); return; }
+                  const newEmp = visEmp.find(function(e){ return e.id === parseInt(reassignEmp); });
+                  const oldEmpName = reassignRec.employeeName || 'current employee';
+                  const newEmpName = newEmp ? (newEmp.firstName + ' ' + newEmp.lastName) : 'selected employee';
+                  const batchChanged = (reassignBatch || '') !== (reassignRec.batchName || '');
+                  const empChanged = parseInt(reassignEmp) !== parseInt(reassignRec.employeeId);
+                  if (!empChanged && !batchChanged) { alert('Nothing changed — pick a different employee or batch.'); return; }
+                  const msg = 'Reassign shipment ' + reassignRec.shipmentCode + '?\n\n'
+                   + 'From: ' + oldEmpName + (reassignRec.batchName ? ' (batch ' + reassignRec.batchName + ')' : '') + '\n'
+                   + 'To:   ' + newEmpName + (reassignBatch ? ' (batch ' + reassignBatch + ')' : '') + '\n\n'
+                   + 'All amounts and collected values move with it.';
+                  if (!window.confirm(msg)) return;
+                  setReassigning(true);
+                  try {
+                   await apiCall(API_ENDPOINTS.iraqPay + '/' + reassignRec.id, {
+                  method: 'PUT',
+                  body: JSON.stringify({ employeeId: parseInt(reassignEmp), batchName: reassignBatch || reassignRec.batchName })
+                   });
+                   await loadIraqPaymentsFromAPI();
+                   closeReassign();
+                   alert('✅ ' + reassignRec.shipmentCode + ' reassigned to ' + newEmpName + (reassignBatch ? ' in batch ' + reassignBatch : '') + '.');
+                  } catch(e) { alert('Failed to reassign: ' + e.message); }
+                  setReassigning(false);
+                };
+
                 const filterBatch = persistedState ? persistedState.filterBatch : ''; const setFilterBatch = mk('filterBatch');
                 // searchCode is LOCAL (not persisted) — persisted state triggers re-render on each keystroke
                 const [searchCode, setSearchCode] = useState('');
@@ -3774,6 +3816,7 @@ import React, { useState, useEffect } from 'react';
                   ) : (
                    <div className="flex gap-1">
                   {hasPermission('canEditIraqPay') && <button onClick={function(){setEditingId(p.id);setEditVals({amountIQD:p.amountIQD,amountUSD:p.amountUSD,amountGBP:p.amountGBP,amountEUR:p.amountEUR,collectedIQD:p.collectedIQD,collectedUSD:p.collectedUSD,collectedGBP:p.collectedGBP,collectedEUR:p.collectedEUR});}} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">Edit</button>}
+                  {hasPermission('canEditIraqPay') && <button onClick={function(){openReassign(p);}} className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs whitespace-nowrap">Reassign</button>}
                   {hasPermission('canEditIraqPay') && <button onClick={function(){handleDelete(p);}} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">Delete</button>}
                    </div>
                   )}
@@ -3819,6 +3862,43 @@ import React, { useState, useEffect } from 'react';
                   )}
 
                   {/* ── Move Batch Modal ── */}
+                  {reassignRec && (
+                   <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+                   <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4 flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-white">Reassign Shipment</h3>
+                  <button onClick={closeReassign} className="text-purple-200 hover:text-white text-xl font-bold">×</button>
+                   </div>
+                   <div className="p-6 space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                   <div className="flex justify-between"><span className="text-gray-500">Shipment</span><span className="font-bold text-gray-800">{reassignRec.shipmentCode}</span></div>
+                   <div className="flex justify-between mt-1"><span className="text-gray-500">Currently</span><span className="font-medium text-gray-700">{reassignRec.employeeName || '—'}{reassignRec.batchName ? ' · ' + reassignRec.batchName : ''}</span></div>
+                   <div className="flex justify-between mt-1 text-xs text-gray-400"><span>Amounts</span><span>{reassignRec.amountIQD ? reassignRec.amountIQD.toLocaleString()+' IQD ' : ''}{reassignRec.amountUSD ? '$'+reassignRec.amountUSD.toFixed(2)+' ' : ''}{reassignRec.amountGBP ? '£'+reassignRec.amountGBP.toFixed(2) : ''}</span></div>
+                  </div>
+                  <div>
+                   <label className="block text-sm font-semibold text-gray-700 mb-1">Assign to Employee <span className="text-red-500">*</span></label>
+                   <select value={reassignEmp} onChange={function(e){ setReassignEmp(e.target.value); }} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
+                  <option value="">Select employee…</option>
+                  {visEmp.slice().sort(function(a,b){ return (a.firstName+a.lastName).localeCompare(b.firstName+b.lastName); }).map(function(e){ return <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.employeeId})</option>; })}
+                   </select>
+                  </div>
+                  <div>
+                   <label className="block text-sm font-semibold text-gray-700 mb-1">Move to Batch</label>
+                   <input list="reassign-batch-list" value={reassignBatch} onChange={function(e){ setReassignBatch(e.target.value); }} placeholder="Type a new batch name or pick existing" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                   <datalist id="reassign-batch-list">
+                  {[...new Set(iraqPayments.map(function(p){return p.batchName;}))].filter(Boolean).sort().map(function(b){ return <option key={b} value={b} />; })}
+                   </datalist>
+                   <p className="text-xs text-gray-400 mt-1">Leave as-is to keep the same batch, or choose/enter a different one.</p>
+                  </div>
+                  <div className="flex gap-2 justify-end pt-2">
+                   <button onClick={closeReassign} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 text-sm">Cancel</button>
+                   <button onClick={handleReassign} disabled={reassigning} className="px-5 py-2 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 disabled:opacity-50 text-sm">{reassigning ? 'Reassigning…' : 'Reassign'}</button>
+                  </div>
+                   </div>
+                  </div>
+                   </div>
+                  )}
+
                   {showMoveBatch && (
                    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
                   <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-screen overflow-y-auto">
