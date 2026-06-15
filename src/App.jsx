@@ -714,7 +714,16 @@ import React, { useState, useEffect } from 'react';
             const loadIraqPaymentsFromAPI = async () => {
                 try {
                   const data = await apiCall(API_ENDPOINTS.iraqPay);
-                  if (data.success && data.payments) setIraqPayments(data.payments.map(function(p){return{
+                  if (data.success && data.payments) setIraqPayments(data.payments.map(function(p){
+                   const _notes = p.Notes || '';
+                   // To Office is stored inside Notes as "Office: X" (optionally followed by "| note").
+                   const _toOffice = _notes.indexOf('Office:') !== -1
+                  ? _notes.replace('Office:','').trim().split('|')[0].trim()
+                  : '';
+                   // Receiver name + mobile are stored combined as "name | mobile" in ReceiverContact.
+                   const _rc = p.ReceiverContact || '';
+                   const _receiverName = _rc ? _rc.split('|')[0].trim() : '';
+                   return {
                    id:p.Id, batchName:p.BatchName, oldBatchName:p.OldBatchName||'', shipmentCode:p.ShipmentCode,
                    employeeId:p.EmployeeId, employeeName:(p.FirstName?p.FirstName+' '+p.LastName:''),
                    employeeCode:p.EmployeeCode,
@@ -722,8 +731,8 @@ import React, { useState, useEffect } from 'react';
                    amountGBP:parseFloat(p.AmountGBP)||0, amountEUR:parseFloat(p.AmountEUR)||0,
                    collectedIQD:parseFloat(p.CollectedIQD)||0, collectedUSD:parseFloat(p.CollectedUSD)||0,
                    collectedGBP:parseFloat(p.CollectedGBP)||0, collectedEUR:parseFloat(p.CollectedEUR)||0,
-                   receiverContact:p.ReceiverContact||'',
-                   status:p.Status, notes:p.Notes, createdAt:p.CreatedAt, collectedAt:p.CollectedAt
+                   receiverContact:_rc, receiver:_receiverName, toOffice:_toOffice,
+                   status:p.Status, notes:_notes, createdAt:p.CreatedAt, collectedAt:p.CollectedAt
                   };}));
                 } catch(e) { console.error('loadIraqPay error:',e); }
             };
@@ -3042,6 +3051,9 @@ import React, { useState, useEffect } from 'react';
                 const collUSD = React.useRef(null);
                 const collGBP = React.useRef(null);
                 const collEUR = React.useRef(null);
+                // "To Office" is stored inside Notes as "Office: <name> | <other note>" — same parsing
+                // the admin table uses. Shown under the shipment code so the employee knows the destination.
+                const toOffice = (p.notes || '').replace('Office:', '').trim().split('|')[0].trim();
 
                 // READ-ONLY view for already-collected records — employees cannot edit, only admin can.
                 if (p.status === 'collected') {
@@ -3050,7 +3062,7 @@ import React, { useState, useEffect } from 'react';
                    <div className="bg-green-50 border border-green-200 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-2">
                    <div>
-                  <p className="font-bold text-gray-900 flex items-center gap-2">{p.shipmentCode}<span className="text-green-600">✅</span></p>
+                  <p className="font-bold text-gray-900 flex items-center gap-2">{p.shipmentCode}{p.toOffice ? <span className="font-normal text-gray-500"> / {p.toOffice}</span> : ''}<span className="text-green-600">✅</span></p>
                   {p.receiver && <p className="text-xs text-gray-500">{p.receiver}</p>}
                   <p className="text-xs text-gray-400">{p.batchName}{dt && ' · ' + dt}</p>
                    </div>
@@ -3099,7 +3111,7 @@ import React, { useState, useEffect } from 'react';
                   <div className="bg-white rounded-xl border border-blue-100 p-4">
                   <div className="flex items-center justify-between mb-2">
                    <div>
-                  <p className="font-bold text-gray-900">{p.shipmentCode}</p>
+                  <p className="font-bold text-gray-900">{p.shipmentCode}{p.toOffice ? <span className="font-normal text-gray-500"> / {p.toOffice}</span> : ''}</p>
                   {p.receiver && <p className="text-xs text-gray-500">{p.receiver}</p>}
                   <p className="text-xs text-gray-400">{p.batchName}</p>
                    </div>
