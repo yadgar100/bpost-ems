@@ -2573,12 +2573,13 @@ import React, { useState, useEffect } from 'react';
                    })()}
 
                   {(() => {
-                   const myCredits = financialAdjustments.filter(function(a){return a.employeeId===currentUser.id && a.type==='account_credit';}).sort(function(a,b){return a.date>b.date?-1:1;});
+                   const myCredits = financialAdjustments.filter(function(a){return a.employeeId===currentUser.id && a.type==='account_credit' && (!lastSettleDateTs || a.date > lastSettleDateTs);}).sort(function(a,b){return a.date>b.date?-1:1;});
                    if (!myCredits.length) return null;
                    const sym2 = getCurrencySymbol(currentUser.currency||'GBP');
                    return (
                   <div className="mt-6 bg-indigo-50 border border-indigo-200 rounded-xl p-4">
                    <h3 className="text-sm font-bold text-indigo-700 mb-3 flex items-center gap-2"><DollarSign className="w-4 h-4"/>My Account Credits</h3>
+                   {lastSettleDateTs && <p className="text-xs text-gray-400 mb-3">Showing credits since last settlement ({new Date(lastSettleDateTs).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}). Settled credits are archived.</p>}
                    <div className="space-y-2">
                   {myCredits.map(function(a){return (
                    <div key={a.id} className="bg-white rounded-lg px-3 py-2 flex items-center justify-between text-sm">
@@ -2596,12 +2597,14 @@ import React, { useState, useEffect } from 'react';
                    })()}
 
                   {(() => {
-                   const myExpenses = expenses.filter(e => e.employeeId === currentUser.id);
                    const sym = getCurrencySymbol(currentUser.currency || 'GBP');
-                   const allMyExpenses = expenses.filter(e => e.employeeId === currentUser.id);
-                   if (allMyExpenses.length === 0) return null;
+                   const allExpensesEver = expenses.filter(e => e.employeeId === currentUser.id);
+                   if (allExpensesEver.length === 0) return null;
+                   // Only show unsettled expenses — those after the last accounting settlement date.
+                   const allMyExpenses = allExpensesEver.filter(e => !lastSettleDateTs || e.date > lastSettleDateTs);
 
                    const [expFromDate, setExpFromDate] = React.useState(() => {
+                  if (lastSettleDateTs) return lastSettleDateTs;
                   const d = new Date(); d.setDate(1);
                   return d.toISOString().split('T')[0];
                    });
@@ -2632,9 +2635,17 @@ import React, { useState, useEffect } from 'react';
 
                    const statusColors = { pending:'bg-amber-100 text-amber-700', approved:'bg-green-100 text-green-700', paid:'bg-blue-100 text-blue-700', rejected:'bg-red-100 text-red-700' };
 
+                   if (allMyExpenses.length === 0) return (
+                  <div className="bg-white rounded-xl shadow p-5 mb-6">
+                   <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-2"><Receipt className="w-5 h-5 text-teal-600"/>My Expense Claims</h2>
+                   <p className="text-xs text-gray-400">Showing expenses since last settlement ({new Date(lastSettleDateTs).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}). Settled expenses are archived.</p>
+                   <p className="text-center text-gray-400 text-sm py-4">No expenses since the last settlement.</p>
+                  </div>
+                   );
+
                    return (
                   <div className="bg-white rounded-xl shadow p-5 mb-6">
-                   <div className="flex items-center justify-between mb-4">
+                   <div className="flex items-center justify-between mb-1">
                   <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                    <Receipt className="w-5 h-5 text-teal-600" />My Expense Claims
                   </h2>
@@ -2642,6 +2653,8 @@ import React, { useState, useEffect } from 'react';
                    Export CSV
                   </button>
                    </div>
+                   {lastSettleDateTs && <p className="text-xs text-gray-400 mb-3">Showing expenses since last settlement ({new Date(lastSettleDateTs).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}). Settled expenses are archived.</p>}
+                   {!lastSettleDateTs && <div className="mb-4"/>}
 
                    <div className="grid grid-cols-3 gap-2 mb-4">
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-center">
