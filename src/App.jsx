@@ -722,7 +722,9 @@ import React, { useState, useEffect } from 'react';
                   : '';
                    // Receiver name + mobile are stored combined as "name | mobile" in ReceiverContact.
                    const _rc = p.ReceiverContact || '';
-                   const _receiverName = _rc ? _rc.split('|')[0].trim() : '';
+                   const _rcParts = _rc.split('|');
+                   const _receiverName = _rcParts[0] ? _rcParts[0].trim() : '';
+                   const _receiverMobile = _rcParts[1] ? _rcParts[1].trim() : '';
                    return {
                    id:p.Id, batchName:p.BatchName, oldBatchName:p.OldBatchName||'', shipmentCode:p.ShipmentCode,
                    employeeId:p.EmployeeId, employeeName:(p.FirstName?p.FirstName+' '+p.LastName:''),
@@ -731,7 +733,7 @@ import React, { useState, useEffect } from 'react';
                    amountGBP:parseFloat(p.AmountGBP)||0, amountEUR:parseFloat(p.AmountEUR)||0,
                    collectedIQD:parseFloat(p.CollectedIQD)||0, collectedUSD:parseFloat(p.CollectedUSD)||0,
                    collectedGBP:parseFloat(p.CollectedGBP)||0, collectedEUR:parseFloat(p.CollectedEUR)||0,
-                   receiverContact:_rc, receiver:_receiverName, toOffice:_toOffice,
+                   receiverContact:_rc, receiver:_receiverName, receiverMobile:_receiverMobile, toOffice:_toOffice,
                    status:p.Status, notes:_notes, createdAt:p.CreatedAt, collectedAt:p.CollectedAt
                   };}));
                 } catch(e) { console.error('loadIraqPay error:',e); }
@@ -3063,7 +3065,12 @@ import React, { useState, useEffect } from 'react';
                   <div className="flex items-center justify-between mb-2">
                    <div>
                   <p className="font-bold text-gray-900 flex items-center gap-2">{p.shipmentCode}{p.toOffice ? <span className="font-normal text-gray-500"> / {p.toOffice}</span> : ''}<span className="text-green-600">✅</span></p>
-                  {p.receiver && <p className="text-xs text-gray-500">{p.receiver}</p>}
+                  {(p.receiver || p.receiverMobile) && (
+                   <p className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
+                  {p.receiver && <span>{p.receiver}</span>}
+                  {p.receiverMobile && <a href={'tel:' + p.receiverMobile.replace(/[^0-9+]/g,'')} className="inline-flex items-center gap-1 text-blue-600 font-semibold hover:text-blue-700"><span>📞</span>{p.receiverMobile}</a>}
+                   </p>
+                  )}
                   <p className="text-xs text-gray-400">{p.batchName}{dt && ' · ' + dt}</p>
                    </div>
                    <span className="px-2 py-0.5 bg-green-200 text-green-800 rounded-full text-xs font-semibold">collected</span>
@@ -3112,7 +3119,12 @@ import React, { useState, useEffect } from 'react';
                   <div className="flex items-center justify-between mb-2">
                    <div>
                   <p className="font-bold text-gray-900">{p.shipmentCode}{p.toOffice ? <span className="font-normal text-gray-500"> / {p.toOffice}</span> : ''}</p>
-                  {p.receiver && <p className="text-xs text-gray-500">{p.receiver}</p>}
+                  {(p.receiver || p.receiverMobile) && (
+                   <p className="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
+                  {p.receiver && <span>{p.receiver}</span>}
+                  {p.receiverMobile && <a href={'tel:' + p.receiverMobile.replace(/[^0-9+]/g,'')} className="inline-flex items-center gap-1 text-blue-600 font-semibold hover:text-blue-700"><span>📞</span>{p.receiverMobile}</a>}
+                   </p>
+                  )}
                   <p className="text-xs text-gray-400">{p.batchName}</p>
                    </div>
                    <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-xs font-semibold">{p.status}</span>
