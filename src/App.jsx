@@ -10877,7 +10877,13 @@ import React, { useState, useEffect } from 'react';
                    const todayTs = timesheets.find(function(ts) {
                   return ts.employeeId === emp.id && (ts.date === todayStr || ts.date === today) && ts.startTime && ts.startTime !== '' && ts.status === 'checkedin';
                    });
-                   return !!todayTs;
+                   if (!todayTs) return false;
+                   // Guard: if a completed (pending/approved) record also exists for today,
+                   // the checkedin stub is an orphan — employee has already clocked out.
+                   const hasCompletedTs = timesheets.some(function(ts) {
+                  return ts.employeeId === emp.id && (ts.date === todayStr || ts.date === today) && (ts.status === 'pending' || ts.status === 'approved');
+                   });
+                   return !hasCompletedTs;
                   });
                   return (
                    <div className="bg-green-50 border-2 border-green-200 rounded-xl shadow p-4" style={{alignSelf:'start', overflow:'hidden'}}>
