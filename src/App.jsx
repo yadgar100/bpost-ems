@@ -1183,7 +1183,7 @@ import React, { useState, useEffect } from 'react';
 
             const getEmployeeCurrency = (employeeId) => {
                 const emp = employees.find(e => e.id === employeeId);
-                return emp ? getCurrencySymbol(emp.currency || 'GBP') : '£';
+                return emp ? getCurrencySymbol(resolveEmployeeCurrency(emp)) : '£';
             };
 
             const extractTime = (val) => {
@@ -2302,6 +2302,10 @@ import React, { useState, useEffect } from 'react';
             };
 
             const EmployeeDashboard = () => {
+                // Currency is derived from the employee's country of operation (source of truth),
+                // not the stored currency field which can be stale/missing. Iraq employees see IQD, etc.
+                const myCurrencyCode = resolveEmployeeCurrency(currentUser);
+                const myCurrencySym = getCurrencySymbol(myCurrencyCode);
                 // Once an accounting period is settled, archive everything up to the settlement date
                 // (same rule as collections): hide timesheets dated on/before the last settlement.
                 const mySettlements = financialAdjustments.filter(a => a.employeeId === currentUser.id && a.type === 'acct_settle');
@@ -2423,7 +2427,7 @@ import React, { useState, useEffect } from 'react';
                    </div>
                    <div className="bg-white bg-opacity-15 rounded-xl p-3 text-center">
                   <p className="text-indigo-200 text-xs font-semibold uppercase tracking-wide">Balance</p>
-                  <p className="text-xl font-bold mt-0.5 text-green-300">{getCurrencySymbol(currentUser.currency)}{payroll.balance.toFixed(2)}</p>
+                  <p className="text-xl font-bold mt-0.5 text-green-300">{myCurrencySym}{payroll.balance.toFixed(2)}</p>
                    </div>
                   </div>
                    </div>
@@ -2437,14 +2441,14 @@ import React, { useState, useEffect } from 'react';
                    <div className="bg-white rounded-2xl shadow p-4 mb-4">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Earnings Breakdown</p>
                   <div className="space-y-2">
-                   <div className="flex justify-between text-sm"><span className="text-gray-600">Total Earnings</span><span className="font-semibold">{getCurrencySymbol(currentUser.currency)}{payroll.totalPay.toFixed(2)}</span></div>
-                   {payroll.payments > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Paid</span><span className="font-semibold text-blue-600">-{getCurrencySymbol(currentUser.currency)}{payroll.payments.toFixed(2)}</span></div>}
-                   {payroll.bonuses > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Bonus</span><span className="font-semibold text-emerald-600">+{getCurrencySymbol(currentUser.currency)}{payroll.bonuses.toFixed(2)}</span></div>}
-                   {payroll.sickPay > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Sick Pay</span><span className="font-semibold text-emerald-600">+{getCurrencySymbol(currentUser.currency)}{payroll.sickPay.toFixed(2)}</span></div>}
-                   {payroll.penalties > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Penalty</span><span className="font-semibold text-red-500">-{getCurrencySymbol(currentUser.currency)}{payroll.penalties.toFixed(2)}</span></div>}
-                   {payroll.advances > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Advance</span><span className="font-semibold text-red-500">-{getCurrencySymbol(currentUser.currency)}{payroll.advances.toFixed(2)}</span></div>}
-                   {payroll.breakDeduction > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Break Deduction</span><span className="font-semibold text-amber-600">-{getCurrencySymbol(currentUser.currency)}{payroll.breakDeduction.toFixed(2)}</span></div>}
-                   <div className="flex justify-between text-sm font-bold border-t border-gray-100 pt-2 mt-2"><span>Balance Owed</span><span className="text-green-700">{getCurrencySymbol(currentUser.currency)}{payroll.balance.toFixed(2)}</span></div>
+                   <div className="flex justify-between text-sm"><span className="text-gray-600">Total Earnings</span><span className="font-semibold">{myCurrencySym}{payroll.totalPay.toFixed(2)}</span></div>
+                   {payroll.payments > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Paid</span><span className="font-semibold text-blue-600">-{myCurrencySym}{payroll.payments.toFixed(2)}</span></div>}
+                   {payroll.bonuses > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Bonus</span><span className="font-semibold text-emerald-600">+{myCurrencySym}{payroll.bonuses.toFixed(2)}</span></div>}
+                   {payroll.sickPay > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Sick Pay</span><span className="font-semibold text-emerald-600">+{myCurrencySym}{payroll.sickPay.toFixed(2)}</span></div>}
+                   {payroll.penalties > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Penalty</span><span className="font-semibold text-red-500">-{myCurrencySym}{payroll.penalties.toFixed(2)}</span></div>}
+                   {payroll.advances > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Advance</span><span className="font-semibold text-red-500">-{myCurrencySym}{payroll.advances.toFixed(2)}</span></div>}
+                   {payroll.breakDeduction > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Break Deduction</span><span className="font-semibold text-amber-600">-{myCurrencySym}{payroll.breakDeduction.toFixed(2)}</span></div>}
+                   <div className="flex justify-between text-sm font-bold border-t border-gray-100 pt-2 mt-2"><span>Balance Owed</span><span className="text-green-700">{myCurrencySym}{payroll.balance.toFixed(2)}</span></div>
                   </div>
                    </div>
                   )}
@@ -2558,7 +2562,7 @@ import React, { useState, useEffect } from 'react';
                   {(() => {
                    const myIraqPay = iraqPayments.filter(function(p){ return parseInt(p.employeeId) === parseInt(currentUser.id); });
                    if (!myIraqPay.length) return null;
-                   const sym = getCurrencySymbol(currentUser.currency || 'GBP');
+                   const sym = myCurrencySym;
                    const batches = [...new Set(myIraqPay.map(function(p){return p.batchName;}))];
                    return (
                   <IraqPaySection
@@ -2575,7 +2579,7 @@ import React, { useState, useEffect } from 'react';
                   {(() => {
                    const myCredits = financialAdjustments.filter(function(a){return a.employeeId===currentUser.id && a.type==='account_credit' && (!lastSettleDateTs || a.date > lastSettleDateTs);}).sort(function(a,b){return a.date>b.date?-1:1;});
                    if (!myCredits.length) return null;
-                   const sym2 = getCurrencySymbol(currentUser.currency||'GBP');
+                   const sym2 = myCurrencySym;
                    return (
                   <div className="mt-6 bg-indigo-50 border border-indigo-200 rounded-xl p-4">
                    <h3 className="text-sm font-bold text-indigo-700 mb-3 flex items-center gap-2"><DollarSign className="w-4 h-4"/>My Account Credits</h3>
@@ -2597,7 +2601,7 @@ import React, { useState, useEffect } from 'react';
                    })()}
 
                   {(() => {
-                   const sym = getCurrencySymbol(currentUser.currency || 'GBP');
+                   const sym = myCurrencySym;
                    const allExpensesEver = expenses.filter(e => e.employeeId === currentUser.id);
                    if (allExpensesEver.length === 0) return null;
                    // Only show unsettled expenses — those after the last accounting settlement date.
@@ -2785,7 +2789,7 @@ import React, { useState, useEffect } from 'react';
                    {(() => {
                   const myCollections = agentCollections.filter(c => c.employeeId === currentUser.id);
                   if (myCollections.length === 0) return null;
-                  const sym = getCurrencySymbol(currentUser.currency || 'GBP');
+                  const sym = myCurrencySym;
 
                   const myId = currentUser.id;
                   const rate = parseFloat(currentUser.hourlyRate) || 0;
@@ -6030,7 +6034,7 @@ import React, { useState, useEffect } from 'react';
                    for (const item of items) {
                   await apiCall(API_ENDPOINTS.expenses, {
                    method: 'POST',
-                   body: JSON.stringify({ date: item.date, category: item.category, description: item.description, amount: item.amount, currency: currentUser.currency || 'GBP', receiptNote: item.receiptNote || '', receiptImage: item.receiptImage || null })
+                   body: JSON.stringify({ date: item.date, category: item.category, description: item.description, amount: item.amount, currency: resolveEmployeeCurrency(currentUser), receiptNote: item.receiptNote || '', receiptImage: item.receiptImage || null })
                   });
                    }
                    await loadExpensesFromAPI();
@@ -6046,7 +6050,7 @@ import React, { useState, useEffect } from 'react';
                   _submitGuard.current = false;
                 };
 
-                const sym = getCurrencySymbol(currentUser.currency || 'GBP');
+                const sym = getCurrencySymbol(resolveEmployeeCurrency(currentUser));
                 const total = items.reduce((s, i) => s + i.amount, 0);
 
                 return (
@@ -6084,7 +6088,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                    <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Amount ({getCurrencySymbol(currentUser.currency || 'GBP')}) *</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Amount ({getCurrencySymbol(resolveEmployeeCurrency(currentUser))}) *</label>
                   <input type="number" min="0.01" step="0.01" ref={amountRef} defaultValue="" placeholder="0.00" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none" />
                    </div>
                    <div>
@@ -6866,7 +6870,7 @@ import React, { useState, useEffect } from 'react';
                 const bankAmountRef = React.useRef(null);
                 const notesRef = React.useRef(null);
                 const [saving, setSaving] = useState(false);
-                const sym = getCurrencySymbol(currentUser.currency || 'GBP');
+                const sym = getCurrencySymbol(resolveEmployeeCurrency(currentUser));
 
                 const selectedAgent = myAgents.find(function(a) { return a.id === parseInt(agentId); });
 
