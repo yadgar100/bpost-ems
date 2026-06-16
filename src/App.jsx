@@ -1729,6 +1729,26 @@ import React, { useState, useEffect } from 'react';
                 ));
             };
 
+            const handleForceCheckout = async (timesheetId, empName) => {
+                if (!window.confirm('Clock out ' + empName + '? This marks their open shift as checked out so they no longer appear as currently working. They can still submit/adjust the timesheet afterwards.')) return;
+                const previousTimesheets = timesheets;
+                setTimesheets(timesheets.map(ts =>
+                  ts.id === timesheetId ? { ...ts, status: 'checkedout' } : ts
+                ));
+                try {
+                  const result = await apiCall(API_ENDPOINTS.timesheets + '/' + timesheetId, {
+                   method: 'PUT',
+                   body: JSON.stringify({ status: 'checkedout' })
+                  });
+                  if (result && result.success === false) throw new Error(result.error || 'API error');
+                  await loadTimesheetsFromAPI();
+                } catch (error) {
+                  console.error('Failed to force checkout:', error);
+                  setTimesheets(previousTimesheets);
+                  alert('Failed to clock out ' + empName + ': ' + error.message);
+                }
+            };
+
             const handleTimesheetStatus = async (timesheetId, status) => {
                 const previousTimesheets = timesheets;
                 setTimesheets(timesheets.map(ts =>
@@ -10947,7 +10967,10 @@ import React, { useState, useEffect } from 'react';
                   <span style={{width:'6px', height:'6px', background:'#22c55e', borderRadius:'50%', flexShrink:0}}></span>
                   <span style={{fontSize:'11px', fontWeight:600, color:'#1f2937', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{emp.firstName} {emp.lastName}</span>
                    </div>
-                   <span style={{fontSize:'11px', fontWeight:700, color:'#15803d', flexShrink:0, marginLeft:'6px'}}>{startTime}{elapsed ? ' ('+elapsed+')' : ''}</span>
+                   <div style={{display:'flex', alignItems:'center', gap:'6px', flexShrink:0, marginLeft:'6px'}}>
+                  <span style={{fontSize:'11px', fontWeight:700, color:'#15803d'}}>{startTime}{elapsed ? ' ('+elapsed+')' : ''}</span>
+                  {ts && <button onClick={function(){ handleForceCheckout(ts.id, emp.firstName + ' ' + emp.lastName); }} title="Clock out (mark as checked out)" style={{fontSize:'10px', fontWeight:700, color:'#b91c1c', background:'#fee2e2', border:'none', borderRadius:'4px', padding:'2px 6px', cursor:'pointer', lineHeight:1}}>Clock out</button>}
+                   </div>
                   </div>
                    );
                   })}
