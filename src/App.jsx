@@ -523,7 +523,10 @@ import React, { useState, useEffect } from 'react';
                 if (saved) {
                   try {
                    const parsed = JSON.parse(saved);
-                   if (parsed.date === today) return parsed;
+                   // Only restore an in-progress shift for today: has a check-in but no check-out yet.
+                   // A saved object with both times is a completed/submitted shift and must not be
+                   // restored, or Check-Out would wrongly show as already done after a fresh check-in.
+                   if (parsed.date === today && parsed.startTime && !parsed.finishTime) return parsed;
                   } catch(e) {}
                 }
                 return { date: today, startTime: '', finishTime: '', notes: '', locationId: null, checkInLocation: null, checkOutLocation: null };
@@ -928,11 +931,17 @@ import React, { useState, useEffect } from 'react';
                   const today = new Date().toISOString().split('T')[0];
 
                   if (mode === 'checkin') {
+                   // A fresh check-in starts a clean shift. Do NOT spread the previous newTimesheet —
+                   // a leftover finishTime/checkOutLocation from an earlier session today would otherwise
+                   // make Check-Out appear already completed at the same minute.
                    setNewTimesheet({
-                  ...newTimesheet,
+                  date: today,
                   startTime: currentTime,
+                  finishTime: '',
+                  notes: '',
                   locationId: verification.location.id,
-                  checkInLocation: { ...verification.position, locationName: verification.location.name }
+                  checkInLocation: { ...verification.position, locationName: verification.location.name },
+                  checkOutLocation: null
                    });
 
                    try {
