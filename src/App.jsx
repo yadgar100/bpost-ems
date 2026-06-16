@@ -971,7 +971,21 @@ import React, { useState, useEffect } from 'react';
                   checkOutLocation: { ...verification.position, locationName: verification.location.name }
                    });
 
-                   const activeId = localStorage.getItem('bpost_active_checkin_id');
+                   let activeId = localStorage.getItem('bpost_active_checkin_id');
+                   // Fallback: if the stored id is missing (different device, cleared storage, etc.),
+                   // look up this employee's open check-in from the freshest server data so checkout
+                   // always lands on the right record instead of silently doing nothing.
+                   try {
+                  const fresh = await loadTimesheetsFromAPI();
+                  const list = fresh || timesheets;
+                  const stored = activeId ? list.find(function(ts){ return String(ts.id) === String(activeId); }) : null;
+                  if (!activeId || !stored || (stored.status !== 'checkedin')) {
+                   const open = list
+                    .filter(function(ts){ return ts.employeeId === currentUser.id && ts.status === 'checkedin' && (!ts.finishTime || ts.finishTime === ''); })
+                    .sort(function(a,b){ return new Date(b.date) - new Date(a.date); });
+                   activeId = open.length > 0 ? open[0].id : activeId;
+                  }
+                   } catch(e) {}
                    if (activeId) {
                   try {
                    await apiCall(API_ENDPOINTS.timesheets + '/' + activeId, {
@@ -980,7 +994,8 @@ import React, { useState, useEffect } from 'react';
                      finishTime: currentTime,
                      checkOutLat: verification.position?.lat || null,
                      checkOutLng: verification.position?.lng || null,
-                     checkOutLocation: verification.location.name
+                     checkOutLocation: verification.location.name,
+                     status: 'checkedout'
                     })
                    });
                    localStorage.removeItem('bpost_active_checkin_id');
@@ -1581,15 +1596,15 @@ import React, { useState, useEffect } from 'react';
                    // have one open check-in at a time, and a date/timezone mismatch must not spawn a
                    // second record that would later show as a stray pending copy on the portal.
                    const openRecords = freshTs
-                  .filter(function(ts) { return ts.employeeId === currentUser.id && ts.status === 'checkedin'; })
+                  .filter(function(ts) { return ts.employeeId === currentUser.id && (ts.status === 'checkedin' || ts.status === 'checkedout'); })
                   .sort(function(a, b) { return new Date(b.date) - new Date(a.date); });
                    if (openRecords.length > 0) activeId = openRecords[0].id;
                   } else {
                    // Verify the stored id still exists and is open; if it was already submitted/approved,
                    // don't reuse it — fall back to a fresh open record or a clean POST.
                    const stored = freshTs.find(function(ts){ return String(ts.id) === String(activeId); });
-                   if (stored && stored.status !== 'checkedin') {
-                  const stillOpen = freshTs.filter(function(ts){ return ts.employeeId === currentUser.id && ts.status === 'checkedin'; })
+                   if (stored && stored.status !== 'checkedin' && stored.status !== 'checkedout') {
+                  const stillOpen = freshTs.filter(function(ts){ return ts.employeeId === currentUser.id && (ts.status === 'checkedin' || ts.status === 'checkedout'); })
                    .sort(function(a,b){ return new Date(b.date) - new Date(a.date); });
                   activeId = stillOpen.length > 0 ? stillOpen[0].id : null;
                    }
@@ -2322,8 +2337,8 @@ import React, { useState, useEffect } from 'react';
                 const allMyTimesheets = timesheets.filter(ts => ts.employeeId === currentUser.id);
                 // Defensive de-dup: if duplicate records exist for the same shift (same date + start time),
                 // keep only the most-progressed one so the employee never sees both a pending and an
-                // approved copy of the same shift. Status priority: approved > pending > rejected > checkedin.
-                const statusRank = { approved: 4, pending: 3, rejected: 2, checkedin: 1 };
+                // approved copy of the same shift. Status priority: approved > pending > rejected > checkedout > checkedin.
+                const statusRank = { approved: 5, pending: 4, rejected: 3, checkedout: 2, checkedin: 1 };
                 const dedupMyTimesheets = (function() {
                   const best = {};
                   allMyTimesheets.forEach(function(ts) {
@@ -4919,7 +4934,7 @@ import React, { useState, useEffect } from 'react';
                   const tsDate = new Date(ts.date);
                   return tsDate >= new Date(startDate) && tsDate <= new Date(endDate);
                    });
-                   const betterExists = (ts) => ts.status === 'checkedin' && inRange.some(function(t) {
+                   const betterExists = (ts) => (ts.status === 'checkedin' || ts.status === 'checkedout') && inRange.some(function(t) {
                   return t.employeeId === ts.employeeId && t.date === ts.date && (t.status === 'pending' || t.status === 'approved');
                    });
                    return inRange.filter(function(ts) { return !betterExists(ts); });
@@ -10888,7 +10903,8 @@ import React, { useState, useEffect } from 'react';
                   const activeNow = visibleEmployees.filter(function(emp) {
                    if (emp.isAdmin) return false;
                    const todayTs = timesheets.find(function(ts) {
-                  return ts.employeeId === emp.id && (ts.date === todayStr || ts.date === today) && ts.startTime && ts.startTime !== '' && ts.status === 'checkedin';
+                  return ts.employeeId === emp.id && (ts.date === todayStr || ts.date === today) && ts.startTime && ts.startTime !== '' && ts.status === 'checkedin'
+                   && (!ts.finishTime || ts.finishTime === '');
                    });
                    if (!todayTs) return false;
                    // Guard: if a completed (pending/approved) record also exists for today,
@@ -10913,7 +10929,7 @@ import React, { useState, useEffect } from 'react';
                   {activeNow.length > 0 ? (
                    <div style={{maxHeight:'160px', overflowY:'auto'}}>
                   {activeNow.map(function(emp) {
-                   const ts = timesheets.find(function(t) { return t.employeeId === emp.id && (t.date === todayStr || t.date === today) && t.startTime && t.status === 'checkedin'; });
+                   const ts = timesheets.find(function(t) { return t.employeeId === emp.id && (t.date === todayStr || t.date === today) && t.startTime && t.status === 'checkedin' && (!t.finishTime || t.finishTime === ''); });
                    const startTime = ts ? ts.startTime : '';
                    const startParts = startTime ? startTime.split(':') : [];
                    let elapsed = '';
