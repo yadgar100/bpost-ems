@@ -546,6 +546,7 @@ import React, { useState, useEffect } from 'react';
 
             const [scanningMode, setScanningMode] = useState(null);
             const [scannedQR, setScannedQR] = useState('');
+            const scanInFlightRef = React.useRef(false);
             const [currentLocation, setCurrentLocation] = useState(null);
             const [showLocationManager, setShowLocationManager] = useState(false);
             const [showBreakModal, setShowBreakModal] = useState(false);
@@ -930,6 +931,10 @@ import React, { useState, useEffect } from 'react';
             };
 
             const handleQRScan = async (qrCode, mode) => {
+                // Guard against double-scan / double-tap creating duplicate records.
+                if (scanInFlightRef.current) return;
+                scanInFlightRef.current = true;
+                try {
                 const verification = await verifyLocation(qrCode);
 
                 if (verification.verified) {
@@ -1034,6 +1039,9 @@ import React, { useState, useEffect } from 'react';
                   setScannedQR('');
                 } else {
                   alert(`❌ Location Verification Failed\n\n${verification.error}`);
+                }
+                } finally {
+                  scanInFlightRef.current = false;
                 }
             };
 
