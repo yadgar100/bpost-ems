@@ -387,6 +387,12 @@ import React, { useState, useEffect } from 'react';
                   position: u.position || u.Position || '',
                   isAdmin: u.isAdmin || u.IsAdmin || false,
                   hourlyRate: u.hourlyRate || u.HourlyRate || 0,
+                  country: u.country || u.Country || '',
+                  currency: u.currency || u.Currency || 'GBP',
+                  overtimeRate: (u.overtimeRate != null ? u.overtimeRate : (u.OvertimeRate != null ? u.OvertimeRate : null)),
+                  standardHours: u.standardHours || u.StandardHours || null,
+                  minimumHours: u.minimumHours || u.MinimumHours || null,
+                  branches: (() => { try { return JSON.parse(u.Branches || u.branches || '[]'); } catch(e) { return Array.isArray(u.branches) ? u.branches : []; } })(),
                   assignedLocations: u.assignedLocations || u.AssignedLocations || [],
                   adminPermissions: parsePermissions(u.adminPermissions || u.AdminPermissions)
                    });
@@ -1291,6 +1297,10 @@ import React, { useState, useEffect } from 'react';
                   hourlyRate: data.user.HourlyRate || data.user.hourlyRate || 0,
                   country: data.user.Country || data.user.country || '',
                   currency: data.user.Currency || data.user.currency || 'GBP',
+                  overtimeRate: (data.user.OvertimeRate != null ? data.user.OvertimeRate : (data.user.overtimeRate != null ? data.user.overtimeRate : null)),
+                  standardHours: data.user.StandardHours || data.user.standardHours || null,
+                  minimumHours: data.user.MinimumHours || data.user.minimumHours || null,
+                  branches: (() => { try { return JSON.parse(data.user.Branches || data.user.branches || '[]'); } catch(e) { return Array.isArray(data.user.branches) ? data.user.branches : []; } })(),
                   assignedLocations: data.user.AssignedLocations || data.user.assignedLocations || [],
                   adminPermissions: parsePermissions(data.user.AdminPermissions || data.user.adminPermissions)
                    };
@@ -1378,6 +1388,10 @@ import React, { useState, useEffect } from 'react';
                   hourlyRate: u.hourlyRate || u.HourlyRate || 0,
                   country: u.country || u.Country || '',
                   currency: u.currency || u.Currency || 'GBP',
+                  overtimeRate: (u.overtimeRate != null ? u.overtimeRate : (u.OvertimeRate != null ? u.OvertimeRate : null)),
+                  standardHours: u.standardHours || u.StandardHours || null,
+                  minimumHours: u.minimumHours || u.MinimumHours || null,
+                  branches: (() => { try { return JSON.parse(u.Branches || u.branches || '[]'); } catch(e) { return Array.isArray(u.branches) ? u.branches : []; } })(),
                   assignedLocations: u.assignedLocations || u.AssignedLocations || [],
                   adminPermissions: parsePermissions(u.adminPermissions || u.AdminPermissions)
                    };
@@ -2855,16 +2869,29 @@ import React, { useState, useEffect } from 'react';
                   const sym = myCurrencySym;
 
                   const myId = currentUser.id;
-                  const rate = parseFloat(currentUser.hourlyRate) || 0;
-                  const otMult = (currentUser.overtimeRate != null && currentUser.overtimeRate !== '') ? parseFloat(currentUser.overtimeRate) : (payrollSettings.overtimeMultiplier || 1.5);
+                  // Source of truth for pay rates: the fully-mapped employees record (which always
+                  // includes overtimeRate/standardHours). currentUser from login may lack these, which
+                  // would wrongly fall back to the default 1.5x OT multiplier and skew the balance.
+                  const myEmpRecord = employees.find(e => e.id === myId) || currentUser;
+                  const rate = parseFloat(myEmpRecord.hourlyRate ?? currentUser.hourlyRate) || 0;
+                  const otRaw = (myEmpRecord.overtimeRate != null && myEmpRecord.overtimeRate !== '')
+                   ? myEmpRecord.overtimeRate
+                   : (currentUser.overtimeRate != null && currentUser.overtimeRate !== '' ? currentUser.overtimeRate : null);
+                  const otMult = otRaw != null ? parseFloat(otRaw) : (payrollSettings.overtimeMultiplier || 1.5);
                   const allColl = myCollections;
                   const allTs = timesheets.filter(t => t.employeeId === myId && t.status === 'approved');
                   const allExp = expenses.filter(x => x.employeeId === myId && (x.status === 'approved' || x.status === 'paid'));
                   const allSettle = financialAdjustments.filter(a => a.employeeId === myId && a.type === 'acct_settle');
                   const allCredit = financialAdjustments.filter(a => a.employeeId === myId && a.type === 'account_credit');
 
+                  const earnOf = (t) => ((parseFloat(t.regularHours)||0)*rate) + ((parseFloat(t.overtimeHours)||0)*rate*otMult);
+
+                  // Authoritative ledger — mirrors the admin Employee Accounting calculation exactly.
+                  // Running balance = every collection/earning/expense/settlement/credit to date, netted.
+                  // Positive = employee owes company. This is the SAME number the admin sees, so the
+                  // portal and the admin statement never diverge.
                   const sumColl = allColl.reduce((s,c) => s + (c.amountCollected||0) - (c.amountPaid||0), 0);
-                  const sumEarned = allTs.reduce((s,t) => s + ((parseFloat(t.regularHours)||0)*rate) + ((parseFloat(t.overtimeHours)||0)*rate*otMult), 0);
+                  const sumEarned = allTs.reduce((s,t) => s + earnOf(t), 0);
                   const sumExp = allExp.reduce((s,x) => s + (x.amount||0), 0);
                   const sumSettle = allSettle.reduce((s,a) => s + (parseFloat(a.amount)||0), 0);
                   const sumCredit = allCredit.reduce((s,a) => s + (parseFloat(a.amount)||0), 0);
