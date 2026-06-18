@@ -972,6 +972,7 @@ import React, { useState, useEffect } from 'react';
                    });
 
                    let activeId = localStorage.getItem('bpost_active_checkin_id');
+                   let openRecord = null;
                    // Fallback: if the stored id is missing (different device, cleared storage, etc.),
                    // look up this employee's open check-in from the freshest server data so checkout
                    // always lands on the right record instead of silently doing nothing.
@@ -983,11 +984,27 @@ import React, { useState, useEffect } from 'react';
                    const open = list
                     .filter(function(ts){ return ts.employeeId === currentUser.id && ts.status === 'checkedin' && (!ts.finishTime || ts.finishTime === ''); })
                     .sort(function(a,b){ return new Date(b.date) - new Date(a.date); });
-                   activeId = open.length > 0 ? open[0].id : activeId;
+                   openRecord = open.length > 0 ? open[0] : null;
+                   activeId = openRecord ? openRecord.id : activeId;
+                  } else {
+                   openRecord = stored;
                   }
                    } catch(e) {}
                    if (activeId) {
                   try {
+                   // Compute hours so checkout sends the shift straight to admin for approval
+                   // (status 'pending'), instead of leaving it stuck in 'checkedout' with 0 hrs.
+                   const startT = openRecord && openRecord.startTime ? openRecord.startTime : newTimesheet.startTime;
+                   let regular = 0, overtime = 0;
+                   if (startT) {
+                  const start = new Date('2000-01-01T' + startT);
+                  const finish = new Date('2000-01-01T' + currentTime);
+                  let totalH = (finish - start) / 3600000;
+                  if (totalH < 0) totalH += 24;
+                  const autoBreak = getAutoBreakMinutes(totalH);
+                  const calc = calculateHours(startT, currentTime, currentUser.id, autoBreak);
+                  regular = calc.regular; overtime = calc.overtime;
+                   }
                    await apiCall(API_ENDPOINTS.timesheets + '/' + activeId, {
                     method: 'PUT',
                     body: JSON.stringify({
@@ -995,14 +1012,16 @@ import React, { useState, useEffect } from 'react';
                      checkOutLat: verification.position?.lat || null,
                      checkOutLng: verification.position?.lng || null,
                      checkOutLocation: verification.location.name,
-                     status: 'checkedout'
+                     regularHours: regular,
+                     overtimeHours: overtime,
+                     status: 'pending'
                     })
                    });
                    localStorage.removeItem('bpost_active_checkin_id');
                    await loadTimesheetsFromAPI();
                   } catch(e) { console.error('Failed to update checkout:', e); }
                    }
-                   alert(`✓ Check-out successful at ${verification.location.name}\nTime: ${currentTime}\nDistance: ${verification.distance}m from location center`);
+                   alert(`✓ Check-out successful at ${verification.location.name}\nTime: ${currentTime}\nSent to admin for approval`);
                   }
 
                   setScanningMode(null);
@@ -10222,7 +10241,7 @@ import React, { useState, useEffect } from 'react';
                    const emp = employees.find(e => e.id === ts.employeeId);
                    return emp && (emp.branches || []).includes(tsBranchFilter);
                   })
-                  .filter(ts => ts.status === tsTab)
+                  .filter(ts => tsTab === 'pending' ? (ts.status === 'pending' || ts.status === 'checkedout') : ts.status === tsTab)
                   .filter(ts => { const d = ts.date; return d >= tsFrom && d <= tsTo; })
                   .sort((a, b) => new Date(b.date) - new Date(a.date));
                 return (
@@ -10246,7 +10265,8 @@ import React, { useState, useEffect } from 'react';
                    const emp = employees.find(e => e.id === ts.employeeId);
                    if (!emp || !(emp.branches || []).includes(tsBranchFilter)) return false;
                   }
-                  return ts.status===tab && ts.date>=tsFrom && ts.date<=tsTo;
+                  const matchTab = tab === 'pending' ? (ts.status === 'pending' || ts.status === 'checkedout') : ts.status === tab;
+                  return matchTab && ts.date>=tsFrom && ts.date<=tsTo;
                    }).length})
                   </span>
                    </button>
@@ -10319,7 +10339,7 @@ import React, { useState, useEffect } from 'react';
                    <td className="px-4 py-3 text-sm">{ts.regularHours} hrs</td>
                    <td className="px-4 py-3 text-sm">{ts.overtimeHours} hrs</td>
                    <td className="px-4 py-3 text-sm">
-                  {ts.status==='pending'&&hasPermission('canApproveTimesheets') ? (
+                  {(ts.status==='pending'||ts.status==='checkedout')&&hasPermission('canApproveTimesheets') ? (
                    <BreakEditor ts={ts} effectiveBreak={effectiveBreak} autoBreak={autoBreak} employee={employee} />
                   ) : (
                    <span className={effectiveBreak>0?'text-amber-600 font-semibold':'text-gray-400'}>
@@ -10338,7 +10358,7 @@ import React, { useState, useEffect } from 'react';
                    </td>
                    <td className="px-4 py-3">
                   <div className="flex gap-2 items-center">
-                   {ts.status === 'pending' && hasPermission('canApproveTimesheets') && (
+                   {(ts.status === 'pending' || ts.status === 'checkedout') && hasPermission('canApproveTimesheets') && (
                   <>
                    <button onClick={() => handleTimesheetStatus(ts.id, 'approved')} className="text-green-600 hover:text-green-700" title="Approve"><CheckCircle className="w-5 h-5" /></button>
                    <button onClick={() => handleTimesheetStatus(ts.id, 'rejected')} className="text-red-600 hover:text-red-700" title="Reject"><XCircle className="w-5 h-5" /></button>
