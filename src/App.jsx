@@ -1176,6 +1176,17 @@ import React, { useState, useEffect } from 'react';
                 }
             };
 
+            // Convert decimal hours (e.g. 8.98) into "8h 59m" for clear display.
+            // Used in both admin queue and employee portal so hours read as time, not decimals.
+            const formatHrsMin = (decimalHours) => {
+                const h = parseFloat(decimalHours);
+                if (isNaN(h) || h === 0) return '0h 0m';
+                const totalMins = Math.round(h * 60);
+                const hh = Math.floor(totalMins / 60);
+                const mm = totalMins % 60;
+                return hh + 'h ' + mm + 'm';
+            };
+
             const calculateHours = (startTime, finishTime, employeeId, breakMinutes) => {
                 if (!startTime || !finishTime) return { regular: 0, overtime: 0 };
 
@@ -2459,6 +2470,16 @@ import React, { useState, useEffect } from 'react';
                 const unpaidRegularHours = unpaidApproved.reduce((s, ts) => s + (ts.regularHours || 0), 0);
                 const unpaidOvertimeHours = unpaidApproved.reduce((s, ts) => s + (ts.overtimeHours || 0), 0);
                 const payroll = calculatePayroll(currentUser.id);
+                // Monetary value of unpaid hours = regular×rate + overtime×rate×otMult.
+                // Uses the fully-mapped employees record as source of truth for rates
+                // (currentUser from login can lack overtimeRate), matching the balance fix.
+                const myPayRecord = employees.find(e => e.id === currentUser.id) || currentUser;
+                const myRate = parseFloat(myPayRecord.hourlyRate ?? currentUser.hourlyRate) || 0;
+                const myOtRaw = (myPayRecord.overtimeRate != null && myPayRecord.overtimeRate !== '')
+                  ? myPayRecord.overtimeRate
+                  : (currentUser.overtimeRate != null && currentUser.overtimeRate !== '' ? currentUser.overtimeRate : null);
+                const myOtMult = myOtRaw != null ? parseFloat(myOtRaw) : (payrollSettings.overtimeMultiplier || 1.5);
+                const unpaidHoursValue = (unpaidRegularHours * myRate) + (unpaidOvertimeHours * myRate * myOtMult);
                 const currentLocationData = newTimesheet.locationId
                   ? workLocations.find(loc => loc.id === newTimesheet.locationId)
                   : null;
@@ -2548,15 +2569,15 @@ import React, { useState, useEffect } from 'react';
                   <div className="max-w-2xl mx-auto px-4 pb-5 grid grid-cols-3 gap-3">
                    <div className="bg-white bg-opacity-15 rounded-xl p-3 text-center">
                   <p className="text-indigo-200 text-xs font-semibold uppercase tracking-wide">Unpaid Hours</p>
-                  <p className="text-xl font-bold mt-0.5">{(unpaidRegularHours + unpaidOvertimeHours).toFixed(1)}</p>
+                  <p className="text-xl font-bold mt-0.5">{formatHrsMin(unpaidRegularHours + unpaidOvertimeHours)}</p>
                    </div>
                    <div className="bg-white bg-opacity-15 rounded-xl p-3 text-center">
                   <p className="text-indigo-200 text-xs font-semibold uppercase tracking-wide">Overtime</p>
-                  <p className="text-xl font-bold mt-0.5 text-amber-300">{unpaidOvertimeHours.toFixed(1)}</p>
+                  <p className="text-xl font-bold mt-0.5 text-amber-300">{formatHrsMin(unpaidOvertimeHours)}</p>
                    </div>
                    <div className="bg-white bg-opacity-15 rounded-xl p-3 text-center">
                   <p className="text-indigo-200 text-xs font-semibold uppercase tracking-wide">Balance</p>
-                  <p className="text-xl font-bold mt-0.5 text-green-300">{myCurrencySym}{payroll.balance.toFixed(2)}</p>
+                  <p className="text-xl font-bold mt-0.5 text-green-300">{myCurrencySym}{unpaidHoursValue.toFixed(2)}</p>
                    </div>
                   </div>
                    </div>
@@ -2638,8 +2659,8 @@ import React, { useState, useEffect } from 'react';
                   <p className="text-sm text-indigo-700">{currentLocationData.address}</p>
                   {newTimesheet.startTime && newTimesheet.finishTime && (
                    <p className="text-sm text-indigo-900 mt-2">
-                  <strong>Today's Hours:</strong> Regular: {calculateHours(newTimesheet.startTime, newTimesheet.finishTime).regular} hrs |
-                  Overtime: {calculateHours(newTimesheet.startTime, newTimesheet.finishTime).overtime} hrs
+                  <strong>Today's Hours:</strong> Regular: {formatHrsMin(calculateHours(newTimesheet.startTime, newTimesheet.finishTime).regular)} |
+                  Overtime: {formatHrsMin(calculateHours(newTimesheet.startTime, newTimesheet.finishTime).overtime)}
                    </p>
                   )}
                    </div>
@@ -2893,8 +2914,8 @@ import React, { useState, useEffect } from 'react';
                    </td>
                    <td className="px-4 py-3 text-sm">{ts.startTime}</td>
                    <td className="px-4 py-3 text-sm">{ts.finishTime}</td>
-                   <td className="px-4 py-3 text-sm">{ts.regularHours} hrs</td>
-                   <td className="px-4 py-3 text-sm">{ts.overtimeHours} hrs</td>
+                   <td className="px-4 py-3 text-sm">{formatHrsMin(ts.regularHours)}</td>
+                   <td className="px-4 py-3 text-sm">{formatHrsMin(ts.overtimeHours)}</td>
                    <td className="px-4 py-3">
                   <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
                    ts.status === 'approved' ? 'bg-green-100 text-green-800' :
@@ -10469,8 +10490,8 @@ import React, { useState, useEffect } from 'react';
                    </td>
                    <td className="px-4 py-3 text-sm">{ts.startTime}</td>
                    <td className="px-4 py-3 text-sm">{ts.finishTime}</td>
-                   <td className="px-4 py-3 text-sm">{ts.regularHours} hrs</td>
-                   <td className="px-4 py-3 text-sm">{ts.overtimeHours} hrs</td>
+                   <td className="px-4 py-3 text-sm">{formatHrsMin(ts.regularHours)}</td>
+                   <td className="px-4 py-3 text-sm">{formatHrsMin(ts.overtimeHours)}</td>
                    <td className="px-4 py-3 text-sm">
                   {(ts.status==='pending'||ts.status==='checkedout')&&hasPermission('canApproveTimesheets') ? (
                    <BreakEditor ts={ts} effectiveBreak={effectiveBreak} autoBreak={autoBreak} employee={employee} />
