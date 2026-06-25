@@ -356,6 +356,7 @@ import React, { useState, useEffect } from 'react';
                    canViewPayroll: true,
                    canManageAgentCollections: true,
                    canManageAgents: true,
+                   viewAllAgentCountries: true,
                    canViewCompanyAccounting: true,
                    canDeleteEmployees: true,
                    canAddEmployeeHours: true,
@@ -1578,6 +1579,48 @@ import React, { useState, useEffect } from 'react';
                   return false;
                 }
                 return currentUser.adminPermissions[permission] === true;
+            };
+
+            // Agent visibility is scoped by country of operation.
+            // - Default: an admin sees only agents in their OWN country.
+            // - adminPermissions.agentCountries (array): extra granted countries.
+            // - adminPermissions.viewAllAgentCountries (bool): override → see every country.
+            const canSeeAllAgentCountries = (user) => {
+                const u = user || currentUser;
+                if (!u) return false;
+                const perms = u.adminPermissions || {};
+                if (perms.viewAllAgentCountries === true) return true;
+                // Safety net: top-level admins (those who can create admins or manage
+                // permissions) keep full visibility UNLESS they've been explicitly
+                // country-restricted via agentCountries. This prevents the owner from
+                // being accidentally locked out by the new default.
+                const isTopLevel = perms.canCreateAdmins === true || perms.canManageAdminPermissions === true;
+                const hasExplicitGrant = Array.isArray(perms.agentCountries) && perms.agentCountries.length > 0;
+                if (isTopLevel && !hasExplicitGrant) return true;
+                return false;
+            };
+
+            const getVisibleAgentCountries = (user) => {
+                const u = user || currentUser;
+                if (!u) return [];
+                const perms = u.adminPermissions || {};
+                const set = [];
+                const norm = (c) => (c || '').trim().toLowerCase();
+                if (u.country && norm(u.country)) set.push(norm(u.country));
+                if (Array.isArray(perms.agentCountries)) {
+                  perms.agentCountries.forEach(c => { if (norm(c) && set.indexOf(norm(c)) === -1) set.push(norm(c)); });
+                }
+                return set;
+            };
+
+            // Returns true if the given agent (by its country) is visible to the user.
+            const isAgentVisible = (agentCountry, user) => {
+                if (canSeeAllAgentCountries(user)) return true;
+                const visible = getVisibleAgentCountries(user);
+                // If the admin has no country set and no grants, fall back to seeing all
+                // (avoids accidentally hiding everything from a misconfigured admin).
+                if (visible.length === 0) return true;
+                return visible.indexOf((agentCountry || '').trim().toLowerCase()) !== -1;
             };
 
             const calculateLeaveBalance = (employeeId) => {
@@ -6800,7 +6843,11 @@ import React, { useState, useEffect } from 'react';
                 const [assignedIds, setAssignedIds] = useState([]);
                 const [search, setSearch] = useState('');
 
-                const filteredAgents = agents.filter(function(a) {
+                const countryScopedAgents = agents.filter(function(a) {
+                  return isAgentVisible(a.country, currentUser);
+                });
+
+                const filteredAgents = countryScopedAgents.filter(function(a) {
                   if (!search.trim()) return true;
                   const q = search.toLowerCase();
                   return a.agentCode.toLowerCase().includes(q) || a.city.toLowerCase().includes(q);
@@ -6881,7 +6928,7 @@ import React, { useState, useEffect } from 'react';
 
                   <div className="flex border-b border-gray-200 px-6 pt-4 gap-4">
                    <button onClick={function() { setTab('list'); setForm(emptyForm); setEditAgent(null); }} className={'pb-3 text-sm font-semibold border-b-2 transition ' + (tab==='list'?'border-orange-500 text-orange-700':'border-transparent text-gray-500 hover:text-gray-700')}>
-                  Agents ({agents.length})
+                  Agents ({countryScopedAgents.length})
                    </button>
                    <button onClick={function() { setForm(emptyForm); setEditAgent(null); setTab('form'); }} className={'pb-3 text-sm font-semibold border-b-2 transition ' + (tab==='form'&&!editAgent?'border-orange-500 text-orange-700':'border-transparent text-gray-500 hover:text-gray-700')}>
                   + Add Agent
@@ -6897,8 +6944,8 @@ import React, { useState, useEffect } from 'react';
                    <input value={search} onChange={function(e) { setSearch(e.target.value); }} placeholder="Search by code or city..." className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none w-full" />
                   </div>
                    </div>
-                   {agents.length === 0 ? (
-                  <div className="text-center py-12 text-gray-400"><Truck className="w-12 h-12 mx-auto mb-3 opacity-30" /><p>No agents added yet</p></div>
+                   {countryScopedAgents.length === 0 ? (
+                  <div className="text-center py-12 text-gray-400"><Truck className="w-12 h-12 mx-auto mb-3 opacity-30" /><p>{agents.length === 0 ? 'No agents added yet' : 'No agents in your country of operation'}</p></div>
                    ) : (
                   <table className="w-full text-sm">
                    <thead className="bg-orange-50"><tr>{['Agent Code','City','Country','Assigned Employees','Actions'].map(function(h) { return <th key={h} className="px-4 py-3 text-left text-xs font-bold text-orange-700 uppercase tracking-wide">{h}</th>; })}</tr></thead>
@@ -9270,6 +9317,9 @@ import React, { useState, useEffect } from 'react';
                   }
                 };
 
+                const agentCountryList = [...new Set(agents.filter(a => a.country && a.country.trim()).map(a => a.country.trim()))].sort();
+                const currentUserCountryHint = currentUser && currentUser.country ? ' (' + currentUser.country + ')' : '';
+
                 const permissionLabels = {
                   canManageEmployees: 'Manage Employees',
                   canApproveTimesheets: 'Approve Timesheets',
@@ -9285,6 +9335,7 @@ import React, { useState, useEffect } from 'react';
                   canAddEmployeeHours: 'Manually Add Employee Hours',
                   canManageAgentCollections: 'Edit Agent Collection Records',
                   canManageAgents: 'Manage Agents',
+                  viewAllAgentCountries: 'View Agents in ALL Countries',
                   canViewCompanyAccounting: 'View Company Accounting',
                   canViewCountryOnly: 'Restrict to Own Country Only',
                   canViewBranchOnly: 'Restrict to Specific Branches'
@@ -9436,6 +9487,31 @@ import React, { useState, useEffect } from 'react';
                   )}
                   {(!tempPermissions.restrictedBranches || tempPermissions.restrictedBranches.length === 0) && branchList.length > 0 && (
                    <p className="text-xs text-red-600 mt-2">⚠️ Select at least one branch for this restriction to work.</p>
+                  )}
+                   </div>
+                  )}
+                  {!tempPermissions.viewAllAgentCountries && (
+                   <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                  <label className="block text-sm font-semibold text-orange-800 mb-2">🚚 Agent Countries (extra access)</label>
+                  <p className="text-xs text-orange-700 mb-2">This admin always sees agents in their own country of operation{currentUserCountryHint}. Tick any ADDITIONAL countries whose agents they should also see. (Enable "View Agents in ALL Countries" above to see every country.)</p>
+                  {agentCountryList.length === 0 ? (
+                   <p className="text-xs text-gray-500">No agent countries found yet.</p>
+                  ) : (
+                   <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                  {agentCountryList.map(c => (
+                   <label key={c} className="flex items-center gap-2 text-sm text-orange-900">
+                  <input type="checkbox"
+                   checked={(tempPermissions.agentCountries || []).map(x => (x||'').toLowerCase()).includes((c||'').toLowerCase())}
+                   onChange={e => {
+                  const current = tempPermissions.agentCountries || [];
+                  const updated = e.target.checked ? [...current, c] : current.filter(x => (x||'').toLowerCase() !== (c||'').toLowerCase());
+                  setTempPermissions({...tempPermissions, agentCountries: updated});
+                   }}
+                   className="w-4 h-4" />
+                  {c}
+                   </label>
+                  ))}
+                   </div>
                   )}
                    </div>
                   )}
@@ -9624,6 +9700,27 @@ import React, { useState, useEffect } from 'react';
                   </label>
                    ))}
                   </div>
+                  {!newAdminPermissions.viewAllAgentCountries && agentCountryList.length > 0 && (
+                   <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                  <label className="block text-sm font-semibold text-orange-800 mb-2">🚚 Agent Countries (extra access)</label>
+                  <p className="text-xs text-orange-700 mb-2">The new admin always sees agents in their own country of operation. Tick any ADDITIONAL countries they should also see.</p>
+                  <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+                   {agentCountryList.map(c => (
+                  <label key={c} className="flex items-center gap-2 text-sm text-orange-900">
+                   <input type="checkbox"
+                  checked={(newAdminPermissions.agentCountries || []).map(x => (x||'').toLowerCase()).includes((c||'').toLowerCase())}
+                  onChange={e => {
+                   const current = newAdminPermissions.agentCountries || [];
+                   const updated = e.target.checked ? [...current, c] : current.filter(x => (x||'').toLowerCase() !== (c||'').toLowerCase());
+                   setNewAdminPermissions({...newAdminPermissions, agentCountries: updated});
+                  }}
+                  className="w-4 h-4" />
+                   {c}
+                  </label>
+                   ))}
+                  </div>
+                   </div>
+                  )}
                    </div>
 
                    <div className="flex gap-4 pt-4">
