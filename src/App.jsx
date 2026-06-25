@@ -1590,13 +1590,14 @@ import React, { useState, useEffect } from 'react';
                 if (!u) return false;
                 const perms = u.adminPermissions || {};
                 if (perms.viewAllAgentCountries === true) return true;
-                // Safety net: top-level admins (those who can create admins or manage
-                // permissions) keep full visibility UNLESS they've been explicitly
-                // country-restricted via agentCountries. This prevents the owner from
-                // being accidentally locked out by the new default.
+                // Safety net (narrow): only an UNSCOPED top-level admin sees all — i.e. one
+                // who can create admins / manage permissions AND has no country of operation
+                // set. As soon as an admin has a country, the scope is respected even if they
+                // hold elevated permissions. This keeps the owner from being locked out while
+                // still country-locking a configured admin (e.g. an Iraq admin).
                 const isTopLevel = perms.canCreateAdmins === true || perms.canManageAdminPermissions === true;
-                const hasExplicitGrant = Array.isArray(perms.agentCountries) && perms.agentCountries.length > 0;
-                if (isTopLevel && !hasExplicitGrant) return true;
+                const hasCountry = !!(u.country && u.country.trim());
+                if (isTopLevel && !hasCountry) return true;
                 return false;
             };
 
