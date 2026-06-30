@@ -6113,7 +6113,7 @@ import React, { useState, useEffect } from 'react';
                 );
             };
 
-            const EXPENSE_CATEGORIES = ['Fuel', 'Parking', 'Travel', 'Accommodation', 'Food & Meals', 'Tools & Equipment', 'Uniform', 'Communication', 'Other'];
+            const EXPENSE_CATEGORIES = ['Fuel', 'Parking', 'Travel', 'Transport', 'Accommodation', 'Food & Meals', 'Tools & Equipment', 'Uniform', 'Communication', 'Salary', 'Wages', 'Warehouse/Office Rent', 'Other'];
 
             const ExpenseForm = ({ onClose }) => {
                 const today = new Date().toISOString().split('T')[0];
