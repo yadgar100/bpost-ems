@@ -3251,7 +3251,7 @@ import React, { useState, useEffect } from 'react';
                   {p.receiverMobile && <a href={'tel:' + p.receiverMobile.replace(/[^0-9+]/g,'')} className="inline-flex items-center gap-1 text-blue-600 font-semibold hover:text-blue-700"><span>📞</span>{p.receiverMobile}</a>}
                    </p>
                   )}
-                  <p className="text-xs text-gray-400">{p.batchName}{dt && ' · ' + dt}</p>
+                  <p className="text-xs text-gray-400">{p.batchName}{dt && ' · ' + dt}{p.oldBatchName && p.oldBatchName !== p.batchName && <span className="text-gray-300"> · ↩ {p.oldBatchName}</span>}</p>
                    </div>
                    <span className="px-2 py-0.5 bg-green-200 text-green-800 rounded-full text-xs font-semibold">collected</span>
                   </div>
@@ -3305,7 +3305,7 @@ import React, { useState, useEffect } from 'react';
                   {p.receiverMobile && <a href={'tel:' + p.receiverMobile.replace(/[^0-9+]/g,'')} className="inline-flex items-center gap-1 text-blue-600 font-semibold hover:text-blue-700"><span>📞</span>{p.receiverMobile}</a>}
                    </p>
                   )}
-                  <p className="text-xs text-gray-400">{p.batchName}</p>
+                  <p className="text-xs text-gray-400">{p.batchName}{p.oldBatchName && p.oldBatchName !== p.batchName && <span className="text-gray-300"> · ↩ {p.oldBatchName}</span>}</p>
                    </div>
                    <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-xs font-semibold">{p.status}</span>
                   </div>
@@ -3499,9 +3499,13 @@ import React, { useState, useEffect } from 'react';
                   if (!window.confirm(msg)) return;
                   setReassigning(true);
                   try {
+                   const putBody = { employeeId: parseInt(reassignEmp), batchName: reassignBatch || reassignRec.batchName };
+                   // Preserve the original batch name so both admin and employee portal can show
+                   // "transferred from X" alongside the new batch.
+                   if (batchChanged && reassignRec.batchName) putBody.oldBatchName = reassignRec.batchName;
                    await apiCall(API_ENDPOINTS.iraqPay + '/' + reassignRec.id, {
                   method: 'PUT',
-                  body: JSON.stringify({ employeeId: parseInt(reassignEmp), batchName: reassignBatch || reassignRec.batchName })
+                  body: JSON.stringify(putBody)
                    });
                    await loadIraqPaymentsFromAPI();
                    closeReassign();
@@ -3985,7 +3989,12 @@ import React, { useState, useEffect } from 'react';
                    return (
                   <tr key={p.id} className={'hover:bg-gray-50 ' + (p.status==='collected'?'opacity-70':'')}>
                    <td className="px-3 py-2 font-semibold text-gray-800 text-xs">{p.employeeName}<br/><span className="text-gray-400 font-normal">{p.employeeCode}</span></td>
-                   <td className="px-3 py-2 text-xs text-gray-500">{p.batchName}</td>
+                   <td className="px-3 py-2 text-xs text-gray-500">
+                  {p.batchName}
+                  {p.oldBatchName && p.oldBatchName !== p.batchName && (
+                   <div className="text-gray-400 mt-0.5" title="Transferred from this batch">↩ {p.oldBatchName}</div>
+                  )}
+                   </td>
                    <td className="px-3 py-2 font-bold text-gray-900">{p.shipmentCode}</td>
                    <td className="px-3 py-2 text-xs text-gray-500">{p.notes && p.notes.startsWith('Office:') ? p.notes.replace('Office:','').trim() : (p.notes||'—')}</td>
                    <td className="px-3 py-2 text-xs">{isEditing ? inp('amountIQD',p.amountIQD) : (p.amountIQD>0?<span className="font-semibold">{p.amountIQD.toLocaleString()}</span>:'—')}</td>
@@ -4194,7 +4203,12 @@ import React, { useState, useEffect } from 'react';
                    return (
                   <tr key={p.id} className={i%2===0?'bg-white':'bg-blue-50/30'}>
                    <td className="px-3 py-2 text-xs font-semibold text-gray-800">{p.employeeName}<br/><span className="text-gray-400 font-normal">{p.employeeCode}</span></td>
-                   <td className="px-3 py-2 text-xs font-semibold text-amber-600">{p.batchName}</td>
+                   <td className="px-3 py-2 text-xs font-semibold text-amber-600">
+                  {p.batchName}
+                  {p.oldBatchName && p.oldBatchName !== p.batchName && (
+                   <div className="text-gray-400 font-normal mt-0.5" title="Transferred from this batch">↩ {p.oldBatchName}</div>
+                  )}
+                   </td>
                    <td className="px-3 py-2 text-sm font-bold text-gray-900">{p.shipmentCode}</td>
                    <td className="px-3 py-2 text-xs font-semibold text-green-600">{moveBatchName || <span className="text-gray-300 font-normal">not set</span>}</td>
                    <td className="px-3 py-2 text-xs text-gray-600">{off}</td>
