@@ -315,6 +315,529 @@ import React, { useState, useEffect } from 'react';
             </svg>
         );
 
+            const AgentReport = ({ onClose, visibleEmployees: visEmp, onRefresh, persistedState, onStateChange, agentCollections, agents, apiCall, API_ENDPOINTS, hasPermission, getCurrencySymbol, resolveEmployeeCurrency, loadAgentCollectionsFromAPI }) => {
+                const today = new Date().toISOString().split('T')[0];
+                const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
+                // This modal has its OWN scrollable container (the outer overflow-y-auto div),
+                // separate from window scroll. Background reloads (polling, Add Collection,
+                // Generate Report) update state and re-render this modal, which was resetting
+                // its internal scrollTop to 0. Track it here and restore after each re-render.
+                const modalScrollRef = React.useRef(null);
+                const modalScrollY = React.useRef(0);
+                const handleModalScroll = (e) => { modalScrollY.current = e.target.scrollTop; };
+                React.useLayoutEffect(() => {
+                  const el = modalScrollRef.current;
+                  if (el && Math.abs(el.scrollTop - modalScrollY.current) > 2) {
+                   el.scrollTop = modalScrollY.current;
+                  }
+                });
+                const adjAmountRef = React.useRef(null);
+                const adjHoursRef = React.useRef(null);
+                const adjReasonRef = React.useRef(null);
+                const fromDate = persistedState ? persistedState.fromDate : today.slice(0,8)+'01'; const setFromDate = mk('fromDate');
+                const toDate = persistedState ? persistedState.toDate : today; const setToDate = mk('toDate');
+                const empFilter = persistedState ? persistedState.empFilter : ''; const setEmpFilter = mk('empFilter');
+                const branchFilter = persistedState ? persistedState.branchFilter : ''; const setBranchFilter = mk('branchFilter');
+                const countryFilter = persistedState ? persistedState.countryFilter : ''; const setCountryFilter = mk('countryFilter');
+                const agentFilter = persistedState ? persistedState.agentFilter : ''; const setAgentFilter = mk('agentFilter');
+                const reportData = persistedState ? persistedState.reportData : null; const setReportData = mk('reportData');
+                const [editingId, setEditingId] = useState(null);
+                const [editVals, setEditVals] = useState({});
+                const [savingId, setSavingId] = useState(null);
+                const showAddForm = persistedState ? persistedState.showAddForm : false;
+                const setShowAddForm = mk('showAddForm');
+                // addForm is LOCAL state — not persisted — so typing doesn't re-render parent
+                // Only dropdowns/date as controlled state — text/number as refs to avoid re-renders on keystroke
+                const [addEmpId, setAddEmpId] = useState('');
+                const [addAgentId, setAddAgentId] = useState('');
+                const [addDate, setAddDate] = useState(new Date().toISOString().split('T')[0]);
+                const addFromRef = React.useRef(null);
+                const addToRef = React.useRef(null);
+                const addCollectedRef = React.useRef(null);
+                const addPaidRef = React.useRef(null);
+                const addBankRef = React.useRef(null);
+                const addNotesRef = React.useRef(null);
+                const [addSaving, setAddSaving] = useState(false);
+
+                React.useEffect(function() {
+                  const handleEsc = function(e) { if (e.key === 'Escape') onClose(); };
+                  window.addEventListener('keydown', handleEsc);
+                  return function() { window.removeEventListener('keydown', handleEsc); };
+                }, []);
+
+                const handleDeleteCollection = async function(col) {
+                  if (!window.confirm('Delete this collection record for ' + col.employeeName + ' on ' + col.date + '? This cannot be undone.')) return;
+                  try {
+                   await apiCall(API_ENDPOINTS.agentCollections + '/' + col.id, { method: 'DELETE' });
+                   // Remove from local report view immediately
+                   setReportData(function(prev) { return prev ? prev.filter(function(c) { return c.id !== col.id; }) : prev; });
+                   // Sync parent agentCollections state so report stays correct on re-open
+                   if (onRefresh) await onRefresh();
+                  } catch(e) { alert('Failed to delete: ' + e.message); }
+                };
+
+                // Bank payment approval — purely a "this transfer has been verified/received" flag.
+                // Persisted via a [BANK_OK] marker in the record's notes so it survives without any
+                // DB schema change, and is intentionally NOT factored into any accounting totals.
+                const BANK_OK_TAG = '[BANK_OK]';
+                const isBankApproved = function(col) { return (col.notes || '').indexOf(BANK_OK_TAG) !== -1; };
+                const cleanNote = function(notes) { return (notes || '').replace(BANK_OK_TAG, '').trim(); };
+
+                const toggleBankApproved = async function(col) {
+                  const currentlyApproved = isBankApproved(col);
+                  const base = cleanNote(col.notes);
+                  const newNotes = currentlyApproved ? base : (base ? base + ' ' + BANK_OK_TAG : BANK_OK_TAG);
+                  // optimistic UI update
+                  setReportData(function(prev) { return prev ? prev.map(function(c) { return c.id === col.id ? Object.assign({}, c, { notes: newNotes }) : c; }) : prev; });
+                  try {
+                   await apiCall(API_ENDPOINTS.agentCollections + '/' + col.id, { method: 'PUT', body: JSON.stringify({ notes: newNotes }) });
+                   if (onRefresh) await onRefresh();
+                  } catch(e) {
+                   // revert on failure
+                   setReportData(function(prev) { return prev ? prev.map(function(c) { return c.id === col.id ? Object.assign({}, c, { notes: col.notes }) : c; }) : prev; });
+                   alert('Failed to update bank approval: ' + e.message);
+                  }
+                };
+
+                const handleAddCollection = async function() {
+                  if (!addEmpId || !addAgentId) { alert('Please select an employee and an agent'); return; }
+                  if (!addDate) { alert('Please select a date'); return; }
+                  setAddSaving(true);
+                  try {
+                   const payload = {
+                  employeeId: parseInt(addEmpId),
+                  agentId: parseInt(addAgentId),
+                  date: addDate,
+                  fromCode: addFromRef.current ? addFromRef.current.value : '',
+                  toCode: addToRef.current ? addToRef.current.value : '',
+                  amountCollected: parseFloat(addCollectedRef.current ? addCollectedRef.current.value : '') || 0,
+                  amountPaid: parseFloat(addPaidRef.current ? addPaidRef.current.value : '') || 0,
+                  bankAmount: parseFloat(addBankRef.current ? addBankRef.current.value : '') || 0,
+                  boxesQty: 0,
+                  notes: addNotesRef.current ? addNotesRef.current.value : ''
+                   };
+                   console.log('[AddCollection] POST payload:', payload);
+                   const resp = await apiCall(API_ENDPOINTS.agentCollections, { method: 'POST', body: JSON.stringify(payload) });
+                   console.log('[AddCollection] Server response:', resp);
+                   if (!resp || (resp.success === false)) throw new Error((resp && resp.error) || 'Server rejected the record');
+
+                   // Refresh global state for other parts of the app
+                   if (onRefresh) await onRefresh();
+
+                   // Fetch the freshest list DIRECTLY and pass to generateReport — avoids stale closure of agentCollections
+                   const refreshed = await apiCall(API_ENDPOINTS.agentCollections);
+                   console.log('[AddCollection] Fresh fetch returned', refreshed.collections ? refreshed.collections.length : 0, 'collections');
+                   const freshList = refreshed.success ? (refreshed.collections || []).map(function(c){return{
+                  id: c.Id, employeeId: c.EmployeeId,
+                  employeeName: (c.FirstName||'') + ' ' + (c.LastName||''),
+                  employeeCode: c.EmployeeCode||'',
+                  agentId: c.AgentId, agentCode: c.AgentCode||'', agentCity: c.City||'',
+                  date: (c.Date||'').split('T')[0],
+                  fromCode: c.FromCode||'', toCode: c.ToCode||'',
+                  amountCollected: parseFloat(c.AmountCollected||0),
+                  amountPaid: parseFloat(c.AmountPaid||0),
+                  bankAmount: parseFloat(c.BankAmount||0),
+                  boxesQty: parseInt(c.BoxesQty||0),
+                  currency: c.Currency||'GBP',
+                  notes: c.Notes||''
+                   };}) : [];
+
+                   // Find the new record in the fresh list to confirm DB persistence
+                   const newRecord = freshList.find(function(r){
+                  return r.employeeId === payload.employeeId
+                   && r.agentId === payload.agentId
+                   && r.date === payload.date
+                   && Math.abs(r.amountCollected - payload.amountCollected) < 0.01;
+                   });
+                   console.log('[AddCollection] New record found in fresh list:', newRecord);
+
+                   // Auto-widen date filter if the new record is outside the current window
+                   let needsWiden = false;
+                   if (payload.date < fromDate) { setFromDate(payload.date); needsWiden = true; }
+                   if (payload.date > toDate)   { setToDate(payload.date);   needsWiden = true; }
+
+                   const filtered = generateReport(freshList);
+
+                   const savedFor = visEmp.find(function(e){return e.id===parseInt(addEmpId);});
+                   const empName = savedFor ? (savedFor.firstName + ' ' + savedFor.lastName) : 'employee';
+                   const savedAgent = agents.find(function(a){return (a.Id||a.id) === parseInt(addAgentId);});
+                   const agentLabel = savedAgent ? ((savedAgent.AgentCode||savedAgent.agentCode) + ' (' + (savedAgent.City||savedAgent.city) + ')') : 'unknown agent (ID ' + addAgentId + ')';
+
+                   // Reset form
+                   setAddEmpId(''); setAddAgentId(''); setAddDate(new Date().toISOString().split('T')[0]);
+                   [addFromRef, addToRef, addCollectedRef, addPaidRef, addBankRef, addNotesRef].forEach(function(r){ if(r.current) r.current.value = ''; });
+                   setShowAddForm(false);
+
+                   const widenedMsg = needsWiden ? '\n\n📅 Date filter was widened to include ' + payload.date + '.' : '';
+                   alert('✅ Collection saved:\n\nEmployee: ' + empName + '\nAgent: ' + agentLabel + '\nDate: ' + payload.date + '\n\nReport refreshed (' + filtered.length + ' records visible).' + widenedMsg);
+                  } catch(e) { alert('❌ Failed to save collection: ' + e.message); }
+                  setAddSaving(false);
+                };
+
+                const startEdit = function(col) {
+                  setEditingId(col.id);
+                  setEditVals({ date: col.date, fromCode: col.fromCode, toCode: col.toCode, amountCollected: col.amountCollected, amountPaid: col.amountPaid, bankAmount: col.bankAmount || 0, boxesQty: col.boxesQty });
+                };
+
+                const saveEdit = async function(col) {
+                  setSavingId(col.id);
+                  try {
+                   const data = await apiCall(API_ENDPOINTS.agentCollections + '/' + col.id, {
+                  method: 'PUT',
+                  body: JSON.stringify({
+                   date: editVals.date || col.date,
+                   fromCode: editVals.fromCode,
+                   toCode: editVals.toCode,
+                   amountCollected: parseFloat(editVals.amountCollected) || 0,
+                   amountPaid: parseFloat(editVals.amountPaid) || 0,
+                   bankAmount: parseFloat(editVals.bankAmount) || 0,
+                   boxesQty: parseInt(editVals.boxesQty) || 0,
+                   notes: col.notes
+                  })
+                   });
+                   if (data.success) {
+                  await loadAgentCollectionsFromAPI();
+                  setEditingId(null);
+                  setReportData(null);
+                   } else alert('Error: ' + data.error);
+                  } catch(e) { alert('Failed: ' + e.message); }
+                  setSavingId(null);
+                };
+
+                const generateReport = function(overrideList) {
+                  const source = Array.isArray(overrideList) ? overrideList : agentCollections;
+                  const reasons = [];
+                  const filtered = source.filter(function(c) {
+                   const emp = visEmp.find(function(e) { return e.id === c.employeeId; });
+                   if (!emp) { reasons.push({id:c.id, why:'no matching employee', employeeId:c.employeeId}); return false; }
+                   if (empFilter && c.employeeId !== parseInt(empFilter)) { reasons.push({id:c.id, why:'employee filter mismatch'}); return false; }
+                   if (branchFilter && !(emp.branches||[]).includes(branchFilter)) { reasons.push({id:c.id, why:'branch filter mismatch', empBranches:emp.branches}); return false; }
+                   if (countryFilter && emp.country !== countryFilter) { reasons.push({id:c.id, why:'country filter mismatch'}); return false; }
+                   if (agentFilter && c.agentCode !== agentFilter) { reasons.push({id:c.id, why:'agent filter mismatch'}); return false; }
+                   if (!(c.date >= fromDate && c.date <= toDate)) { reasons.push({id:c.id, why:'date outside filter', date:c.date, fromDate, toDate}); return false; }
+                   return true;
+                  }).sort(function(a,b) { return a.date < b.date ? -1 : 1; });
+                  console.log('[generateReport] Source:', source.length, 'Filtered:', filtered.length, 'Excluded:', reasons);
+                  setReportData(filtered);
+                  return filtered;
+                };
+
+                const exportCSV = function() {
+                  if (!reportData) return;
+                  let csv = 'Employee ID,Employee Name,Date,Agent Code,City,From Code,To Code,Amount Collected,Amount Paid,Currency\n';
+                  reportData.forEach(function(c) {
+                   csv += '"'+c.employeeCode+'","'+c.employeeName+'","'+c.date+'","'+c.agentCode+'","'+c.agentCity+'","'+c.fromCode+'","'+c.toCode+'",'+c.amountCollected.toFixed(2)+','+c.amountPaid.toFixed(2)+','+c.boxesQty+',"'+c.currency+'"\n';
+                  });
+                  const blob = new Blob([csv], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url; a.download = 'agent_collection_report_' + fromDate + '_' + toDate + '.csv'; a.click();
+                };
+
+                const totalCollected = reportData ? reportData.reduce(function(s,c) { return s+c.amountCollected; }, 0) : 0;
+                const totalPaid = reportData ? reportData.reduce(function(s,c) { return s+c.amountPaid; }, 0) : 0;
+                // All collections in a branch/country report share one currency. Derive it from the
+                // employee's country of operation (source of truth), so totals match the rows even if
+                // a collection's stored currency is stale.
+                const _curEmp = empFilter
+                  ? visEmp.find(function(e){ return e.id === parseInt(empFilter); })
+                  : (reportData && reportData.length > 0 ? visEmp.find(function(e){ return e.id === reportData[0].employeeId; }) : null);
+                const reportCurrency = _curEmp
+                  ? resolveEmployeeCurrency(_curEmp)
+                  : ((reportData && reportData.length > 0 && reportData[0].currency) ? reportData[0].currency : 'GBP');
+
+                // ── Sequence-gap detection ──────────────────────────────────────
+                // For each agent, the shipment codes follow a prefix+number pattern (e.g. CV10..CV18).
+                // We collect every covered number from each record's From..To range, then look for
+                // missing numbers within the agent's overall min..max span. Gaps usually mean a
+                // collection was skipped/lost and should be investigated.
+                const parseCode = function(code) {
+                  if (!code) return null;
+                  const m = String(code).trim().match(/^(.*?)(\d+)\s*$/); // prefix + trailing number
+                  if (!m) return null;
+                  return { prefix: (m[1]||'').toUpperCase().replace(/\s+$/,''), num: parseInt(m[2], 10), width: m[2].length };
+                };
+                const sequenceGaps = (function() {
+                  if (!reportData || reportData.length === 0) return [];
+                  // Group covered numbers by agentCode + code-prefix.
+                  const groups = {};
+                  reportData.forEach(function(c) {
+                   const f = parseCode(c.fromCode); const t = parseCode(c.toCode);
+                   if (!f && !t) return;
+                   // Use whichever parses; if both, they should share a prefix.
+                   const base = f || t;
+                   const key = c.agentCode + '||' + base.prefix;
+                   if (!groups[key]) groups[key] = { agentCode: c.agentCode, agentCity: c.agentCity, prefix: base.prefix, width: base.width, covered: new Set(), ranges: [] };
+                   const lo = f ? f.num : t.num;
+                   const hi = t ? t.num : f.num;
+                   const a = Math.min(lo, hi), b = Math.max(lo, hi);
+                   groups[key].ranges.push({ from: c.fromCode, to: c.toCode, date: c.date, id: c.id });
+                   for (let n = a; n <= b; n++) groups[key].covered.add(n);
+                  });
+                  const out = [];
+                  Object.keys(groups).forEach(function(key) {
+                   const g = groups[key];
+                   const nums = Array.from(g.covered).sort(function(x,y){return x-y;});
+                   if (nums.length < 2) return;
+                   const min = nums[0], max = nums[nums.length-1];
+                   const missing = [];
+                   for (let n = min; n <= max; n++) { if (!g.covered.has(n)) missing.push(n); }
+                   if (missing.length > 0) {
+                  // Compress consecutive missing numbers into ranges for a tidy message.
+                  const segments = [];
+                  let segStart = missing[0], prev = missing[0];
+                  for (let i = 1; i < missing.length; i++) {
+                   if (missing[i] === prev + 1) { prev = missing[i]; }
+                   else { segments.push([segStart, prev]); segStart = missing[i]; prev = missing[i]; }
+                  }
+                  segments.push([segStart, prev]);
+                  const pad = function(n){ return g.width > 1 ? String(n).padStart(g.width,'0') : String(n); };
+                  const label = segments.map(function(s){ return s[0]===s[1] ? (g.prefix+pad(s[0])) : (g.prefix+pad(s[0])+'–'+g.prefix+pad(s[1])); }).join(', ');
+                  out.push({ agentCode: g.agentCode, agentCity: g.agentCity, prefix: g.prefix, missingCount: missing.length, label: label, rangeText: g.prefix+pad(min)+' → '+g.prefix+pad(max) });
+                   }
+                  });
+                  return out;
+                })();
+                // Agent codes that have a gap — used to highlight their rows.
+                const gapAgents = new Set(sequenceGaps.map(function(x){ return x.agentCode; }));
+
+                return (
+                  <div ref={modalScrollRef} onScroll={handleModalScroll} className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
+                   <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl my-8">
+                  <div className="sticky top-0 z-10 bg-white rounded-t-2xl p-6 border-b border-gray-200 flex justify-between items-center">
+                   <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><Truck className="w-7 h-7 text-orange-600" />Agent Collection Report</h2>
+                   <button onClick={onClose} className="bg-gray-100 hover:bg-red-100 text-gray-600 hover:text-red-600 px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition"><X className="w-4 h-4" />Close</button>
+                  </div>
+                  <div className="p-6 border-b border-gray-100 flex flex-wrap gap-3 items-end">
+                   <div><label className="block text-xs font-semibold text-gray-600 mb-1">Start Date</label><input type="date" value={fromDate} onChange={function(e) { setFromDate(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>
+                   <div><label className="block text-xs font-semibold text-gray-600 mb-1">End Date</label><input type="date" value={toDate} onChange={function(e) { setToDate(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>
+                   {branchList.length > 0 && (
+                   <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Branch</label>
+                   <select value={branchFilter} onChange={function(e) { setBranchFilter(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                   <option value="">All Branches</option>
+                   {branchList.map(function(b) { return <option key={b} value={b}>{b}</option>; })}
+                   </select>
+                   </div>
+                   )}
+                   {[...new Set(visEmp.filter(function(e){return !e.isAdmin&&e.country;}).map(function(e){return e.country;}))].length > 0 && (
+                   <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Country</label>
+                   <select value={countryFilter} onChange={function(e) { setCountryFilter(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                   <option value="">All Countries</option>
+                   {[...new Set(visEmp.filter(function(e){return !e.isAdmin&&e.country;}).map(function(e){return e.country;}))].sort().map(function(c) { return <option key={c} value={c}>{c}</option>; })}
+                   </select>
+                   </div>
+                   )}
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Employee</label>
+                  <select value={empFilter} onChange={function(e) { setEmpFilter(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                   <option value="">All Employees</option>
+                   {visEmp.filter(function(e) {
+                   return !e.isAdmin
+                   && agentCollections.some(function(c) { return c.employeeId === e.id; })
+                   && (!branchFilter || (e.branches||[]).includes(branchFilter))
+                   && (!countryFilter || e.country === countryFilter);
+                   }).map(function(e) { return <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>; })}
+                  </select>
+                   </div>
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Agent</label>
+                  <select value={agentFilter} onChange={function(e) { setAgentFilter(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                   <option value="">All Agents</option>
+                   {Array.from(new Set(agentCollections
+                  .filter(function(c){ return (!empFilter || c.employeeId === parseInt(empFilter)); })
+                  .map(function(c){ return c.agentCode; })
+                  .filter(Boolean)))
+                  .sort()
+                  .map(function(code) { return <option key={code} value={code}>{code}</option>; })}
+                  </select>
+                   </div>
+                   <button onClick={generateReport} className="bg-orange-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-orange-700 text-sm">Generate Report</button>
+                   {reportData && <button onClick={exportCSV} className="bg-green-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-green-700 text-sm">Export CSV</button>}
+                   <button type="button" onClick={function(){setShowAddForm(true);}} className="bg-indigo-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-indigo-700 text-sm flex items-center gap-2">
+                  <span className="text-lg leading-none">+</span> Add Collection
+                   </button>
+                  </div>
+
+                  {showAddForm && (
+                  <div ref={function(el){ if(el) el.scrollIntoView({behavior:'smooth', block:'center'}); }} className="mx-6 mb-4 bg-indigo-50 border-2 border-indigo-300 rounded-xl p-5 shadow-lg">
+                   <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold text-indigo-800">📝 Manually Add Collection Record</h3>
+                  <button type="button" onClick={function(){setShowAddForm(false);}} className="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
+                   </div>
+                   <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Employee *</label>
+                   <select value={addEmpId} onChange={function(e){setAddEmpId(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <option value="">Select employee...</option>
+                  {[...visEmp].filter(function(e){return !e.isAdmin;}).sort(function(a,b){return (a.firstName+a.lastName).localeCompare(b.firstName+b.lastName);}).map(function(e){return <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>;})}
+                   </select>
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Agent *</label>
+                   <select value={addAgentId} onChange={function(e){setAddAgentId(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <option value="">Select agent...</option>
+                  {[...agents].sort(function(a,b){return (a.AgentCode||a.agentCode||'').localeCompare(b.AgentCode||b.agentCode||'');}).map(function(a){return <option key={a.Id||a.id} value={a.Id||a.id}>{a.AgentCode||a.agentCode} — {a.City||a.city}</option>;})}
+                   </select>
+                  </div>
+                   </div>
+                   <div className="grid grid-cols-3 gap-3 mb-3">
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Date *</label>
+                   <input type="date" value={addDate} onChange={function(e){setAddDate(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">From Code</label>
+                   <input type="text" ref={addFromRef} defaultValue="" placeholder="e.g. OX79" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">To Code</label>
+                   <input type="text" ref={addToRef} defaultValue="" placeholder="e.g. OX91" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                   </div>
+                   <div className="grid grid-cols-4 gap-3 mb-4">
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Cash Collected</label>
+                   <input type="number" min="0" step="0.01" ref={addCollectedRef} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Paid to Agent</label>
+                   <input type="number" min="0" step="0.01" ref={addPaidRef} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Bank Transfer</label>
+                   <input type="number" min="0" step="0.01" ref={addBankRef} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
+                   <input type="text" ref={addNotesRef} defaultValue="" placeholder="Optional" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                   </div>
+                   <div className="flex gap-2">
+                  <button type="button" onClick={handleAddCollection} disabled={addSaving} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">{addSaving?'Saving...':'Save Collection'}</button>
+                  <button type="button" onClick={function(){setShowAddForm(false);}} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200">Cancel</button>
+                   </div>
+                  </div>
+                  )}
+
+                  <div className="p-6">
+                   {!reportData ? (
+                  <div className="text-center py-16 text-gray-400"><Truck className="w-16 h-16 mx-auto mb-4 opacity-30" /><p>Select a date range and click Generate Report</p></div>
+                   ) : reportData.length === 0 ? (
+                  <div className="text-center py-16 text-gray-400"><p>No collection records found for this period</p></div>
+                   ) : (
+                  <div>
+                   <div className="grid grid-cols-2 gap-4 mb-6 max-w-lg">
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center"><p className="text-xs text-green-600 font-semibold uppercase">Total Collected</p><p className="text-2xl font-bold text-green-700 mt-1">{getCurrencySymbol(reportCurrency)}{totalCollected.toFixed(2)}</p></div>
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center"><p className="text-xs text-red-600 font-semibold uppercase">Total Paid</p><p className="text-2xl font-bold text-red-700 mt-1">{getCurrencySymbol(reportCurrency)}{totalPaid.toFixed(2)}</p></div>
+                   </div>
+                   {sequenceGaps.length > 0 && (
+                   <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 mb-6">
+                  <div className="flex items-start gap-2">
+                   <span className="text-xl">⚠️</span>
+                   <div className="flex-1">
+                  <p className="text-sm font-bold text-amber-800">Sequence gaps detected — {sequenceGaps.length} agent{sequenceGaps.length>1?'s':''} with missing shipment numbers</p>
+                  <p className="text-xs text-amber-600 mb-2">These numbers fall inside the agent's collected range but were never recorded. Investigate or add the missing collections.</p>
+                  <div className="space-y-1">
+                   {sequenceGaps.map(function(g, i) {
+                  return (
+                   <div key={i} className="text-sm bg-white/70 rounded-lg px-3 py-2 flex flex-wrap items-center gap-x-2">
+                  <span className="font-bold text-amber-900">{g.agentCode}</span>
+                  {g.agentCity && <span className="text-xs text-gray-500">({g.agentCity})</span>}
+                  <span className="text-gray-600">range {g.rangeText} —</span>
+                  <span className="font-semibold text-red-600">missing: {g.label}</span>
+                  <span className="text-xs text-gray-400">({g.missingCount} number{g.missingCount>1?'s':''})</span>
+                   </div>
+                  );
+                   })}
+                  </div>
+                   </div>
+                  </div>
+                   </div>
+                   )}
+                   <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                   <thead className="bg-orange-50">
+                  <tr>{['Employee','Date','Agent','From','To','Cash Collected','Paid to Agent','Bank Transfer', hasPermission('canManageAgentCollections') ? 'Edit' : ''].filter(Boolean).map(function(h) { return <th key={h} className="px-4 py-3 text-left text-xs font-bold text-orange-700 uppercase tracking-wide">{h}</th>; })}</tr>
+                   </thead>
+                   <tbody className="divide-y divide-gray-100">
+                  {reportData.map(function(col) {
+                   const _colEmp = visEmp.find(function(e){ return e.id === col.employeeId; });
+                   const sym = getCurrencySymbol(_colEmp ? resolveEmployeeCurrency(_colEmp) : (col.currency || 'GBP'));
+                   const isEditing = editingId === col.id;
+                   const ic = 'w-20 px-2 py-1 border border-orange-300 rounded text-sm text-center focus:outline-none focus:ring-1 focus:ring-orange-400';
+                   return (
+                  <tr key={col.id} className={'hover:bg-orange-50 ' + (isEditing ? 'bg-amber-50' : (gapAgents.has(col.agentCode) ? 'bg-amber-50/40 border-l-4 border-amber-400' : ''))}>
+                   <td className="px-4 py-3"><div className="font-medium text-gray-800">{col.employeeName}</div><div className="text-xs text-gray-500">{col.employeeCode}</div></td>
+                   <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                  {isEditing ? <input type="date" value={editVals.date} onChange={function(e){setEditVals(Object.assign({},editVals,{date:e.target.value}));}} className="px-2 py-1 border border-orange-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-orange-400" /> : new Date(col.date).toLocaleDateString('en-GB')}
+                   </td>
+                   <td className="px-4 py-3"><span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-bold">{col.agentCode}</span><div className="text-xs text-gray-400">{col.agentCity}</div></td>
+                   <td className="px-4 py-3 font-semibold text-gray-700">
+                  {isEditing ? <input value={editVals.fromCode} onChange={function(e){setEditVals(Object.assign({},editVals,{fromCode:e.target.value}));}} className={ic} /> : (col.fromCode||'—')}
+                   </td>
+                   <td className="px-4 py-3 font-semibold text-gray-700">
+                  {isEditing ? <input value={editVals.toCode} onChange={function(e){setEditVals(Object.assign({},editVals,{toCode:e.target.value}));}} className={ic} /> : (col.toCode||'—')}
+                   </td>
+                   <td className="px-4 py-3 font-bold text-green-700">
+                  {isEditing ? <input type="number" value={editVals.amountCollected} onChange={function(e){setEditVals(Object.assign({},editVals,{amountCollected:e.target.value}));}} className={ic} /> : sym+col.amountCollected.toFixed(2)}
+                   </td>
+                   <td className="px-4 py-3 font-bold text-red-600">
+                  {isEditing ? <input type="number" value={editVals.amountPaid} onChange={function(e){setEditVals(Object.assign({},editVals,{amountPaid:e.target.value}));}} className={ic} /> : (col.amountPaid > 0 ? sym+col.amountPaid.toFixed(2) : '—')}
+                   </td>
+                   <td className="px-4 py-3 font-bold text-blue-600">
+                  {isEditing ? <input type="number" min="0" step="0.01" value={editVals.bankAmount} onChange={function(e){setEditVals(Object.assign({},editVals,{bankAmount:e.target.value}));}} className={ic} /> : (col.bankAmount > 0 ? (
+                   <div className="flex flex-col gap-1">
+                  <span className="flex items-center gap-1"><span className="text-xs">🏦</span>{sym}{(col.bankAmount||0).toFixed(2)}</span>
+                  {hasPermission('canManageAgentCollections') ? (
+                   <label className="flex items-center gap-1 cursor-pointer select-none">
+                  <input type="checkbox" checked={isBankApproved(col)} onChange={function(){ toggleBankApproved(col); }} className="w-3.5 h-3.5 accent-green-600" />
+                  <span className={'text-xs font-semibold ' + (isBankApproved(col) ? 'text-green-600' : 'text-gray-400')}>{isBankApproved(col) ? '✓ Approved' : 'Approve'}</span>
+                   </label>
+                  ) : (isBankApproved(col) && <span className="text-xs font-semibold text-green-600">✓ Approved</span>)}
+                   </div>
+                  ) : <span className="text-gray-300">—</span>)}
+                   </td>
+                   {hasPermission('canManageAgentCollections') && (
+                  <td className="px-4 py-3">
+                   {isEditing ? (
+                  <div className="flex gap-1">
+                   <button onClick={function(){saveEdit(col);}} disabled={savingId===col.id} className="px-2 py-1 bg-green-600 text-white rounded text-xs font-bold hover:bg-green-700 disabled:opacity-50">{savingId===col.id?'...':'Save'}</button>
+                   <button onClick={function(){setEditingId(null);}} className="px-2 py-1 bg-gray-200 text-gray-600 rounded text-xs font-semibold hover:bg-gray-300">Cancel</button>
+                  </div>
+                   ) : (
+                  <div className="flex gap-1">
+                   <button onClick={function(){startEdit(col);}} className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-semibold hover:bg-orange-200">Edit</button>
+                   {hasPermission('canDeleteAgentCollections') && (
+                  <button onClick={function(){handleDeleteCollection(col);}} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold hover:bg-red-200">Delete</button>
+                   )}
+                  </div>
+                   )}
+                  </td>
+                   )}
+                  </tr>
+                   );
+                  })}
+                  <tr className="bg-orange-50 font-bold border-t-2 border-orange-200">
+                   <td colSpan="5" className="px-4 py-3 text-right text-gray-700 uppercase text-xs tracking-wide">TOTAL</td>
+                   <td className="px-4 py-3 text-green-700">{getCurrencySymbol(reportCurrency)}{totalCollected.toFixed(2)}</td>
+                   <td className="px-4 py-3 text-red-600">{getCurrencySymbol(reportCurrency)}{totalPaid.toFixed(2)}</td>
+                   <td className="px-4 py-3 text-blue-600">{getCurrencySymbol(reportCurrency)}{(reportData.reduce(function(s,c){return s+(c.bankAmount||0);},0)).toFixed(2)}</td>
+                   {hasPermission('canManageAgentCollections') && <td></td>}
+                  </tr>
+                   </tbody>
+                  </table>
+                   </div>
+                  </div>
+                   )}
+                  </div>
+                   </div>
+                  </div>
+                );
+            };
+
+
         export default function EmployeeTimesheetApp() {
             const [currentView, setCurrentView] = useState('login');
             const [currentUser, setCurrentUser] = useState(null);
@@ -7260,528 +7783,6 @@ import React, { useState, useEffect } from 'react';
                 );
             };
 
-            const AgentReport = ({ onClose, visibleEmployees: visEmp, onRefresh, persistedState, onStateChange }) => {
-                const today = new Date().toISOString().split('T')[0];
-                const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
-                // This modal has its OWN scrollable container (the outer overflow-y-auto div),
-                // separate from window scroll. Background reloads (polling, Add Collection,
-                // Generate Report) update state and re-render this modal, which was resetting
-                // its internal scrollTop to 0. Track it here and restore after each re-render.
-                const modalScrollRef = React.useRef(null);
-                const modalScrollY = React.useRef(0);
-                const handleModalScroll = (e) => { modalScrollY.current = e.target.scrollTop; };
-                React.useLayoutEffect(() => {
-                  const el = modalScrollRef.current;
-                  if (el && Math.abs(el.scrollTop - modalScrollY.current) > 2) {
-                   el.scrollTop = modalScrollY.current;
-                  }
-                });
-                const adjAmountRef = React.useRef(null);
-                const adjHoursRef = React.useRef(null);
-                const adjReasonRef = React.useRef(null);
-                const fromDate = persistedState ? persistedState.fromDate : today.slice(0,8)+'01'; const setFromDate = mk('fromDate');
-                const toDate = persistedState ? persistedState.toDate : today; const setToDate = mk('toDate');
-                const empFilter = persistedState ? persistedState.empFilter : ''; const setEmpFilter = mk('empFilter');
-                const branchFilter = persistedState ? persistedState.branchFilter : ''; const setBranchFilter = mk('branchFilter');
-                const countryFilter = persistedState ? persistedState.countryFilter : ''; const setCountryFilter = mk('countryFilter');
-                const agentFilter = persistedState ? persistedState.agentFilter : ''; const setAgentFilter = mk('agentFilter');
-                const reportData = persistedState ? persistedState.reportData : null; const setReportData = mk('reportData');
-                const [editingId, setEditingId] = useState(null);
-                const [editVals, setEditVals] = useState({});
-                const [savingId, setSavingId] = useState(null);
-                const showAddForm = persistedState ? persistedState.showAddForm : false;
-                const setShowAddForm = mk('showAddForm');
-                // addForm is LOCAL state — not persisted — so typing doesn't re-render parent
-                // Only dropdowns/date as controlled state — text/number as refs to avoid re-renders on keystroke
-                const [addEmpId, setAddEmpId] = useState('');
-                const [addAgentId, setAddAgentId] = useState('');
-                const [addDate, setAddDate] = useState(new Date().toISOString().split('T')[0]);
-                const addFromRef = React.useRef(null);
-                const addToRef = React.useRef(null);
-                const addCollectedRef = React.useRef(null);
-                const addPaidRef = React.useRef(null);
-                const addBankRef = React.useRef(null);
-                const addNotesRef = React.useRef(null);
-                const [addSaving, setAddSaving] = useState(false);
-
-                React.useEffect(function() {
-                  const handleEsc = function(e) { if (e.key === 'Escape') onClose(); };
-                  window.addEventListener('keydown', handleEsc);
-                  return function() { window.removeEventListener('keydown', handleEsc); };
-                }, []);
-
-                const handleDeleteCollection = async function(col) {
-                  if (!window.confirm('Delete this collection record for ' + col.employeeName + ' on ' + col.date + '? This cannot be undone.')) return;
-                  try {
-                   await apiCall(API_ENDPOINTS.agentCollections + '/' + col.id, { method: 'DELETE' });
-                   // Remove from local report view immediately
-                   setReportData(function(prev) { return prev ? prev.filter(function(c) { return c.id !== col.id; }) : prev; });
-                   // Sync parent agentCollections state so report stays correct on re-open
-                   if (onRefresh) await onRefresh();
-                  } catch(e) { alert('Failed to delete: ' + e.message); }
-                };
-
-                // Bank payment approval — purely a "this transfer has been verified/received" flag.
-                // Persisted via a [BANK_OK] marker in the record's notes so it survives without any
-                // DB schema change, and is intentionally NOT factored into any accounting totals.
-                const BANK_OK_TAG = '[BANK_OK]';
-                const isBankApproved = function(col) { return (col.notes || '').indexOf(BANK_OK_TAG) !== -1; };
-                const cleanNote = function(notes) { return (notes || '').replace(BANK_OK_TAG, '').trim(); };
-
-                const toggleBankApproved = async function(col) {
-                  const currentlyApproved = isBankApproved(col);
-                  const base = cleanNote(col.notes);
-                  const newNotes = currentlyApproved ? base : (base ? base + ' ' + BANK_OK_TAG : BANK_OK_TAG);
-                  // optimistic UI update
-                  setReportData(function(prev) { return prev ? prev.map(function(c) { return c.id === col.id ? Object.assign({}, c, { notes: newNotes }) : c; }) : prev; });
-                  try {
-                   await apiCall(API_ENDPOINTS.agentCollections + '/' + col.id, { method: 'PUT', body: JSON.stringify({ notes: newNotes }) });
-                   if (onRefresh) await onRefresh();
-                  } catch(e) {
-                   // revert on failure
-                   setReportData(function(prev) { return prev ? prev.map(function(c) { return c.id === col.id ? Object.assign({}, c, { notes: col.notes }) : c; }) : prev; });
-                   alert('Failed to update bank approval: ' + e.message);
-                  }
-                };
-
-                const handleAddCollection = async function() {
-                  if (!addEmpId || !addAgentId) { alert('Please select an employee and an agent'); return; }
-                  if (!addDate) { alert('Please select a date'); return; }
-                  setAddSaving(true);
-                  try {
-                   const payload = {
-                  employeeId: parseInt(addEmpId),
-                  agentId: parseInt(addAgentId),
-                  date: addDate,
-                  fromCode: addFromRef.current ? addFromRef.current.value : '',
-                  toCode: addToRef.current ? addToRef.current.value : '',
-                  amountCollected: parseFloat(addCollectedRef.current ? addCollectedRef.current.value : '') || 0,
-                  amountPaid: parseFloat(addPaidRef.current ? addPaidRef.current.value : '') || 0,
-                  bankAmount: parseFloat(addBankRef.current ? addBankRef.current.value : '') || 0,
-                  boxesQty: 0,
-                  notes: addNotesRef.current ? addNotesRef.current.value : ''
-                   };
-                   console.log('[AddCollection] POST payload:', payload);
-                   const resp = await apiCall(API_ENDPOINTS.agentCollections, { method: 'POST', body: JSON.stringify(payload) });
-                   console.log('[AddCollection] Server response:', resp);
-                   if (!resp || (resp.success === false)) throw new Error((resp && resp.error) || 'Server rejected the record');
-
-                   // Refresh global state for other parts of the app
-                   if (onRefresh) await onRefresh();
-
-                   // Fetch the freshest list DIRECTLY and pass to generateReport — avoids stale closure of agentCollections
-                   const refreshed = await apiCall(API_ENDPOINTS.agentCollections);
-                   console.log('[AddCollection] Fresh fetch returned', refreshed.collections ? refreshed.collections.length : 0, 'collections');
-                   const freshList = refreshed.success ? (refreshed.collections || []).map(function(c){return{
-                  id: c.Id, employeeId: c.EmployeeId,
-                  employeeName: (c.FirstName||'') + ' ' + (c.LastName||''),
-                  employeeCode: c.EmployeeCode||'',
-                  agentId: c.AgentId, agentCode: c.AgentCode||'', agentCity: c.City||'',
-                  date: (c.Date||'').split('T')[0],
-                  fromCode: c.FromCode||'', toCode: c.ToCode||'',
-                  amountCollected: parseFloat(c.AmountCollected||0),
-                  amountPaid: parseFloat(c.AmountPaid||0),
-                  bankAmount: parseFloat(c.BankAmount||0),
-                  boxesQty: parseInt(c.BoxesQty||0),
-                  currency: c.Currency||'GBP',
-                  notes: c.Notes||''
-                   };}) : [];
-
-                   // Find the new record in the fresh list to confirm DB persistence
-                   const newRecord = freshList.find(function(r){
-                  return r.employeeId === payload.employeeId
-                   && r.agentId === payload.agentId
-                   && r.date === payload.date
-                   && Math.abs(r.amountCollected - payload.amountCollected) < 0.01;
-                   });
-                   console.log('[AddCollection] New record found in fresh list:', newRecord);
-
-                   // Auto-widen date filter if the new record is outside the current window
-                   let needsWiden = false;
-                   if (payload.date < fromDate) { setFromDate(payload.date); needsWiden = true; }
-                   if (payload.date > toDate)   { setToDate(payload.date);   needsWiden = true; }
-
-                   const filtered = generateReport(freshList);
-
-                   const savedFor = visEmp.find(function(e){return e.id===parseInt(addEmpId);});
-                   const empName = savedFor ? (savedFor.firstName + ' ' + savedFor.lastName) : 'employee';
-                   const savedAgent = agents.find(function(a){return (a.Id||a.id) === parseInt(addAgentId);});
-                   const agentLabel = savedAgent ? ((savedAgent.AgentCode||savedAgent.agentCode) + ' (' + (savedAgent.City||savedAgent.city) + ')') : 'unknown agent (ID ' + addAgentId + ')';
-
-                   // Reset form
-                   setAddEmpId(''); setAddAgentId(''); setAddDate(new Date().toISOString().split('T')[0]);
-                   [addFromRef, addToRef, addCollectedRef, addPaidRef, addBankRef, addNotesRef].forEach(function(r){ if(r.current) r.current.value = ''; });
-                   setShowAddForm(false);
-
-                   const widenedMsg = needsWiden ? '\n\n📅 Date filter was widened to include ' + payload.date + '.' : '';
-                   alert('✅ Collection saved:\n\nEmployee: ' + empName + '\nAgent: ' + agentLabel + '\nDate: ' + payload.date + '\n\nReport refreshed (' + filtered.length + ' records visible).' + widenedMsg);
-                  } catch(e) { alert('❌ Failed to save collection: ' + e.message); }
-                  setAddSaving(false);
-                };
-
-                const startEdit = function(col) {
-                  setEditingId(col.id);
-                  setEditVals({ date: col.date, fromCode: col.fromCode, toCode: col.toCode, amountCollected: col.amountCollected, amountPaid: col.amountPaid, bankAmount: col.bankAmount || 0, boxesQty: col.boxesQty });
-                };
-
-                const saveEdit = async function(col) {
-                  setSavingId(col.id);
-                  try {
-                   const data = await apiCall(API_ENDPOINTS.agentCollections + '/' + col.id, {
-                  method: 'PUT',
-                  body: JSON.stringify({
-                   date: editVals.date || col.date,
-                   fromCode: editVals.fromCode,
-                   toCode: editVals.toCode,
-                   amountCollected: parseFloat(editVals.amountCollected) || 0,
-                   amountPaid: parseFloat(editVals.amountPaid) || 0,
-                   bankAmount: parseFloat(editVals.bankAmount) || 0,
-                   boxesQty: parseInt(editVals.boxesQty) || 0,
-                   notes: col.notes
-                  })
-                   });
-                   if (data.success) {
-                  await loadAgentCollectionsFromAPI();
-                  setEditingId(null);
-                  setReportData(null);
-                   } else alert('Error: ' + data.error);
-                  } catch(e) { alert('Failed: ' + e.message); }
-                  setSavingId(null);
-                };
-
-                const generateReport = function(overrideList) {
-                  const source = Array.isArray(overrideList) ? overrideList : agentCollections;
-                  const reasons = [];
-                  const filtered = source.filter(function(c) {
-                   const emp = visEmp.find(function(e) { return e.id === c.employeeId; });
-                   if (!emp) { reasons.push({id:c.id, why:'no matching employee', employeeId:c.employeeId}); return false; }
-                   if (empFilter && c.employeeId !== parseInt(empFilter)) { reasons.push({id:c.id, why:'employee filter mismatch'}); return false; }
-                   if (branchFilter && !(emp.branches||[]).includes(branchFilter)) { reasons.push({id:c.id, why:'branch filter mismatch', empBranches:emp.branches}); return false; }
-                   if (countryFilter && emp.country !== countryFilter) { reasons.push({id:c.id, why:'country filter mismatch'}); return false; }
-                   if (agentFilter && c.agentCode !== agentFilter) { reasons.push({id:c.id, why:'agent filter mismatch'}); return false; }
-                   if (!(c.date >= fromDate && c.date <= toDate)) { reasons.push({id:c.id, why:'date outside filter', date:c.date, fromDate, toDate}); return false; }
-                   return true;
-                  }).sort(function(a,b) { return a.date < b.date ? -1 : 1; });
-                  console.log('[generateReport] Source:', source.length, 'Filtered:', filtered.length, 'Excluded:', reasons);
-                  setReportData(filtered);
-                  return filtered;
-                };
-
-                const exportCSV = function() {
-                  if (!reportData) return;
-                  let csv = 'Employee ID,Employee Name,Date,Agent Code,City,From Code,To Code,Amount Collected,Amount Paid,Currency\n';
-                  reportData.forEach(function(c) {
-                   csv += '"'+c.employeeCode+'","'+c.employeeName+'","'+c.date+'","'+c.agentCode+'","'+c.agentCity+'","'+c.fromCode+'","'+c.toCode+'",'+c.amountCollected.toFixed(2)+','+c.amountPaid.toFixed(2)+','+c.boxesQty+',"'+c.currency+'"\n';
-                  });
-                  const blob = new Blob([csv], { type: 'text/csv' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url; a.download = 'agent_collection_report_' + fromDate + '_' + toDate + '.csv'; a.click();
-                };
-
-                const totalCollected = reportData ? reportData.reduce(function(s,c) { return s+c.amountCollected; }, 0) : 0;
-                const totalPaid = reportData ? reportData.reduce(function(s,c) { return s+c.amountPaid; }, 0) : 0;
-                // All collections in a branch/country report share one currency. Derive it from the
-                // employee's country of operation (source of truth), so totals match the rows even if
-                // a collection's stored currency is stale.
-                const _curEmp = empFilter
-                  ? visEmp.find(function(e){ return e.id === parseInt(empFilter); })
-                  : (reportData && reportData.length > 0 ? visEmp.find(function(e){ return e.id === reportData[0].employeeId; }) : null);
-                const reportCurrency = _curEmp
-                  ? resolveEmployeeCurrency(_curEmp)
-                  : ((reportData && reportData.length > 0 && reportData[0].currency) ? reportData[0].currency : 'GBP');
-
-                // ── Sequence-gap detection ──────────────────────────────────────
-                // For each agent, the shipment codes follow a prefix+number pattern (e.g. CV10..CV18).
-                // We collect every covered number from each record's From..To range, then look for
-                // missing numbers within the agent's overall min..max span. Gaps usually mean a
-                // collection was skipped/lost and should be investigated.
-                const parseCode = function(code) {
-                  if (!code) return null;
-                  const m = String(code).trim().match(/^(.*?)(\d+)\s*$/); // prefix + trailing number
-                  if (!m) return null;
-                  return { prefix: (m[1]||'').toUpperCase().replace(/\s+$/,''), num: parseInt(m[2], 10), width: m[2].length };
-                };
-                const sequenceGaps = (function() {
-                  if (!reportData || reportData.length === 0) return [];
-                  // Group covered numbers by agentCode + code-prefix.
-                  const groups = {};
-                  reportData.forEach(function(c) {
-                   const f = parseCode(c.fromCode); const t = parseCode(c.toCode);
-                   if (!f && !t) return;
-                   // Use whichever parses; if both, they should share a prefix.
-                   const base = f || t;
-                   const key = c.agentCode + '||' + base.prefix;
-                   if (!groups[key]) groups[key] = { agentCode: c.agentCode, agentCity: c.agentCity, prefix: base.prefix, width: base.width, covered: new Set(), ranges: [] };
-                   const lo = f ? f.num : t.num;
-                   const hi = t ? t.num : f.num;
-                   const a = Math.min(lo, hi), b = Math.max(lo, hi);
-                   groups[key].ranges.push({ from: c.fromCode, to: c.toCode, date: c.date, id: c.id });
-                   for (let n = a; n <= b; n++) groups[key].covered.add(n);
-                  });
-                  const out = [];
-                  Object.keys(groups).forEach(function(key) {
-                   const g = groups[key];
-                   const nums = Array.from(g.covered).sort(function(x,y){return x-y;});
-                   if (nums.length < 2) return;
-                   const min = nums[0], max = nums[nums.length-1];
-                   const missing = [];
-                   for (let n = min; n <= max; n++) { if (!g.covered.has(n)) missing.push(n); }
-                   if (missing.length > 0) {
-                  // Compress consecutive missing numbers into ranges for a tidy message.
-                  const segments = [];
-                  let segStart = missing[0], prev = missing[0];
-                  for (let i = 1; i < missing.length; i++) {
-                   if (missing[i] === prev + 1) { prev = missing[i]; }
-                   else { segments.push([segStart, prev]); segStart = missing[i]; prev = missing[i]; }
-                  }
-                  segments.push([segStart, prev]);
-                  const pad = function(n){ return g.width > 1 ? String(n).padStart(g.width,'0') : String(n); };
-                  const label = segments.map(function(s){ return s[0]===s[1] ? (g.prefix+pad(s[0])) : (g.prefix+pad(s[0])+'–'+g.prefix+pad(s[1])); }).join(', ');
-                  out.push({ agentCode: g.agentCode, agentCity: g.agentCity, prefix: g.prefix, missingCount: missing.length, label: label, rangeText: g.prefix+pad(min)+' → '+g.prefix+pad(max) });
-                   }
-                  });
-                  return out;
-                })();
-                // Agent codes that have a gap — used to highlight their rows.
-                const gapAgents = new Set(sequenceGaps.map(function(x){ return x.agentCode; }));
-
-                return (
-                  <div ref={modalScrollRef} onScroll={handleModalScroll} className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
-                   <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl my-8">
-                  <div className="sticky top-0 z-10 bg-white rounded-t-2xl p-6 border-b border-gray-200 flex justify-between items-center">
-                   <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><Truck className="w-7 h-7 text-orange-600" />Agent Collection Report</h2>
-                   <button onClick={onClose} className="bg-gray-100 hover:bg-red-100 text-gray-600 hover:text-red-600 px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition"><X className="w-4 h-4" />Close</button>
-                  </div>
-                  <div className="p-6 border-b border-gray-100 flex flex-wrap gap-3 items-end">
-                   <div><label className="block text-xs font-semibold text-gray-600 mb-1">Start Date</label><input type="date" value={fromDate} onChange={function(e) { setFromDate(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>
-                   <div><label className="block text-xs font-semibold text-gray-600 mb-1">End Date</label><input type="date" value={toDate} onChange={function(e) { setToDate(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm" /></div>
-                   {branchList.length > 0 && (
-                   <div>
-                   <label className="block text-xs font-semibold text-gray-600 mb-1">Branch</label>
-                   <select value={branchFilter} onChange={function(e) { setBranchFilter(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                   <option value="">All Branches</option>
-                   {branchList.map(function(b) { return <option key={b} value={b}>{b}</option>; })}
-                   </select>
-                   </div>
-                   )}
-                   {[...new Set(visEmp.filter(function(e){return !e.isAdmin&&e.country;}).map(function(e){return e.country;}))].length > 0 && (
-                   <div>
-                   <label className="block text-xs font-semibold text-gray-600 mb-1">Country</label>
-                   <select value={countryFilter} onChange={function(e) { setCountryFilter(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                   <option value="">All Countries</option>
-                   {[...new Set(visEmp.filter(function(e){return !e.isAdmin&&e.country;}).map(function(e){return e.country;}))].sort().map(function(c) { return <option key={c} value={c}>{c}</option>; })}
-                   </select>
-                   </div>
-                   )}
-                   <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Employee</label>
-                  <select value={empFilter} onChange={function(e) { setEmpFilter(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                   <option value="">All Employees</option>
-                   {visEmp.filter(function(e) {
-                   return !e.isAdmin
-                   && agentCollections.some(function(c) { return c.employeeId === e.id; })
-                   && (!branchFilter || (e.branches||[]).includes(branchFilter))
-                   && (!countryFilter || e.country === countryFilter);
-                   }).map(function(e) { return <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>; })}
-                  </select>
-                   </div>
-                   <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Agent</label>
-                  <select value={agentFilter} onChange={function(e) { setAgentFilter(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                   <option value="">All Agents</option>
-                   {Array.from(new Set(agentCollections
-                  .filter(function(c){ return (!empFilter || c.employeeId === parseInt(empFilter)); })
-                  .map(function(c){ return c.agentCode; })
-                  .filter(Boolean)))
-                  .sort()
-                  .map(function(code) { return <option key={code} value={code}>{code}</option>; })}
-                  </select>
-                   </div>
-                   <button onClick={generateReport} className="bg-orange-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-orange-700 text-sm">Generate Report</button>
-                   {reportData && <button onClick={exportCSV} className="bg-green-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-green-700 text-sm">Export CSV</button>}
-                   <button type="button" onClick={function(){setShowAddForm(true);}} className="bg-indigo-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-indigo-700 text-sm flex items-center gap-2">
-                  <span className="text-lg leading-none">+</span> Add Collection
-                   </button>
-                  </div>
-
-                  {showAddForm && (
-                  <div ref={function(el){ if(el) el.scrollIntoView({behavior:'smooth', block:'center'}); }} className="mx-6 mb-4 bg-indigo-50 border-2 border-indigo-300 rounded-xl p-5 shadow-lg">
-                   <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-bold text-indigo-800">📝 Manually Add Collection Record</h3>
-                  <button type="button" onClick={function(){setShowAddForm(false);}} className="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
-                   </div>
-                   <div className="grid grid-cols-2 gap-3 mb-3">
-                  <div>
-                   <label className="block text-xs font-semibold text-gray-600 mb-1">Employee *</label>
-                   <select value={addEmpId} onChange={function(e){setAddEmpId(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                  <option value="">Select employee...</option>
-                  {[...visEmp].filter(function(e){return !e.isAdmin;}).sort(function(a,b){return (a.firstName+a.lastName).localeCompare(b.firstName+b.lastName);}).map(function(e){return <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>;})}
-                   </select>
-                  </div>
-                  <div>
-                   <label className="block text-xs font-semibold text-gray-600 mb-1">Agent *</label>
-                   <select value={addAgentId} onChange={function(e){setAddAgentId(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                  <option value="">Select agent...</option>
-                  {[...agents].sort(function(a,b){return (a.AgentCode||a.agentCode||'').localeCompare(b.AgentCode||b.agentCode||'');}).map(function(a){return <option key={a.Id||a.id} value={a.Id||a.id}>{a.AgentCode||a.agentCode} — {a.City||a.city}</option>;})}
-                   </select>
-                  </div>
-                   </div>
-                   <div className="grid grid-cols-3 gap-3 mb-3">
-                  <div>
-                   <label className="block text-xs font-semibold text-gray-600 mb-1">Date *</label>
-                   <input type="date" value={addDate} onChange={function(e){setAddDate(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                  </div>
-                  <div>
-                   <label className="block text-xs font-semibold text-gray-600 mb-1">From Code</label>
-                   <input type="text" ref={addFromRef} defaultValue="" placeholder="e.g. OX79" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                  </div>
-                  <div>
-                   <label className="block text-xs font-semibold text-gray-600 mb-1">To Code</label>
-                   <input type="text" ref={addToRef} defaultValue="" placeholder="e.g. OX91" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                  </div>
-                   </div>
-                   <div className="grid grid-cols-4 gap-3 mb-4">
-                  <div>
-                   <label className="block text-xs font-semibold text-gray-600 mb-1">Cash Collected</label>
-                   <input type="number" min="0" step="0.01" ref={addCollectedRef} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                  </div>
-                  <div>
-                   <label className="block text-xs font-semibold text-gray-600 mb-1">Paid to Agent</label>
-                   <input type="number" min="0" step="0.01" ref={addPaidRef} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                  </div>
-                  <div>
-                   <label className="block text-xs font-semibold text-gray-600 mb-1">Bank Transfer</label>
-                   <input type="number" min="0" step="0.01" ref={addBankRef} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                  </div>
-                  <div>
-                   <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
-                   <input type="text" ref={addNotesRef} defaultValue="" placeholder="Optional" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                  </div>
-                   </div>
-                   <div className="flex gap-2">
-                  <button type="button" onClick={handleAddCollection} disabled={addSaving} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">{addSaving?'Saving...':'Save Collection'}</button>
-                  <button type="button" onClick={function(){setShowAddForm(false);}} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200">Cancel</button>
-                   </div>
-                  </div>
-                  )}
-
-                  <div className="p-6">
-                   {!reportData ? (
-                  <div className="text-center py-16 text-gray-400"><Truck className="w-16 h-16 mx-auto mb-4 opacity-30" /><p>Select a date range and click Generate Report</p></div>
-                   ) : reportData.length === 0 ? (
-                  <div className="text-center py-16 text-gray-400"><p>No collection records found for this period</p></div>
-                   ) : (
-                  <div>
-                   <div className="grid grid-cols-2 gap-4 mb-6 max-w-lg">
-                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center"><p className="text-xs text-green-600 font-semibold uppercase">Total Collected</p><p className="text-2xl font-bold text-green-700 mt-1">{getCurrencySymbol(reportCurrency)}{totalCollected.toFixed(2)}</p></div>
-                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center"><p className="text-xs text-red-600 font-semibold uppercase">Total Paid</p><p className="text-2xl font-bold text-red-700 mt-1">{getCurrencySymbol(reportCurrency)}{totalPaid.toFixed(2)}</p></div>
-                   </div>
-                   {sequenceGaps.length > 0 && (
-                   <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 mb-6">
-                  <div className="flex items-start gap-2">
-                   <span className="text-xl">⚠️</span>
-                   <div className="flex-1">
-                  <p className="text-sm font-bold text-amber-800">Sequence gaps detected — {sequenceGaps.length} agent{sequenceGaps.length>1?'s':''} with missing shipment numbers</p>
-                  <p className="text-xs text-amber-600 mb-2">These numbers fall inside the agent's collected range but were never recorded. Investigate or add the missing collections.</p>
-                  <div className="space-y-1">
-                   {sequenceGaps.map(function(g, i) {
-                  return (
-                   <div key={i} className="text-sm bg-white/70 rounded-lg px-3 py-2 flex flex-wrap items-center gap-x-2">
-                  <span className="font-bold text-amber-900">{g.agentCode}</span>
-                  {g.agentCity && <span className="text-xs text-gray-500">({g.agentCity})</span>}
-                  <span className="text-gray-600">range {g.rangeText} —</span>
-                  <span className="font-semibold text-red-600">missing: {g.label}</span>
-                  <span className="text-xs text-gray-400">({g.missingCount} number{g.missingCount>1?'s':''})</span>
-                   </div>
-                  );
-                   })}
-                  </div>
-                   </div>
-                  </div>
-                   </div>
-                   )}
-                   <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                   <thead className="bg-orange-50">
-                  <tr>{['Employee','Date','Agent','From','To','Cash Collected','Paid to Agent','Bank Transfer', hasPermission('canManageAgentCollections') ? 'Edit' : ''].filter(Boolean).map(function(h) { return <th key={h} className="px-4 py-3 text-left text-xs font-bold text-orange-700 uppercase tracking-wide">{h}</th>; })}</tr>
-                   </thead>
-                   <tbody className="divide-y divide-gray-100">
-                  {reportData.map(function(col) {
-                   const _colEmp = visEmp.find(function(e){ return e.id === col.employeeId; });
-                   const sym = getCurrencySymbol(_colEmp ? resolveEmployeeCurrency(_colEmp) : (col.currency || 'GBP'));
-                   const isEditing = editingId === col.id;
-                   const ic = 'w-20 px-2 py-1 border border-orange-300 rounded text-sm text-center focus:outline-none focus:ring-1 focus:ring-orange-400';
-                   return (
-                  <tr key={col.id} className={'hover:bg-orange-50 ' + (isEditing ? 'bg-amber-50' : (gapAgents.has(col.agentCode) ? 'bg-amber-50/40 border-l-4 border-amber-400' : ''))}>
-                   <td className="px-4 py-3"><div className="font-medium text-gray-800">{col.employeeName}</div><div className="text-xs text-gray-500">{col.employeeCode}</div></td>
-                   <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                  {isEditing ? <input type="date" value={editVals.date} onChange={function(e){setEditVals(Object.assign({},editVals,{date:e.target.value}));}} className="px-2 py-1 border border-orange-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-orange-400" /> : new Date(col.date).toLocaleDateString('en-GB')}
-                   </td>
-                   <td className="px-4 py-3"><span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-bold">{col.agentCode}</span><div className="text-xs text-gray-400">{col.agentCity}</div></td>
-                   <td className="px-4 py-3 font-semibold text-gray-700">
-                  {isEditing ? <input value={editVals.fromCode} onChange={function(e){setEditVals(Object.assign({},editVals,{fromCode:e.target.value}));}} className={ic} /> : (col.fromCode||'—')}
-                   </td>
-                   <td className="px-4 py-3 font-semibold text-gray-700">
-                  {isEditing ? <input value={editVals.toCode} onChange={function(e){setEditVals(Object.assign({},editVals,{toCode:e.target.value}));}} className={ic} /> : (col.toCode||'—')}
-                   </td>
-                   <td className="px-4 py-3 font-bold text-green-700">
-                  {isEditing ? <input type="number" value={editVals.amountCollected} onChange={function(e){setEditVals(Object.assign({},editVals,{amountCollected:e.target.value}));}} className={ic} /> : sym+col.amountCollected.toFixed(2)}
-                   </td>
-                   <td className="px-4 py-3 font-bold text-red-600">
-                  {isEditing ? <input type="number" value={editVals.amountPaid} onChange={function(e){setEditVals(Object.assign({},editVals,{amountPaid:e.target.value}));}} className={ic} /> : (col.amountPaid > 0 ? sym+col.amountPaid.toFixed(2) : '—')}
-                   </td>
-                   <td className="px-4 py-3 font-bold text-blue-600">
-                  {isEditing ? <input type="number" min="0" step="0.01" value={editVals.bankAmount} onChange={function(e){setEditVals(Object.assign({},editVals,{bankAmount:e.target.value}));}} className={ic} /> : (col.bankAmount > 0 ? (
-                   <div className="flex flex-col gap-1">
-                  <span className="flex items-center gap-1"><span className="text-xs">🏦</span>{sym}{(col.bankAmount||0).toFixed(2)}</span>
-                  {hasPermission('canManageAgentCollections') ? (
-                   <label className="flex items-center gap-1 cursor-pointer select-none">
-                  <input type="checkbox" checked={isBankApproved(col)} onChange={function(){ toggleBankApproved(col); }} className="w-3.5 h-3.5 accent-green-600" />
-                  <span className={'text-xs font-semibold ' + (isBankApproved(col) ? 'text-green-600' : 'text-gray-400')}>{isBankApproved(col) ? '✓ Approved' : 'Approve'}</span>
-                   </label>
-                  ) : (isBankApproved(col) && <span className="text-xs font-semibold text-green-600">✓ Approved</span>)}
-                   </div>
-                  ) : <span className="text-gray-300">—</span>)}
-                   </td>
-                   {hasPermission('canManageAgentCollections') && (
-                  <td className="px-4 py-3">
-                   {isEditing ? (
-                  <div className="flex gap-1">
-                   <button onClick={function(){saveEdit(col);}} disabled={savingId===col.id} className="px-2 py-1 bg-green-600 text-white rounded text-xs font-bold hover:bg-green-700 disabled:opacity-50">{savingId===col.id?'...':'Save'}</button>
-                   <button onClick={function(){setEditingId(null);}} className="px-2 py-1 bg-gray-200 text-gray-600 rounded text-xs font-semibold hover:bg-gray-300">Cancel</button>
-                  </div>
-                   ) : (
-                  <div className="flex gap-1">
-                   <button onClick={function(){startEdit(col);}} className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-semibold hover:bg-orange-200">Edit</button>
-                   {hasPermission('canDeleteAgentCollections') && (
-                  <button onClick={function(){handleDeleteCollection(col);}} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold hover:bg-red-200">Delete</button>
-                   )}
-                  </div>
-                   )}
-                  </td>
-                   )}
-                  </tr>
-                   );
-                  })}
-                  <tr className="bg-orange-50 font-bold border-t-2 border-orange-200">
-                   <td colSpan="5" className="px-4 py-3 text-right text-gray-700 uppercase text-xs tracking-wide">TOTAL</td>
-                   <td className="px-4 py-3 text-green-700">{getCurrencySymbol(reportCurrency)}{totalCollected.toFixed(2)}</td>
-                   <td className="px-4 py-3 text-red-600">{getCurrencySymbol(reportCurrency)}{totalPaid.toFixed(2)}</td>
-                   <td className="px-4 py-3 text-blue-600">{getCurrencySymbol(reportCurrency)}{(reportData.reduce(function(s,c){return s+(c.bankAmount||0);},0)).toFixed(2)}</td>
-                   {hasPermission('canManageAgentCollections') && <td></td>}
-                  </tr>
-                   </tbody>
-                  </table>
-                   </div>
-                  </div>
-                   )}
-                  </div>
-                   </div>
-                  </div>
-                );
-            };
-
             const EmployeeAccounting = ({ onClose, visibleEmployees: visEmp, persistedState, onStateChange }) => {
                 const today = new Date().toISOString().split('T')[0];
                 // Internal modal scroll preservation (see AgentReport for full explanation).
@@ -11016,7 +11017,7 @@ import React, { useState, useEffect } from 'react';
                    )}
 
                    {showAgentReport && (
-                  <AgentReport onClose={() => setShowAgentReport(false)} visibleEmployees={visibleEmployees} onRefresh={loadAgentCollectionsFromAPI} persistedState={agentReportState} onStateChange={setAgentReportState} />
+                  <AgentReport onClose={() => setShowAgentReport(false)} visibleEmployees={visibleEmployees} onRefresh={loadAgentCollectionsFromAPI} persistedState={agentReportState} onStateChange={setAgentReportState} agentCollections={agentCollections} agents={agents} apiCall={apiCall} API_ENDPOINTS={API_ENDPOINTS} hasPermission={hasPermission} getCurrencySymbol={getCurrencySymbol} resolveEmployeeCurrency={resolveEmployeeCurrency} loadAgentCollectionsFromAPI={loadAgentCollectionsFromAPI} />
                    )}
 
                    <div className="bg-indigo-600 text-white p-6 shadow-lg">
