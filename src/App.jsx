@@ -567,6 +567,31 @@ import React, { useState, useEffect } from 'react';
             const [agentReportState, setAgentReportState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], empFilter:'', branchFilter:'', countryFilter:'', reportData:null, showAddForm:false });
             const [showAgentCollectionForm, setShowAgentCollectionForm] = useState(false);
             const [showAccountCredit, setShowAccountCredit] = useState(false);
+
+            // ── Scroll preservation ───────────────────────────────────────────────────
+            // Background data loads (timesheets, iraq payments, agent collections) call
+            // setState which triggers a React re-render. React does not reset window
+            // scroll, but some render cycles can cause the browser to jump. This ref
+            // + helper save the scroll position before each state setter and restore it
+            // after two animation frames (enough time for the DOM to settle).
+            const _scrollY = React.useRef(0);
+            React.useEffect(() => {
+                const track = () => { _scrollY.current = window.scrollY; };
+                window.addEventListener('scroll', track, { passive: true });
+                return () => window.removeEventListener('scroll', track);
+            }, []);
+            // Call this BEFORE any setState that causes a visible scroll jump.
+            // It snapshots the current position and schedules a restore after render.
+            const lockScroll = () => {
+                const y = _scrollY.current || window.scrollY;
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                  if (Math.abs(window.scrollY - y) > 2) {
+                   window.scrollTo({ top: y, behavior: 'instant' });
+                  }
+                }));
+            };
+            // ─────────────────────────────────────────────────────────────────────────
+
             const [accountCreditDate, setAccountCreditDate] = useState(new Date().toISOString().split('T')[0]);
             const [accountCreditSaving, setAccountCreditSaving] = useState(false);
             const accountCreditAmountRef = React.useRef(null);
@@ -639,6 +664,7 @@ import React, { useState, useEffect } from 'react';
                   createdBy: a.CreatedBy || a.createdBy || '',
                   createdAt: a.CreatedAt || a.createdAt || ''
                    }));
+                   lockScroll();
                    setFinancialAdjustments(mapped);
                   }
                 } catch (error) {
@@ -668,6 +694,7 @@ import React, { useState, useEffect } from 'react';
                   notes: e.Notes || e.notes || '',
                   createdAt: e.CreatedAt || e.createdAt || '',
                    }));
+                   lockScroll();
                    setExpenses(mapped);
                   }
                 } catch (error) { console.error('Failed to load expenses:', error); }
@@ -688,6 +715,7 @@ import React, { useState, useEffect } from 'react';
                 try {
                   const data = await apiCall(API_ENDPOINTS.agents);
                   if (data.success) {
+                   lockScroll();
                    setAgents((data.agents || []).map(function(a) {
                   return {
                    id: a.Id || a.id,
@@ -725,7 +753,7 @@ import React, { useState, useEffect } from 'react';
             const loadIraqPaymentsFromAPI = async () => {
                 try {
                   const data = await apiCall(API_ENDPOINTS.iraqPay);
-                  if (data.success && data.payments) setIraqPayments(data.payments.map(function(p){
+                  if (data.success && data.payments) { lockScroll(); setIraqPayments(data.payments.map(function(p){
                    const _notes = p.Notes || '';
                    // To Office is stored inside Notes as "Office: X" (optionally followed by "| note").
                    const _toOffice = _notes.indexOf('Office:') !== -1
@@ -746,7 +774,7 @@ import React, { useState, useEffect } from 'react';
                    collectedGBP:parseFloat(p.CollectedGBP)||0, collectedEUR:parseFloat(p.CollectedEUR)||0,
                    receiverContact:_rc, receiver:_receiverName, receiverMobile:_receiverMobile, toOffice:_toOffice,
                    status:p.Status, notes:_notes, createdAt:p.CreatedAt, collectedAt:p.CollectedAt
-                  };}));
+                  };})); }
                 } catch(e) { console.error('loadIraqPay error:',e); }
             };
 
@@ -754,6 +782,7 @@ import React, { useState, useEffect } from 'react';
                 try {
                   const data = await apiCall(API_ENDPOINTS.agentCollections);
                   if (data.success) {
+                   lockScroll();
                    setAgentCollections((data.collections || []).map(function(c) {
                   return {
                    id: c.Id, employeeId: c.EmployeeId,
@@ -1286,6 +1315,7 @@ import React, { useState, useEffect } from 'react';
                   breakMinutes: ts.BreakMinutes || ts.breakMinutes || 0,
                   manualEntry: ts.ManualEntry || ts.manualEntry || false
                    }));
+                   lockScroll();
                    setTimesheets(mapped);
                    return mapped;
 
@@ -1453,6 +1483,7 @@ import React, { useState, useEffect } from 'react';
                   overtimeRate: emp.OvertimeRate || emp.overtimeRate || null,
                   minimumHours: emp.MinimumHours !== undefined ? (emp.MinimumHours || emp.minimumHours || null) : (emp.minimumHours || null)
                    }));
+                   lockScroll();
                    setEmployees(mappedEmployees);
 
                   }
