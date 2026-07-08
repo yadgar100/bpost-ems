@@ -315,7 +315,7 @@ import React, { useState, useEffect } from 'react';
             </svg>
         );
 
-            const AgentReport = ({ onClose, visibleEmployees: visEmp, onRefresh, persistedState, onStateChange, agentCollections, agents, apiCall, API_ENDPOINTS, hasPermission, getCurrencySymbol, resolveEmployeeCurrency, loadAgentCollectionsFromAPI }) => {
+            const AgentReport = ({ onClose, visibleEmployees: visEmp, onRefresh, persistedState, onStateChange, agentCollections, agents, apiCall, API_ENDPOINTS, hasPermission, getCurrencySymbol, resolveEmployeeCurrency, loadAgentCollectionsFromAPI, branchList }) => {
                 const today = new Date().toISOString().split('T')[0];
                 const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
                 // This modal has its OWN scrollable container (the outer overflow-y-auto div),
@@ -11017,7 +11017,7 @@ import React, { useState, useEffect } from 'react';
                    )}
 
                    {showAgentReport && (
-                  <AgentReport onClose={() => setShowAgentReport(false)} visibleEmployees={visibleEmployees} onRefresh={loadAgentCollectionsFromAPI} persistedState={agentReportState} onStateChange={setAgentReportState} agentCollections={agentCollections} agents={agents} apiCall={apiCall} API_ENDPOINTS={API_ENDPOINTS} hasPermission={hasPermission} getCurrencySymbol={getCurrencySymbol} resolveEmployeeCurrency={resolveEmployeeCurrency} loadAgentCollectionsFromAPI={loadAgentCollectionsFromAPI} />
+                  <AgentReport onClose={() => setShowAgentReport(false)} visibleEmployees={visibleEmployees} onRefresh={loadAgentCollectionsFromAPI} persistedState={agentReportState} onStateChange={setAgentReportState} agentCollections={agentCollections} agents={agents} apiCall={apiCall} API_ENDPOINTS={API_ENDPOINTS} hasPermission={hasPermission} getCurrencySymbol={getCurrencySymbol} resolveEmployeeCurrency={resolveEmployeeCurrency} loadAgentCollectionsFromAPI={loadAgentCollectionsFromAPI} branchList={branchList} />
                    )}
 
                    <div className="bg-indigo-600 text-white p-6 shadow-lg">
