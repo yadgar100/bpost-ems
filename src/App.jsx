@@ -6706,6 +6706,16 @@ import React, { useState, useEffect } from 'react';
             const ExpenseReport = ({ onClose, visibleEmployees: visEmp, persistedState, onStateChange }) => {
                 const today = new Date().toISOString().split('T')[0];
                 const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
+                // Internal modal scroll preservation (see AgentReport for full explanation).
+                const modalScrollRef = React.useRef(null);
+                const modalScrollY = React.useRef(0);
+                const handleModalScroll = (e) => { modalScrollY.current = e.target.scrollTop; };
+                React.useLayoutEffect(() => {
+                  const el = modalScrollRef.current;
+                  if (el && Math.abs(el.scrollTop - modalScrollY.current) > 2) {
+                   el.scrollTop = modalScrollY.current;
+                  }
+                });
                 const adjAmountRef = React.useRef(null);
                 const adjHoursRef = React.useRef(null);
                 const adjReasonRef = React.useRef(null);
@@ -6778,7 +6788,7 @@ import React, { useState, useEffect } from 'react';
                 })();
 
                 return (
-                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
+                  <div ref={modalScrollRef} onScroll={handleModalScroll} className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl my-8">
                   <div className="sticky top-0 z-10 bg-white rounded-t-2xl p-6 border-b border-gray-200 flex justify-between items-center">
                    <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
@@ -6901,6 +6911,16 @@ import React, { useState, useEffect } from 'react';
 
             const AgentManager = ({ onClose, visibleEmployees: visEmp }) => {
                 const drivers = (visEmp || employees).filter(function(e) { return !e.isAdmin; });
+                // Internal modal scroll preservation (see AgentReport for full explanation).
+                const modalScrollRef = React.useRef(null);
+                const modalScrollY = React.useRef(0);
+                const handleModalScroll = (e) => { modalScrollY.current = e.target.scrollTop; };
+                React.useLayoutEffect(() => {
+                  const el = modalScrollRef.current;
+                  if (el && Math.abs(el.scrollTop - modalScrollY.current) > 2) {
+                   el.scrollTop = modalScrollY.current;
+                  }
+                });
                 const [tab, setTab] = useState('list');
                 const [editAgent, setEditAgent] = useState(null);
                 const [saving, setSaving] = useState(false);
@@ -6964,7 +6984,7 @@ import React, { useState, useEffect } from 'react';
                 const fc = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400';
 
                 return (
-                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
+                  <div ref={modalScrollRef} onScroll={handleModalScroll} className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl my-8">
                   <div className="sticky top-0 z-10 bg-gradient-to-r from-orange-600 to-amber-600 rounded-t-2xl px-6 py-4 flex items-center justify-between">
                    <div className="flex items-center gap-3"><Truck className="w-7 h-7 text-white" /><h2 className="text-xl font-bold text-white">Agent Management</h2></div>
@@ -7243,6 +7263,19 @@ import React, { useState, useEffect } from 'react';
             const AgentReport = ({ onClose, visibleEmployees: visEmp, onRefresh, persistedState, onStateChange }) => {
                 const today = new Date().toISOString().split('T')[0];
                 const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
+                // This modal has its OWN scrollable container (the outer overflow-y-auto div),
+                // separate from window scroll. Background reloads (polling, Add Collection,
+                // Generate Report) update state and re-render this modal, which was resetting
+                // its internal scrollTop to 0. Track it here and restore after each re-render.
+                const modalScrollRef = React.useRef(null);
+                const modalScrollY = React.useRef(0);
+                const handleModalScroll = (e) => { modalScrollY.current = e.target.scrollTop; };
+                React.useLayoutEffect(() => {
+                  const el = modalScrollRef.current;
+                  if (el && Math.abs(el.scrollTop - modalScrollY.current) > 2) {
+                   el.scrollTop = modalScrollY.current;
+                  }
+                });
                 const adjAmountRef = React.useRef(null);
                 const adjHoursRef = React.useRef(null);
                 const adjReasonRef = React.useRef(null);
@@ -7514,7 +7547,7 @@ import React, { useState, useEffect } from 'react';
                 const gapAgents = new Set(sequenceGaps.map(function(x){ return x.agentCode; }));
 
                 return (
-                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
+                  <div ref={modalScrollRef} onScroll={handleModalScroll} className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl my-8">
                   <div className="sticky top-0 z-10 bg-white rounded-t-2xl p-6 border-b border-gray-200 flex justify-between items-center">
                    <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><Truck className="w-7 h-7 text-orange-600" />Agent Collection Report</h2>
@@ -7751,6 +7784,16 @@ import React, { useState, useEffect } from 'react';
 
             const EmployeeAccounting = ({ onClose, visibleEmployees: visEmp, persistedState, onStateChange }) => {
                 const today = new Date().toISOString().split('T')[0];
+                // Internal modal scroll preservation (see AgentReport for full explanation).
+                const modalScrollRef = React.useRef(null);
+                const modalScrollY = React.useRef(0);
+                const handleModalScroll = (e) => { modalScrollY.current = e.target.scrollTop; };
+                React.useLayoutEffect(() => {
+                  const el = modalScrollRef.current;
+                  if (el && Math.abs(el.scrollTop - modalScrollY.current) > 2) {
+                   el.scrollTop = modalScrollY.current;
+                  }
+                });
                 // Use persisted state from parent so remounts don't wipe the report
                 const empId = persistedState ? persistedState.empId : '';
                 const setEmpId = (v) => onStateChange && onStateChange(function(s) { return {...s, empId: typeof v === 'function' ? v(s.empId) : v}; });
@@ -7996,7 +8039,7 @@ import React, { useState, useEffect } from 'react';
                 };
 
                 return (
-                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
+                  <div ref={modalScrollRef} onScroll={handleModalScroll} className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
                   <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl my-8">
                   <div className="sticky top-0 z-10 bg-gradient-to-r from-indigo-700 to-purple-700 rounded-t-2xl px-6 py-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
