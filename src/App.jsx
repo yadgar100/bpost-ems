@@ -5035,7 +5035,7 @@ import React, { useState, useEffect } from 'react';
                   setCreditSaving(false);
                 };
                 const handleDeleteCredit = async function(a) {
-                  if (!window.confirm('Delete credit of £' + parseFloat(a.amount).toFixed(2) + ' for ' + a.employeeName + '?')) return;
+                  if (!window.confirm('Delete credit of ' + sym + parseFloat(a.amount).toFixed(2) + ' for ' + a.employeeName + '?')) return;
                   try { await apiCall(API_ENDPOINTS.adjustments + '/' + a.id, { method: 'DELETE' }); await loadAdjustmentsFromAPI(); }
                   catch(e) { alert('Failed: ' + e.message); }
                 };
@@ -8364,7 +8364,9 @@ import React, { useState, useEffect } from 'react';
                 const [coSettleAmount, setCoSettleAmount] = useState('');
                 const [coSettleDate, setCoSettleDate] = useState('');
                 const [coSettleNote, setCoSettleNote] = useState('');
-                const sym = '£';
+                // Currency symbol follows the selected Country filter (Netherlands/Belgium → €,
+                // Iraq → IQD, etc). Falls back to £ when no country is selected (mixed/all).
+                const sym = getCurrencySymbol(getCurrencyForCountry(countryFilter) || 'GBP');
 
                 const countryList = [...new Set(visEmp.filter(function(e) { return !e.isAdmin && e.country; }).map(function(e) { return e.country; }))].sort();
 
@@ -8409,7 +8411,7 @@ import React, { useState, useEffect } from 'react';
                   setCreditSaving(false);
                 };
                 const handleDeleteCredit = async function(a) {
-                  if (!window.confirm('Delete credit of £' + parseFloat(a.amount).toFixed(2) + ' for ' + a.employeeName + '?')) return;
+                  if (!window.confirm('Delete credit of ' + sym + parseFloat(a.amount).toFixed(2) + ' for ' + a.employeeName + '?')) return;
                   try { await apiCall(API_ENDPOINTS.adjustments + '/' + a.id, { method: 'DELETE' }); await loadAdjustmentsFromAPI(); }
                   catch(e) { alert('Failed: ' + e.message); }
                 };
@@ -8592,7 +8594,7 @@ import React, { useState, useEffect } from 'react';
                   if (!report) return;
                   const marginColor = report.margin >= 0 ? '#16a34a' : '#dc2626';
                   const agentRows = report.byAgent.map(function(a) {
-                  return '<tr><td>'+a.code+'</td><td>'+a.city+'</td><td>'+a.count+'</td><td>£'+a.cash.toFixed(2)+'</td><td>'+(a.bank>0?'£'+a.bank.toFixed(2):'—')+'</td><td>'+(a.paid>0?'-£'+a.paid.toFixed(2):'—')+'</td><td><b>£'+(a.cash-a.paid).toFixed(2)+'</b></td></tr>';
+                  return '<tr><td>'+a.code+'</td><td>'+a.city+'</td><td>'+a.count+'</td><td>'+sym+a.cash.toFixed(2)+'</td><td>'+(a.bank>0?sym+a.bank.toFixed(2):'—')+'</td><td>'+(a.paid>0?'-'+sym+a.paid.toFixed(2):'—')+'</td><td><b>'+sym+(a.cash-a.paid).toFixed(2)+'</b></td></tr>';
                   }).join('');
                   const payRows = report.empPayroll.map(function(e) {
                   return '<tr><td>'+e.name+'</td><td>'+e.code+'</td><td><b>'+e.currency+e.pay.toFixed(2)+'</b></td></tr>';
@@ -8602,24 +8604,24 @@ import React, { useState, useEffect } from 'react';
                   +'</head><body>'
                   +'<h1>Company Accounting Report</h1>'
                   +'<div class="sub">Period: '+new Date(report.periodStart).toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})+' — '+new Date(report.periodEnd).toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})+'</div>'
-                  +'<div class="sec"><div class="sec-title"><span>Agent Collections</span><span>Net: £'+report.netCollections.toFixed(2)+'</span></div>'
+                  +'<div class="sec"><div class="sec-title"><span>Agent Collections</span><span>Net: '+sym+report.netCollections.toFixed(2)+'</span></div>'
                   +'<table><thead><tr><th>Code</th><th>City</th><th>Records</th><th>Cash</th><th>Bank</th><th>Paid to Agent</th><th>Net</th></tr></thead><tbody>'+agentRows
-                  +'<tr style="background:#f0fdf4;font-weight:bold;"><td colspan="3" style="text-align:right;">TOTAL</td><td>£'+report.totalCashCollected.toFixed(2)+'</td><td>£'+report.totalBankCollected.toFixed(2)+'</td><td>-£'+report.totalPaidToAgents.toFixed(2)+'</td><td>£'+report.netCollections.toFixed(2)+'</td></tr>'
+                  +'<tr style="background:#f0fdf4;font-weight:bold;"><td colspan="3" style="text-align:right;">TOTAL</td><td>'+sym+report.totalCashCollected.toFixed(2)+'</td><td>'+sym+report.totalBankCollected.toFixed(2)+'</td><td>-'+sym+report.totalPaidToAgents.toFixed(2)+'</td><td>'+sym+report.netCollections.toFixed(2)+'</td></tr>'
                   +'</tbody></table></div>'
-                  +'<div class="sec"><div class="sec-title"><span>Employee Payroll</span><span>Total: £'+report.totalPayroll.toFixed(2)+'</span></div>'
+                  +'<div class="sec"><div class="sec-title"><span>Employee Payroll</span><span>Total: '+sym+report.totalPayroll.toFixed(2)+'</span></div>'
                   +'<table><thead><tr><th>Employee</th><th>ID</th><th>Pay</th></tr></thead><tbody>'+payRows
-                  +'<tr style="background:#eff6ff;font-weight:bold;"><td colspan="2" style="text-align:right;">TOTAL PAYROLL</td><td>£'+report.totalPayroll.toFixed(2)+'</td></tr>'
+                  +'<tr style="background:#eff6ff;font-weight:bold;"><td colspan="2" style="text-align:right;">TOTAL PAYROLL</td><td>'+sym+report.totalPayroll.toFixed(2)+'</td></tr>'
                   +'</tbody></table></div>'
-                  +'<div class="sec"><div class="sec-title"><span>Approved Expenses</span><span>Total: £'+report.totalExpenses.toFixed(2)+'</span></div>'
+                  +'<div class="sec"><div class="sec-title"><span>Approved Expenses</span><span>Total: '+sym+report.totalExpenses.toFixed(2)+'</span></div>'
                   +'<table><thead><tr><th>Date</th><th>Employee</th><th>Category</th><th>Description</th><th>Amount</th></tr></thead><tbody>'
-                  +report.exps.map(function(e){return '<tr><td>'+new Date(e.date).toLocaleDateString('en-GB')+'</td><td>'+e.employeeName+'</td><td>'+e.category+'</td><td>'+(e.description||'')+'</td><td>£'+e.amount.toFixed(2)+'</td></tr>';}).join('')
-                  +'<tr style="background:#f0fdfa;font-weight:bold;"><td colspan="4" style="text-align:right;">TOTAL EXPENSES</td><td>£'+report.totalExpenses.toFixed(2)+'</td></tr>'
+                  +report.exps.map(function(e){return '<tr><td>'+new Date(e.date).toLocaleDateString('en-GB')+'</td><td>'+e.employeeName+'</td><td>'+e.category+'</td><td>'+(e.description||'')+'</td><td>'+sym+e.amount.toFixed(2)+'</td></tr>';}).join('')
+                  +'<tr style="background:#f0fdfa;font-weight:bold;"><td colspan="4" style="text-align:right;">TOTAL EXPENSES</td><td>'+sym+report.totalExpenses.toFixed(2)+'</td></tr>'
                   +'</tbody></table></div>'
                   +'<div class="sum"><div style="font-size:9px;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;color:#374151;margin-bottom:8px;">Profit & Loss Summary</div>'
-                  +'<div class="srow"><span>Net Agent Collections</span><span style="color:#16a34a;font-weight:600;">+£'+report.netCollections.toFixed(2)+'</span></div>'
-                  +'<div class="srow"><span>Total Payroll</span><span style="color:#dc2626;font-weight:600;">-£'+report.totalPayroll.toFixed(2)+'</span></div>'
-                  +'<div class="srow"><span>Total Expenses</span><span style="color:#dc2626;font-weight:600;">-£'+report.totalExpenses.toFixed(2)+'</span></div>'
-                  +'<div class="stotal"><span style="color:'+marginColor+';">'+(report.margin>=0?'Net Profit':'Net Loss')+'</span><span style="color:'+marginColor+';">'+(report.margin>=0?'+':'')+'£'+report.margin.toFixed(2)+'</span></div>'
+                  +'<div class="srow"><span>Net Agent Collections</span><span style="color:#16a34a;font-weight:600;">+'+sym+report.netCollections.toFixed(2)+'</span></div>'
+                  +'<div class="srow"><span>Total Payroll</span><span style="color:#dc2626;font-weight:600;">-'+sym+report.totalPayroll.toFixed(2)+'</span></div>'
+                  +'<div class="srow"><span>Total Expenses</span><span style="color:#dc2626;font-weight:600;">-'+sym+report.totalExpenses.toFixed(2)+'</span></div>'
+                  +'<div class="stotal"><span style="color:'+marginColor+';">'+(report.margin>=0?'Net Profit':'Net Loss')+'</span><span style="color:'+marginColor+';">'+(report.margin>=0?'+':'')+sym+report.margin.toFixed(2)+'</span></div>'
                   +'</div>'
                   +'<div class="footer">B-Post Employee Management System &nbsp;·&nbsp; Generated '+new Date().toLocaleString('en-GB')+'</div>'
                   +'</body></html>';
