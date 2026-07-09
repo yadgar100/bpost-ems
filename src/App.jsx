@@ -5624,6 +5624,33 @@ import React, { useState, useEffect } from 'react';
                 const selectedCountry = persistedState ? persistedState.selectedCountry : 'all'; const setSelectedCountry = mk('selectedCountry');
                 const generatedReport = persistedState ? persistedState.generatedReport : null; const setGeneratedReport = mk('generatedReport');
 
+                // Approve/reject directly from the payroll report. The report is a snapshot taken
+                // when "Generate Report" was clicked, so after updating the timesheet we patch the
+                // snapshot's status in place — otherwise the badge would stay "pending" until the
+                // report is regenerated. Hours/pay totals are unchanged by approval, so only the
+                // status label needs updating.
+                const approveFromReport = async (timesheetId, status) => {
+                  await handleTimesheetStatus(timesheetId, status);
+                  setGeneratedReport(function(prev) {
+                   if (!prev || !prev.data) return prev;
+                   return Object.assign({}, prev, {
+                  data: prev.data.map(function(r) {
+                   const updatedTs = (r.timesheets || []).map(function(t) {
+                  return t.id === timesheetId ? Object.assign({}, t, { status: status }) : t;
+                   });
+                   // Recompute the approved/pending/rejected counters shown in the Shifts column,
+                   // otherwise they'd still reflect the pre-approval snapshot.
+                   return Object.assign({}, r, {
+                  timesheets: updatedTs,
+                  approvedShifts: updatedTs.filter(function(t){ return t.status === 'approved'; }).length,
+                  pendingShifts: updatedTs.filter(function(t){ return t.status === 'pending' || t.status === 'checkedout'; }).length,
+                  rejectedShifts: updatedTs.filter(function(t){ return t.status === 'rejected'; }).length
+                   });
+                  })
+                   });
+                  });
+                };
+
                 const generateReport = () => {
                   if (!startDate || !endDate) {
                    alert('Please select both start and end dates');
@@ -5979,6 +6006,7 @@ import React, { useState, useEffect } from 'react';
                    <th className="py-2 text-left">Total</th>
                    <th className="py-2 text-left">Pay</th>
                    <th className="py-2 text-left">Status</th>
+                   {hasPermission('canApproveTimesheets') && <th className="py-2 text-left">Actions</th>}
                   </tr>
                    </thead>
                    <tbody>
@@ -6012,13 +6040,25 @@ import React, { useState, useEffect } from 'react';
                   {ts.status}
                    </span>
                   </td>
+                  {hasPermission('canApproveTimesheets') && (
+                   <td className="py-1.5">
+                  {(ts.status === 'pending' || ts.status === 'checkedout') ? (
+                   <div className="flex items-center gap-1">
+                  <button onClick={() => approveFromReport(ts.id, 'approved')} title="Approve"
+                   className="text-green-600 hover:text-green-800"><CheckCircle className="w-4 h-4" /></button>
+                  <button onClick={() => approveFromReport(ts.id, 'rejected')} title="Reject"
+                   className="text-red-600 hover:text-red-800"><XCircle className="w-4 h-4" /></button>
+                   </div>
+                  ) : <span className="text-gray-300 text-xs">—</span>}
+                   </td>
+                  )}
                    </tr>
                    );
                   })}
                   {(row.bonuses > 0 || row.sickPay > 0 || row.penalties > 0 || row.advances > 0) && (
                    <tr className="border-t-2 border-indigo-200 bg-indigo-50/50">
                   <td className="py-1.5 font-semibold text-gray-600" colSpan="6">Adjustments</td>
-                  <td className="py-1.5 font-semibold" colSpan="3">
+                  <td className="py-1.5 font-semibold" colSpan={hasPermission('canApproveTimesheets') ? "4" : "3"}>
                    {row.bonuses > 0 && <span className="text-emerald-600 mr-3">Bonus +{getCurrencySymbol(row.employee.currency||'GBP')}{row.bonuses.toFixed(2)}</span>}
                    {row.sickPay > 0 && <span className="text-emerald-600 mr-3">Sick Pay +{getCurrencySymbol(row.employee.currency||'GBP')}{row.sickPay.toFixed(2)}</span>}
                    {row.penalties > 0 && <span className="text-red-500 mr-3">Penalty -{getCurrencySymbol(row.employee.currency||'GBP')}{row.penalties.toFixed(2)}</span>}
