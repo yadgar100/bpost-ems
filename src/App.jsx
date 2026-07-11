@@ -838,7 +838,7 @@ import React, { useState, useEffect } from 'react';
             };
 
 
-            const AgentManager = ({ onClose, visibleEmployees: visEmp, employees, currentUser, apiCall, API_ENDPOINTS, agents, loadAgentsFromAPI, isAgentVisible }) => {
+            const AgentManager = ({ onClose, visibleEmployees: visEmp, employees, currentUser, apiCall, API_ENDPOINTS, agents, loadAgentsFromAPI, isAgentVisible, persistedState, onStateChange }) => {
                 const drivers = (visEmp || employees).filter(function(e) { return !e.isAdmin; });
                 // Internal modal scroll preservation (see AgentReport for full explanation).
                 const modalScrollRef = React.useRef(null);
@@ -850,18 +850,22 @@ import React, { useState, useEffect } from 'react';
                    el.scrollTop = modalScrollY.current;
                   }
                 });
-                const [tab, setTab] = useState('list');
-                const [editAgent, setEditAgent] = useState(null);
-                const [saving, setSaving] = useState(false);
+                const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
                 const emptyForm = { agentCode: '', city: '', country: '', notes: '' };
-                const [form, setForm] = useState(emptyForm);
-                const [assignAgent, setAssignAgent] = useState(null);
-                const [assignedIds, setAssignedIds] = useState([]);
-                const [search, setSearch] = useState('');
+                // All in-progress state below is lifted to the parent (persistedState) so it
+                // survives this modal being torn down and recreated by a background data refresh —
+                // the same protection already used by the report modals.
+                const tab = persistedState ? persistedState.tab : 'list'; const setTab = mk('tab');
+                const editAgent = persistedState ? persistedState.editAgent : null; const setEditAgent = mk('editAgent');
+                const [saving, setSaving] = useState(false);
+                const form = persistedState ? persistedState.form : emptyForm; const setForm = mk('form');
+                const assignAgent = persistedState ? persistedState.assignAgent : null; const setAssignAgent = mk('assignAgent');
+                const assignedIds = persistedState ? persistedState.assignedIds : []; const setAssignedIds = mk('assignedIds');
+                const search = persistedState ? persistedState.search : ''; const setSearch = mk('search');
                 // Bulk multi-agent selection: pick several agent rows, then assign employee(s) to all at once.
-                const [selectedAgentIds, setSelectedAgentIds] = useState([]);
-                const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
-                const [bulkEmployeeIds, setBulkEmployeeIds] = useState([]);
+                const selectedAgentIds = persistedState ? persistedState.selectedAgentIds : []; const setSelectedAgentIds = mk('selectedAgentIds');
+                const bulkAssignOpen = persistedState ? persistedState.bulkAssignOpen : false; const setBulkAssignOpen = mk('bulkAssignOpen');
+                const bulkEmployeeIds = persistedState ? persistedState.bulkEmployeeIds : []; const setBulkEmployeeIds = mk('bulkEmployeeIds');
                 const [bulkSaving, setBulkSaving] = useState(false);
 
                 const countryScopedAgents = agents.filter(function(a) {
@@ -935,13 +939,27 @@ import React, { useState, useEffect } from 'react';
                   setBulkSaving(true);
                   try {
                    const targets = countryScopedAgents.filter(function(a) { return selectedAgentIds.includes(a.id); });
-                   await Promise.all(targets.map(function(a) {
+                   // Send one request at a time, not Promise.all. Firing all agent-assign calls
+                   // concurrently risks a last-write-wins race if the backend isn't built for
+                   // parallel writes — that's exactly what caused only one agent to end up
+                   // actually assigned even though every request reported success.
+                   let successCount = 0;
+                   const failures = [];
+                   for (const a of targets) {
                   const existingIds = (a.assignedEmployees || []).map(function(e) { return e.id; });
                   const merged = Array.from(new Set(existingIds.concat(bulkEmployeeIds)));
-                  return apiCall(API_ENDPOINTS.agents + '/' + a.id + '/assign', { method: 'POST', body: JSON.stringify({ employeeIds: merged }) });
-                   }));
+                  try {
+                   const result = await apiCall(API_ENDPOINTS.agents + '/' + a.id + '/assign', { method: 'POST', body: JSON.stringify({ employeeIds: merged }) });
+                   if (result && result.success === false) { failures.push(a.agentCode); }
+                   else { successCount++; }
+                  } catch(e) { failures.push(a.agentCode); }
+                   }
                    await loadAgentsFromAPI();
-                   alert('Assigned to ' + targets.length + ' agent(s)');
+                   if (failures.length) {
+                  alert('Assigned to ' + successCount + ' agent(s). Failed for: ' + failures.join(', '));
+                   } else {
+                  alert('Assigned to ' + successCount + ' agent(s)');
+                   }
                    setBulkAssignOpen(false);
                    setBulkEmployeeIds([]);
                    setSelectedAgentIds([]);
@@ -1345,6 +1363,10 @@ import React, { useState, useEffect } from 'react';
             const [iraqPayments, setIraqPayments] = useState([]);
             const [iraqPayState, setIraqPayState] = useState({ activeTab:'view', batchName:'', empId:'', filterEmp:'', filterStatus:'all', filterBatch:'', filterFrom:'', filterTo:'', previewRows:[] });
             const [agentReportState, setAgentReportState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], empFilter:'', branchFilter:'', countryFilter:'', reportData:null, showAddForm:false });
+            // Lives at the root (never remounts) so in-progress work in the Agent Management
+            // modal — bulk selections, an assign-in-progress, the edit form — survives even if
+            // the modal itself gets torn down and recreated by a background refresh.
+            const [agentManagerState, setAgentManagerState] = useState({ tab:'list', editAgent:null, form:{agentCode:'',city:'',country:'',notes:''}, assignAgent:null, assignedIds:[], search:'', selectedAgentIds:[], bulkAssignOpen:false, bulkEmployeeIds:[] });
             const [showAgentCollectionForm, setShowAgentCollectionForm] = useState(false);
             const [showAccountCredit, setShowAccountCredit] = useState(false);
 
@@ -11118,7 +11140,7 @@ import React, { useState, useEffect } from 'react';
                    )}
 
                    {showAgentManager && (
-                  <AgentManager onClose={() => setShowAgentManager(false)} visibleEmployees={visibleEmployees} employees={employees} currentUser={currentUser} apiCall={apiCall} API_ENDPOINTS={API_ENDPOINTS} agents={agents} loadAgentsFromAPI={loadAgentsFromAPI} isAgentVisible={isAgentVisible} />
+                  <AgentManager onClose={() => setShowAgentManager(false)} visibleEmployees={visibleEmployees} employees={employees} currentUser={currentUser} apiCall={apiCall} API_ENDPOINTS={API_ENDPOINTS} agents={agents} loadAgentsFromAPI={loadAgentsFromAPI} isAgentVisible={isAgentVisible} persistedState={agentManagerState} onStateChange={setAgentManagerState} />
                    )}
 
                    {showIraqPay && (
