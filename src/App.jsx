@@ -838,6 +838,263 @@ import React, { useState, useEffect } from 'react';
             };
 
 
+            const AgentManager = ({ onClose, visibleEmployees: visEmp, employees, currentUser, apiCall, API_ENDPOINTS, agents, loadAgentsFromAPI, isAgentVisible }) => {
+                const drivers = (visEmp || employees).filter(function(e) { return !e.isAdmin; });
+                // Internal modal scroll preservation (see AgentReport for full explanation).
+                const modalScrollRef = React.useRef(null);
+                const modalScrollY = React.useRef(0);
+                const handleModalScroll = (e) => { modalScrollY.current = e.target.scrollTop; };
+                React.useLayoutEffect(() => {
+                  const el = modalScrollRef.current;
+                  if (el && Math.abs(el.scrollTop - modalScrollY.current) > 2) {
+                   el.scrollTop = modalScrollY.current;
+                  }
+                });
+                const [tab, setTab] = useState('list');
+                const [editAgent, setEditAgent] = useState(null);
+                const [saving, setSaving] = useState(false);
+                const emptyForm = { agentCode: '', city: '', country: '', notes: '' };
+                const [form, setForm] = useState(emptyForm);
+                const [assignAgent, setAssignAgent] = useState(null);
+                const [assignedIds, setAssignedIds] = useState([]);
+                const [search, setSearch] = useState('');
+                // Bulk multi-agent selection: pick several agent rows, then assign employee(s) to all at once.
+                const [selectedAgentIds, setSelectedAgentIds] = useState([]);
+                const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+                const [bulkEmployeeIds, setBulkEmployeeIds] = useState([]);
+                const [bulkSaving, setBulkSaving] = useState(false);
+
+                const countryScopedAgents = agents.filter(function(a) {
+                  return isAgentVisible(a.country, currentUser);
+                });
+
+                const filteredAgents = countryScopedAgents.filter(function(a) {
+                  if (!search.trim()) return true;
+                  const q = search.toLowerCase();
+                  return a.agentCode.toLowerCase().includes(q) || a.city.toLowerCase().includes(q);
+                });
+
+                const allFilteredSelected = filteredAgents.length > 0 && filteredAgents.every(function(a) { return selectedAgentIds.includes(a.id); });
+                const toggleSelectAll = function() {
+                  const filteredIds = filteredAgents.map(function(a) { return a.id; });
+                  if (allFilteredSelected) {
+                   setSelectedAgentIds(selectedAgentIds.filter(function(id) { return filteredIds.indexOf(id) === -1; }));
+                  } else {
+                   setSelectedAgentIds(Array.from(new Set(selectedAgentIds.concat(filteredIds))));
+                  }
+                };
+                const toggleSelectOne = function(id) {
+                  setSelectedAgentIds(selectedAgentIds.includes(id) ? selectedAgentIds.filter(function(x) { return x !== id; }) : selectedAgentIds.concat([id]));
+                };
+
+                const startEdit = function(a) {
+                  setForm({ agentCode: a.agentCode, city: a.city, country: a.country||'', notes: a.notes||'' });
+                  setEditAgent(a);
+                  setTab('form');
+                };
+
+                const handleSave = async function() {
+                  if (!form.agentCode.trim() || !form.city.trim()) { alert('Agent code and city are required'); return; }
+                  setSaving(true);
+                  try {
+                   const url = editAgent ? API_ENDPOINTS.agents + '/' + editAgent.id : API_ENDPOINTS.agents;
+                   const method = editAgent ? 'PUT' : 'POST';
+                   const data = await apiCall(url, { method: method, body: JSON.stringify(form) });
+                   if (data.success) { await loadAgentsFromAPI(); setTab('list'); setForm(emptyForm); setEditAgent(null); }
+                   else alert('Error: ' + data.error);
+                  } catch(e) { alert('Failed: ' + e.message); }
+                  setSaving(false);
+                };
+
+                const handleDelete = async function(a) {
+                  if (!window.confirm('Remove agent ' + a.agentCode + '?')) return;
+                  try {
+                   await apiCall(API_ENDPOINTS.agents + '/' + a.id, { method: 'DELETE' });
+                   await loadAgentsFromAPI();
+                  } catch(e) { alert('Failed: ' + e.message); }
+                };
+
+                const openAssign = function(a) {
+                  setAssignAgent(a);
+                  setAssignedIds((a.assignedEmployees || []).map(function(e) { return e.id; }));
+                };
+
+                const saveAssign = async function() {
+                  try {
+                   await apiCall(API_ENDPOINTS.agents + '/' + assignAgent.id + '/assign', { method: 'POST', body: JSON.stringify({ employeeIds: assignedIds }) });
+                   await loadAgentsFromAPI();
+                   setAssignAgent(null);
+                   alert('Assignments saved');
+                  } catch(e) { alert('Failed: ' + e.message); }
+                };
+
+                // Bulk assign: adds the chosen employee(s) to EVERY selected agent, merging with
+                // whatever each agent already has (never removes existing assignments).
+                const saveBulkAssign = async function() {
+                  if (!bulkEmployeeIds.length) { alert('Select at least one employee to assign'); return; }
+                  setBulkSaving(true);
+                  try {
+                   const targets = countryScopedAgents.filter(function(a) { return selectedAgentIds.includes(a.id); });
+                   await Promise.all(targets.map(function(a) {
+                  const existingIds = (a.assignedEmployees || []).map(function(e) { return e.id; });
+                  const merged = Array.from(new Set(existingIds.concat(bulkEmployeeIds)));
+                  return apiCall(API_ENDPOINTS.agents + '/' + a.id + '/assign', { method: 'POST', body: JSON.stringify({ employeeIds: merged }) });
+                   }));
+                   await loadAgentsFromAPI();
+                   alert('Assigned to ' + targets.length + ' agent(s)');
+                   setBulkAssignOpen(false);
+                   setBulkEmployeeIds([]);
+                   setSelectedAgentIds([]);
+                  } catch(e) { alert('Failed: ' + e.message); }
+                  setBulkSaving(false);
+                };
+
+                const fc = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400';
+
+                return (
+                  <div ref={modalScrollRef} onScroll={handleModalScroll} className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
+                   <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl my-8">
+                  <div className="sticky top-0 z-10 bg-gradient-to-r from-orange-600 to-amber-600 rounded-t-2xl px-6 py-4 flex items-center justify-between">
+                   <div className="flex items-center gap-3"><Truck className="w-7 h-7 text-white" /><h2 className="text-xl font-bold text-white">Agent Management</h2></div>
+                   <button onClick={onClose} className="bg-orange-700 hover:bg-orange-900 text-white px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition"><X className="w-4 h-4" />Close</button>
+                  </div>
+
+                  {selectedAgentIds.length > 0 && !bulkAssignOpen && (
+                   <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-blue-800">{selectedAgentIds.length} agent{selectedAgentIds.length>1?'s':''} selected</span>
+                  <div className="flex gap-2">
+                   <button onClick={function(){ setBulkAssignOpen(true); setBulkEmployeeIds([]); }} className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-700">Assign Employee(s) to Selected</button>
+                   <button onClick={function(){ setSelectedAgentIds([]); }} className="bg-white border border-blue-300 text-blue-700 px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-50">Clear Selection</button>
+                  </div>
+                   </div>
+                  )}
+
+                  {bulkAssignOpen && (
+                   <div className="bg-blue-50 border-b border-blue-200 p-6">
+                  <h3 className="font-bold text-blue-800 mb-3">Assign Employee(s) to {selectedAgentIds.length} Selected Agent{selectedAgentIds.length>1?'s':''}</h3>
+                  <p className="text-xs text-blue-600 mb-3">This adds the chosen employee(s) to each selected agent — existing assignments on those agents are kept, not replaced.</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4 max-h-40 overflow-y-auto">
+                   {drivers.map(function(emp) {
+                  return (
+                   <label key={emp.id} className="flex items-center gap-2 text-sm bg-white border border-gray-200 rounded-lg px-3 py-2 cursor-pointer hover:bg-blue-50">
+                  <input type="checkbox" checked={bulkEmployeeIds.includes(emp.id)}
+                   onChange={function(e) { setBulkEmployeeIds(e.target.checked ? bulkEmployeeIds.concat([emp.id]) : bulkEmployeeIds.filter(function(i) { return i !== emp.id; })); }}
+                   className="w-4 h-4 text-blue-500" />
+                  <span>{emp.firstName} {emp.lastName}</span>
+                   </label>
+                  );
+                   })}
+                  </div>
+                  <div className="flex gap-3">
+                   <button onClick={saveBulkAssign} disabled={bulkSaving} className={'px-5 py-2 rounded-lg font-semibold text-sm ' + (bulkSaving ? 'bg-gray-300 text-gray-500' : 'bg-blue-600 text-white hover:bg-blue-700')}>{bulkSaving ? 'Assigning...' : 'Save to ' + selectedAgentIds.length + ' Agent(s)'}</button>
+                   <button onClick={function() { setBulkAssignOpen(false); }} className="bg-gray-200 text-gray-700 px-5 py-2 rounded-lg font-semibold text-sm hover:bg-gray-300">Cancel</button>
+                  </div>
+                   </div>
+                  )}
+
+                  {assignAgent && (
+                   <div className="bg-amber-50 border-b border-amber-200 p-6">
+                  <h3 className="font-bold text-amber-800 mb-3">Assign Employees to: <span className="text-orange-600">{assignAgent.agentCode} — {assignAgent.city}</span></h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4 max-h-40 overflow-y-auto">
+                   {drivers.map(function(emp) {
+                  return (
+                   <label key={emp.id} className="flex items-center gap-2 text-sm bg-white border border-gray-200 rounded-lg px-3 py-2 cursor-pointer hover:bg-amber-50">
+                  <input type="checkbox" checked={assignedIds.includes(emp.id)}
+                   onChange={function(e) { setAssignedIds(e.target.checked ? assignedIds.concat([emp.id]) : assignedIds.filter(function(i) { return i !== emp.id; })); }}
+                   className="w-4 h-4 text-orange-500" />
+                  <span>{emp.firstName} {emp.lastName}</span>
+                   </label>
+                  );
+                   })}
+                  </div>
+                  <div className="flex gap-3">
+                   <button onClick={saveAssign} className="bg-orange-600 text-white px-5 py-2 rounded-lg font-semibold text-sm hover:bg-orange-700">Save Assignments</button>
+                   <button onClick={function() { setAssignAgent(null); }} className="bg-gray-200 text-gray-700 px-5 py-2 rounded-lg font-semibold text-sm hover:bg-gray-300">Cancel</button>
+                  </div>
+                   </div>
+                  )}
+
+                  <div className="flex border-b border-gray-200 px-6 pt-4 gap-4">
+                   <button onClick={function() { setTab('list'); setForm(emptyForm); setEditAgent(null); }} className={'pb-3 text-sm font-semibold border-b-2 transition ' + (tab==='list'?'border-orange-500 text-orange-700':'border-transparent text-gray-500 hover:text-gray-700')}>
+                  Agents ({countryScopedAgents.length})
+                   </button>
+                   <button onClick={function() { setForm(emptyForm); setEditAgent(null); setTab('form'); }} className={'pb-3 text-sm font-semibold border-b-2 transition ' + (tab==='form'&&!editAgent?'border-orange-500 text-orange-700':'border-transparent text-gray-500 hover:text-gray-700')}>
+                  + Add Agent
+                   </button>
+                  </div>
+
+                  <div className="p-6">
+                   {tab === 'list' && (
+                  <div>
+                   <div className="flex items-center gap-3 mb-4">
+                  <div className="relative flex-1 max-w-sm">
+                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                   <input value={search} onChange={function(e) { setSearch(e.target.value); }} placeholder="Search by code or city..." className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none w-full" />
+                  </div>
+                   </div>
+                   {countryScopedAgents.length === 0 ? (
+                  <div className="text-center py-12 text-gray-400"><Truck className="w-12 h-12 mx-auto mb-3 opacity-30" /><p>{agents.length === 0 ? 'No agents added yet' : 'No agents in your country of operation'}</p></div>
+                   ) : (
+                  <table className="w-full text-sm">
+                   <thead className="bg-orange-50"><tr>
+                  <th className="px-4 py-3 text-left"><input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} className="w-4 h-4 text-blue-600" title="Select all"/></th>
+                  {['Agent Code','City','Country','Assigned Employees','Actions'].map(function(h) { return <th key={h} className="px-4 py-3 text-left text-xs font-bold text-orange-700 uppercase tracking-wide">{h}</th>; })}
+                   </tr></thead>
+                   <tbody className="divide-y divide-gray-100">
+                  {filteredAgents.map(function(a) {
+                   return (
+                  <tr key={a.id} className={'hover:bg-orange-50 transition ' + (selectedAgentIds.includes(a.id) ? 'bg-blue-50' : '')}>
+                   <td className="px-4 py-3"><input type="checkbox" checked={selectedAgentIds.includes(a.id)} onChange={function(){ toggleSelectOne(a.id); }} className="w-4 h-4 text-blue-600" /></td>
+                   <td className="px-4 py-3 font-bold text-orange-700">{a.agentCode}</td>
+                   <td className="px-4 py-3 text-gray-800">{a.city}</td>
+                   <td className="px-4 py-3 text-gray-500">{a.country||'—'}</td>
+                   <td className="px-4 py-3">
+                  <div className="flex flex-wrap gap-1">
+                   {(a.assignedEmployees||[]).length === 0 ? (
+                  <span className="text-gray-400 text-xs">None</span>
+                   ) : (
+                  (a.assignedEmployees||[]).map(function(emp) {
+                   return <span key={emp.id} className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-semibold">{emp.name}</span>;
+                  })
+                   )}
+                  </div>
+                   </td>
+                   <td className="px-4 py-3">
+                  <div className="flex gap-2">
+                   <button onClick={function() { openAssign(a); }} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold hover:bg-blue-200">Assign</button>
+                   <button onClick={function() { startEdit(a); }} className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-semibold hover:bg-orange-200">Edit</button>
+                   <button onClick={function() { handleDelete(a); }} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold hover:bg-red-200">Delete</button>
+                  </div>
+                   </td>
+                  </tr>
+                   );
+                  })}
+                   </tbody>
+                  </table>
+                   )}
+                  </div>
+                   )}
+                   {tab === 'form' && (
+                  <div>
+                   <h3 className="font-bold text-gray-800 mb-4 text-lg">{editAgent ? 'Edit Agent — ' + editAgent.agentCode : 'Register New Agent'}</h3>
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Agent Code *</label><input value={form.agentCode} onChange={function(e) { setForm(Object.assign({}, form, {agentCode: e.target.value.toUpperCase()})); }} className={fc} placeholder="e.g. PA, BH, KM" /></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">City *</label><input value={form.city} onChange={function(e) { setForm(Object.assign({}, form, {city: e.target.value})); }} className={fc} placeholder="e.g. Birmingham" /></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Country</label><input value={form.country} onChange={function(e) { setForm(Object.assign({}, form, {country: e.target.value})); }} className={fc} placeholder="e.g. United Kingdom" /></div>
+                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label><input value={form.notes} onChange={function(e) { setForm(Object.assign({}, form, {notes: e.target.value})); }} className={fc} /></div>
+                   </div>
+                   <div className="flex gap-3 mt-5">
+                  <button onClick={handleSave} disabled={saving} className={'px-6 py-2.5 rounded-lg font-semibold text-sm transition ' + (saving ? 'bg-gray-300 text-gray-500' : 'bg-orange-600 text-white hover:bg-orange-700')}>{saving ? 'Saving...' : (editAgent ? 'Update Agent' : 'Register Agent')}</button>
+                  <button onClick={function() { setTab('list'); setForm(emptyForm); setEditAgent(null); }} className="px-6 py-2.5 bg-gray-200 text-gray-700 rounded-lg font-semibold text-sm hover:bg-gray-300">Cancel</button>
+                   </div>
+                  </div>
+                   )}
+                  </div>
+                   </div>
+                  </div>
+                );
+            };
+
         export default function EmployeeTimesheetApp() {
             const [currentView, setCurrentView] = useState('login');
             const [currentUser, setCurrentUser] = useState(null);
@@ -7472,187 +7729,6 @@ import React, { useState, useEffect } from 'react';
                 );
             };
 
-            const AgentManager = ({ onClose, visibleEmployees: visEmp }) => {
-                const drivers = (visEmp || employees).filter(function(e) { return !e.isAdmin; });
-                // Internal modal scroll preservation (see AgentReport for full explanation).
-                const modalScrollRef = React.useRef(null);
-                const modalScrollY = React.useRef(0);
-                const handleModalScroll = (e) => { modalScrollY.current = e.target.scrollTop; };
-                React.useLayoutEffect(() => {
-                  const el = modalScrollRef.current;
-                  if (el && Math.abs(el.scrollTop - modalScrollY.current) > 2) {
-                   el.scrollTop = modalScrollY.current;
-                  }
-                });
-                const [tab, setTab] = useState('list');
-                const [editAgent, setEditAgent] = useState(null);
-                const [saving, setSaving] = useState(false);
-                const emptyForm = { agentCode: '', city: '', country: '', notes: '' };
-                const [form, setForm] = useState(emptyForm);
-                const [assignAgent, setAssignAgent] = useState(null);
-                const [assignedIds, setAssignedIds] = useState([]);
-                const [search, setSearch] = useState('');
-
-                const countryScopedAgents = agents.filter(function(a) {
-                  return isAgentVisible(a.country, currentUser);
-                });
-
-                const filteredAgents = countryScopedAgents.filter(function(a) {
-                  if (!search.trim()) return true;
-                  const q = search.toLowerCase();
-                  return a.agentCode.toLowerCase().includes(q) || a.city.toLowerCase().includes(q);
-                });
-
-                const startEdit = function(a) {
-                  setForm({ agentCode: a.agentCode, city: a.city, country: a.country||'', notes: a.notes||'' });
-                  setEditAgent(a);
-                  setTab('form');
-                };
-
-                const handleSave = async function() {
-                  if (!form.agentCode.trim() || !form.city.trim()) { alert('Agent code and city are required'); return; }
-                  setSaving(true);
-                  try {
-                   const url = editAgent ? API_ENDPOINTS.agents + '/' + editAgent.id : API_ENDPOINTS.agents;
-                   const method = editAgent ? 'PUT' : 'POST';
-                   const data = await apiCall(url, { method: method, body: JSON.stringify(form) });
-                   if (data.success) { await loadAgentsFromAPI(); setTab('list'); setForm(emptyForm); setEditAgent(null); }
-                   else alert('Error: ' + data.error);
-                  } catch(e) { alert('Failed: ' + e.message); }
-                  setSaving(false);
-                };
-
-                const handleDelete = async function(a) {
-                  if (!window.confirm('Remove agent ' + a.agentCode + '?')) return;
-                  try {
-                   await apiCall(API_ENDPOINTS.agents + '/' + a.id, { method: 'DELETE' });
-                   await loadAgentsFromAPI();
-                  } catch(e) { alert('Failed: ' + e.message); }
-                };
-
-                const openAssign = function(a) {
-                  setAssignAgent(a);
-                  setAssignedIds((a.assignedEmployees || []).map(function(e) { return e.id; }));
-                };
-
-                const saveAssign = async function() {
-                  try {
-                   await apiCall(API_ENDPOINTS.agents + '/' + assignAgent.id + '/assign', { method: 'POST', body: JSON.stringify({ employeeIds: assignedIds }) });
-                   await loadAgentsFromAPI();
-                   setAssignAgent(null);
-                   alert('Assignments saved');
-                  } catch(e) { alert('Failed: ' + e.message); }
-                };
-
-                const fc = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400';
-
-                return (
-                  <div ref={modalScrollRef} onScroll={handleModalScroll} className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
-                   <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl my-8">
-                  <div className="sticky top-0 z-10 bg-gradient-to-r from-orange-600 to-amber-600 rounded-t-2xl px-6 py-4 flex items-center justify-between">
-                   <div className="flex items-center gap-3"><Truck className="w-7 h-7 text-white" /><h2 className="text-xl font-bold text-white">Agent Management</h2></div>
-                   <button onClick={onClose} className="bg-orange-700 hover:bg-orange-900 text-white px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition"><X className="w-4 h-4" />Close</button>
-                  </div>
-
-                  {assignAgent && (
-                   <div className="bg-amber-50 border-b border-amber-200 p-6">
-                  <h3 className="font-bold text-amber-800 mb-3">Assign Employees to: <span className="text-orange-600">{assignAgent.agentCode} — {assignAgent.city}</span></h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4 max-h-40 overflow-y-auto">
-                   {drivers.map(function(emp) {
-                  return (
-                   <label key={emp.id} className="flex items-center gap-2 text-sm bg-white border border-gray-200 rounded-lg px-3 py-2 cursor-pointer hover:bg-amber-50">
-                  <input type="checkbox" checked={assignedIds.includes(emp.id)}
-                   onChange={function(e) { setAssignedIds(e.target.checked ? [...assignedIds, emp.id] : assignedIds.filter(function(i) { return i !== emp.id; })); }}
-                   className="w-4 h-4 text-orange-500" />
-                  <span>{emp.firstName} {emp.lastName}</span>
-                   </label>
-                  );
-                   })}
-                  </div>
-                  <div className="flex gap-3">
-                   <button onClick={saveAssign} className="bg-orange-600 text-white px-5 py-2 rounded-lg font-semibold text-sm hover:bg-orange-700">Save Assignments</button>
-                   <button onClick={function() { setAssignAgent(null); }} className="bg-gray-200 text-gray-700 px-5 py-2 rounded-lg font-semibold text-sm hover:bg-gray-300">Cancel</button>
-                  </div>
-                   </div>
-                  )}
-
-                  <div className="flex border-b border-gray-200 px-6 pt-4 gap-4">
-                   <button onClick={function() { setTab('list'); setForm(emptyForm); setEditAgent(null); }} className={'pb-3 text-sm font-semibold border-b-2 transition ' + (tab==='list'?'border-orange-500 text-orange-700':'border-transparent text-gray-500 hover:text-gray-700')}>
-                  Agents ({countryScopedAgents.length})
-                   </button>
-                   <button onClick={function() { setForm(emptyForm); setEditAgent(null); setTab('form'); }} className={'pb-3 text-sm font-semibold border-b-2 transition ' + (tab==='form'&&!editAgent?'border-orange-500 text-orange-700':'border-transparent text-gray-500 hover:text-gray-700')}>
-                  + Add Agent
-                   </button>
-                  </div>
-
-                  <div className="p-6">
-                   {tab === 'list' && (
-                  <div>
-                   <div className="flex items-center gap-3 mb-4">
-                  <div className="relative flex-1 max-w-sm">
-                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                   <input value={search} onChange={function(e) { setSearch(e.target.value); }} placeholder="Search by code or city..." className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none w-full" />
-                  </div>
-                   </div>
-                   {countryScopedAgents.length === 0 ? (
-                  <div className="text-center py-12 text-gray-400"><Truck className="w-12 h-12 mx-auto mb-3 opacity-30" /><p>{agents.length === 0 ? 'No agents added yet' : 'No agents in your country of operation'}</p></div>
-                   ) : (
-                  <table className="w-full text-sm">
-                   <thead className="bg-orange-50"><tr>{['Agent Code','City','Country','Assigned Employees','Actions'].map(function(h) { return <th key={h} className="px-4 py-3 text-left text-xs font-bold text-orange-700 uppercase tracking-wide">{h}</th>; })}</tr></thead>
-                   <tbody className="divide-y divide-gray-100">
-                  {filteredAgents.map(function(a) {
-                   return (
-                  <tr key={a.id} className="hover:bg-orange-50 transition">
-                   <td className="px-4 py-3 font-bold text-orange-700">{a.agentCode}</td>
-                   <td className="px-4 py-3 text-gray-800">{a.city}</td>
-                   <td className="px-4 py-3 text-gray-500">{a.country||'—'}</td>
-                   <td className="px-4 py-3">
-                  <div className="flex flex-wrap gap-1">
-                   {(a.assignedEmployees||[]).length === 0 ? (
-                  <span className="text-gray-400 text-xs">None</span>
-                   ) : (
-                  (a.assignedEmployees||[]).map(function(emp) {
-                   return <span key={emp.id} className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-semibold">{emp.name}</span>;
-                  })
-                   )}
-                  </div>
-                   </td>
-                   <td className="px-4 py-3">
-                  <div className="flex gap-2">
-                   <button onClick={function() { openAssign(a); }} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold hover:bg-blue-200">Assign</button>
-                   <button onClick={function() { startEdit(a); }} className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-semibold hover:bg-orange-200">Edit</button>
-                   <button onClick={function() { handleDelete(a); }} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold hover:bg-red-200">Delete</button>
-                  </div>
-                   </td>
-                  </tr>
-                   );
-                  })}
-                   </tbody>
-                  </table>
-                   )}
-                  </div>
-                   )}
-                   {tab === 'form' && (
-                  <div>
-                   <h3 className="font-bold text-gray-800 mb-4 text-lg">{editAgent ? 'Edit Agent — ' + editAgent.agentCode : 'Register New Agent'}</h3>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Agent Code *</label><input value={form.agentCode} onChange={function(e) { setForm(Object.assign({}, form, {agentCode: e.target.value.toUpperCase()})); }} className={fc} placeholder="e.g. PA, BH, KM" /></div>
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">City *</label><input value={form.city} onChange={function(e) { setForm(Object.assign({}, form, {city: e.target.value})); }} className={fc} placeholder="e.g. Birmingham" /></div>
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Country</label><input value={form.country} onChange={function(e) { setForm(Object.assign({}, form, {country: e.target.value})); }} className={fc} placeholder="e.g. United Kingdom" /></div>
-                  <div><label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label><input value={form.notes} onChange={function(e) { setForm(Object.assign({}, form, {notes: e.target.value})); }} className={fc} /></div>
-                   </div>
-                   <div className="flex gap-3 mt-5">
-                  <button onClick={handleSave} disabled={saving} className={'px-6 py-2.5 rounded-lg font-semibold text-sm transition ' + (saving ? 'bg-gray-300 text-gray-500' : 'bg-orange-600 text-white hover:bg-orange-700')}>{saving ? 'Saving...' : (editAgent ? 'Update Agent' : 'Register Agent')}</button>
-                  <button onClick={function() { setTab('list'); setForm(emptyForm); setEditAgent(null); }} className="px-6 py-2.5 bg-gray-200 text-gray-700 rounded-lg font-semibold text-sm hover:bg-gray-300">Cancel</button>
-                   </div>
-                  </div>
-                   )}
-                  </div>
-                   </div>
-                  </div>
-                );
-            };
-
             const AgentCollectionForm = ({ onClose }) => {
                 const today = new Date().toISOString().split('T')[0];
                 // Dropdowns/date as controlled (selection events only); text/number as uncontrolled refs
@@ -11042,7 +11118,7 @@ import React, { useState, useEffect } from 'react';
                    )}
 
                    {showAgentManager && (
-                  <AgentManager onClose={() => setShowAgentManager(false)} visibleEmployees={visibleEmployees} />
+                  <AgentManager onClose={() => setShowAgentManager(false)} visibleEmployees={visibleEmployees} employees={employees} currentUser={currentUser} apiCall={apiCall} API_ENDPOINTS={API_ENDPOINTS} agents={agents} loadAgentsFromAPI={loadAgentsFromAPI} isAgentVisible={isAgentVisible} />
                    )}
 
                    {showIraqPay && (
