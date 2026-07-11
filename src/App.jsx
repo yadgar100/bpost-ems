@@ -852,16 +852,22 @@ import React, { useState, useEffect } from 'react';
                 });
                 const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
                 const emptyForm = { agentCode: '', city: '', country: '', notes: '' };
+                // Form and search stay LOCAL (not persisted to root state): they change on every
+                // keystroke, and persisting them would trigger a root re-render per character,
+                // which remounts this modal every keystroke (AdminDashboard is defined inline and
+                // recreated on any root re-render) — that's what broke typing. A background
+                // refresh interrupting a half-typed Add Agent form is rare and low-stakes, so it's
+                // the right tradeoff versus losing focus on every character.
+                const [form, setForm] = useState(emptyForm);
                 // All in-progress state below is lifted to the parent (persistedState) so it
                 // survives this modal being torn down and recreated by a background data refresh —
                 // the same protection already used by the report modals.
                 const tab = persistedState ? persistedState.tab : 'list'; const setTab = mk('tab');
                 const editAgent = persistedState ? persistedState.editAgent : null; const setEditAgent = mk('editAgent');
-                const [saving, setSaving] = useState(false);
-                const form = persistedState ? persistedState.form : emptyForm; const setForm = mk('form');
                 const assignAgent = persistedState ? persistedState.assignAgent : null; const setAssignAgent = mk('assignAgent');
                 const assignedIds = persistedState ? persistedState.assignedIds : []; const setAssignedIds = mk('assignedIds');
-                const search = persistedState ? persistedState.search : ''; const setSearch = mk('search');
+                const [saving, setSaving] = useState(false);
+                const [search, setSearch] = useState('');
                 // Bulk multi-agent selection: pick several agent rows, then assign employee(s) to all at once.
                 const selectedAgentIds = persistedState ? persistedState.selectedAgentIds : []; const setSelectedAgentIds = mk('selectedAgentIds');
                 const bulkAssignOpen = persistedState ? persistedState.bulkAssignOpen : false; const setBulkAssignOpen = mk('bulkAssignOpen');
@@ -1366,7 +1372,7 @@ import React, { useState, useEffect } from 'react';
             // Lives at the root (never remounts) so in-progress work in the Agent Management
             // modal — bulk selections, an assign-in-progress, the edit form — survives even if
             // the modal itself gets torn down and recreated by a background refresh.
-            const [agentManagerState, setAgentManagerState] = useState({ tab:'list', editAgent:null, form:{agentCode:'',city:'',country:'',notes:''}, assignAgent:null, assignedIds:[], search:'', selectedAgentIds:[], bulkAssignOpen:false, bulkEmployeeIds:[] });
+            const [agentManagerState, setAgentManagerState] = useState({ tab:'list', editAgent:null, assignAgent:null, assignedIds:[], selectedAgentIds:[], bulkAssignOpen:false, bulkEmployeeIds:[] });
             const [showAgentCollectionForm, setShowAgentCollectionForm] = useState(false);
             const [showAccountCredit, setShowAccountCredit] = useState(false);
 
