@@ -634,8 +634,10 @@ import React, { useState, useEffect } from 'react';
                   <select value={empFilter} onChange={function(e) { setEmpFilter(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
                    <option value="">All Employees</option>
                    {visEmp.filter(function(e) {
+                   // Show every employee matching branch/country, not just those who already
+                   // have a collection on record — otherwise a newly added employee is invisible
+                   // in this filter until their first collection is logged.
                    return !e.isAdmin
-                   && agentCollections.some(function(c) { return c.employeeId === e.id; })
                    && (!branchFilter || (e.branches||[]).includes(branchFilter))
                    && (!countryFilter || e.country === countryFilter);
                    }).map(function(e) { return <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>; })}
@@ -645,12 +647,22 @@ import React, { useState, useEffect } from 'react';
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Agent</label>
                   <select value={agentFilter} onChange={function(e) { setAgentFilter(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
                    <option value="">All Agents</option>
-                   {Array.from(new Set(agentCollections
-                  .filter(function(c){ return (!empFilter || c.employeeId === parseInt(empFilter)); })
-                  .map(function(c){ return c.agentCode; })
-                  .filter(Boolean)))
-                  .sort()
-                  .map(function(code) { return <option key={code} value={code}>{code}</option>; })}
+                   {(function() {
+                  // Union of two sources: agents the employee has actually logged collections
+                  // for (history), and agents they're currently ASSIGNED to (from Agent
+                  // Management) — otherwise a freshly assigned agent with zero collections
+                  // yet is invisible here until their first collection is recorded.
+                  const fromHistory = agentCollections
+                   .filter(function(c){ return (!empFilter || c.employeeId === parseInt(empFilter)); })
+                   .map(function(c){ return c.agentCode; })
+                   .filter(Boolean);
+                  const fromAssignment = empFilter
+                   ? agents.filter(function(a){ return (a.assignedEmployees||[]).some(function(emp){ return emp.id === parseInt(empFilter); }); }).map(function(a){ return a.agentCode; })
+                   : [];
+                  return Array.from(new Set(fromHistory.concat(fromAssignment)))
+                   .sort()
+                   .map(function(code) { return <option key={code} value={code}>{code}</option>; });
+                   })()}
                   </select>
                    </div>
                    <button onClick={generateReport} className="bg-orange-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-orange-700 text-sm">Generate Report</button>
@@ -873,6 +885,7 @@ import React, { useState, useEffect } from 'react';
                 const bulkAssignOpen = persistedState ? persistedState.bulkAssignOpen : false; const setBulkAssignOpen = mk('bulkAssignOpen');
                 const bulkEmployeeIds = persistedState ? persistedState.bulkEmployeeIds : []; const setBulkEmployeeIds = mk('bulkEmployeeIds');
                 const [bulkSaving, setBulkSaving] = useState(false);
+                const [bulkResultMsg, setBulkResultMsg] = useState(null);
 
                 const countryScopedAgents = agents.filter(function(a) {
                   return isAgentVisible(a.country, currentUser);
@@ -934,8 +947,9 @@ import React, { useState, useEffect } from 'react';
                    await apiCall(API_ENDPOINTS.agents + '/' + assignAgent.id + '/assign', { method: 'POST', body: JSON.stringify({ employeeIds: assignedIds }) });
                    await loadAgentsFromAPI();
                    setAssignAgent(null);
-                   alert('Assignments saved');
-                  } catch(e) { alert('Failed: ' + e.message); }
+                   setBulkResultMsg('Assignments saved for ' + assignAgent.agentCode + '.');
+                   setTimeout(function(){ setBulkResultMsg(null); }, 5000);
+                  } catch(e) { setBulkResultMsg('Failed: ' + e.message); }
                 };
 
                 // Bulk assign: adds the chosen employee(s) to EVERY selected agent, merging with
@@ -961,15 +975,18 @@ import React, { useState, useEffect } from 'react';
                   } catch(e) { failures.push(a.agentCode); }
                    }
                    await loadAgentsFromAPI();
-                   if (failures.length) {
-                  alert('Assigned to ' + successCount + ' agent(s). Failed for: ' + failures.join(', '));
-                   } else {
-                  alert('Assigned to ' + successCount + ' agent(s)');
-                   }
+                   // A native alert() blocks the browser from painting until dismissed — the
+                   // agent list was already refreshed above, but it looked like it hadn't
+                   // updated until the dialog was closed (and often prompted an unnecessary
+                   // page reload). An inline message lets the refreshed list show immediately.
+                   setBulkResultMsg(failures.length
+                  ? 'Assigned to ' + successCount + ' agent(s). Failed for: ' + failures.join(', ')
+                  : 'Assigned to ' + successCount + ' agent(s).');
+                   setTimeout(function(){ setBulkResultMsg(null); }, 5000);
                    setBulkAssignOpen(false);
                    setBulkEmployeeIds([]);
                    setSelectedAgentIds([]);
-                  } catch(e) { alert('Failed: ' + e.message); }
+                  } catch(e) { setBulkResultMsg('Failed: ' + e.message); }
                   setBulkSaving(false);
                 };
 
@@ -982,6 +999,12 @@ import React, { useState, useEffect } from 'react';
                    <div className="flex items-center gap-3"><Truck className="w-7 h-7 text-white" /><h2 className="text-xl font-bold text-white">Agent Management</h2></div>
                    <button onClick={onClose} className="bg-orange-700 hover:bg-orange-900 text-white px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition"><X className="w-4 h-4" />Close</button>
                   </div>
+
+                  {bulkResultMsg && (
+                   <div className={'px-6 py-2 text-sm font-semibold border-b ' + (bulkResultMsg.indexOf('Failed') !== -1 ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-200')}>
+                  {bulkResultMsg}
+                   </div>
+                  )}
 
                   {selectedAgentIds.length > 0 && !bulkAssignOpen && (
                    <div className="bg-blue-50 border-b border-blue-200 px-6 py-3 flex items-center justify-between">
