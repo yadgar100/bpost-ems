@@ -5932,6 +5932,55 @@ import React, { useState, useEffect } from 'react';
                 const selectedCountry = persistedState ? persistedState.selectedCountry : 'all'; const setSelectedCountry = mk('selectedCountry');
                 const generatedReport = persistedState ? persistedState.generatedReport : null; const setGeneratedReport = mk('generatedReport');
 
+                // Admin manually clocks out a shift that's stuck 'checkedin' (employee couldn't
+                // check out themselves). Computes hours the same way the normal checkout flow
+                // does, saves it as approved in one step, and patches the report snapshot.
+                const [fixingTsId, setFixingTsId] = useState(null);
+                const [fixFinishTime, setFixFinishTime] = useState('');
+                const fixAndApproveShift = async (ts) => {
+                  if (!fixFinishTime) { alert('Enter a finish time first'); return; }
+                  let regular = 0, overtime = 0;
+                  if (ts.startTime) {
+                   const start = new Date('2000-01-01T' + ts.startTime);
+                   const finish = new Date('2000-01-01T' + fixFinishTime);
+                   let totalH = (finish - start) / 3600000;
+                   if (totalH < 0) totalH += 24;
+                   const autoBreak = getAutoBreakMinutes(totalH);
+                   const calc = calculateHours(ts.startTime, fixFinishTime, ts.employeeId, autoBreak);
+                   regular = calc.regular; overtime = calc.overtime;
+                  }
+                  try {
+                   await apiCall(API_ENDPOINTS.timesheets + '/' + ts.id, {
+                  method: 'PUT',
+                  body: JSON.stringify({ finishTime: fixFinishTime, regularHours: regular, overtimeHours: overtime, status: 'approved' })
+                   });
+                   await loadTimesheetsFromAPI();
+                   setGeneratedReport(function(prev) {
+                  if (!prev || !prev.data) return prev;
+                  return Object.assign({}, prev, {
+                   data: prev.data.map(function(r) {
+                  const updatedTs = (r.timesheets || []).map(function(t) {
+                   return t.id === ts.id ? Object.assign({}, t, { finishTime: fixFinishTime, regularHours: regular, overtimeHours: overtime, status: 'approved' }) : t;
+                  });
+                  const newTotalHours = updatedTs.reduce(function(s,t){ return s + (t.regularHours||0) + (t.overtimeHours||0); }, 0);
+                  const newTotalPay = updatedTs.reduce(function(s,t){ return s + ((t.regularHours||0)*(r.employee.hourlyRate||0)) + ((t.overtimeHours||0)*(r.employee.hourlyRate||0)*(r.employee.overtimeRate!=null?r.employee.overtimeRate:1.5)); }, 0);
+                  return Object.assign({}, r, {
+                   timesheets: updatedTs,
+                   totalHours: newTotalHours,
+                   totalPay: newTotalPay,
+                   approvedShifts: updatedTs.filter(function(t){ return t.status === 'approved'; }).length,
+                   pendingShifts: updatedTs.filter(function(t){ return t.status === 'pending' || t.status === 'checkedout'; }).length,
+                   rejectedShifts: updatedTs.filter(function(t){ return t.status === 'rejected'; }).length,
+                   checkedInShifts: updatedTs.filter(function(t){ return t.status === 'checkedin'; }).length
+                  });
+                   })
+                  });
+                   });
+                   setFixingTsId(null);
+                   setFixFinishTime('');
+                  } catch(e) { alert('Failed to save: ' + e.message); }
+                };
+
                 // Approve/reject directly from the payroll report. The report is a snapshot taken
                 // when "Generate Report" was clicked, so after updating the timesheet we patch the
                 // snapshot's status in place — otherwise the badge would stay "pending" until the
@@ -6357,6 +6406,21 @@ import React, { useState, useEffect } from 'react';
                   <button onClick={() => approveFromReport(ts.id, 'rejected')} title="Reject"
                    className="text-red-600 hover:text-red-800"><XCircle className="w-4 h-4" /></button>
                    </div>
+                  ) : ts.status === 'checkedin' ? (
+                   fixingTsId === ts.id ? (
+                  <div className="flex items-center gap-1">
+                   <input type="time" value={fixFinishTime} onChange={function(e){ setFixFinishTime(e.target.value); }}
+                  className="border border-gray-300 rounded px-1.5 py-0.5 text-xs w-24" autoFocus />
+                   <button onClick={() => fixAndApproveShift(ts)} title="Save finish time & approve"
+                  className="text-green-600 hover:text-green-800"><CheckCircle className="w-4 h-4" /></button>
+                   <button onClick={function(){ setFixingTsId(null); setFixFinishTime(''); }} title="Cancel"
+                  className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+                  </div>
+                   ) : (
+                  <button onClick={function(){ setFixingTsId(ts.id); setFixFinishTime(''); }}
+                   title="Employee never clocked out — set a finish time and approve"
+                   className="text-amber-600 hover:text-amber-800 text-xs font-semibold underline">Fix clock-out</button>
+                   )
                   ) : <span className="text-gray-300 text-xs">—</span>}
                    </td>
                   )}
