@@ -10823,13 +10823,35 @@ import React, { useState, useEffect } from 'react';
                    </span>
                   )}
                    </td>
-                   <td className="px-4 py-3">
+                   <td className="px-4 py-3 text-sm">
                   {ts.manualEntry ? (
                    <span className="text-purple-600 text-sm flex items-center gap-1"><ClipboardList className="w-4 h-4" />Manual</span>
-                  ) : ts.checkInLocation && ts.checkOutLocation ? (
-                   <span className="text-green-600 text-sm flex items-center gap-1"><CheckCircle className="w-4 h-4" />✓</span>
-                  ) : (
+                  ) : (!ts.checkInLocation && !ts.checkOutLocation) ? (
                    <span className="text-gray-400 text-sm">-</span>
+                  ) : (
+                   <div className="space-y-1 min-w-[140px]">
+                  {[['In', ts.checkInLocation], ['Out', ts.checkOutLocation]].map(function(pair) {
+                   const label = pair[0], raw = pair[1];
+                   if (!raw) return <div key={label} className="text-xs text-gray-300">{label}: —</div>;
+                   // Stored as "LocationName (lat, lng)" — parse out coords for a Maps link,
+                   // fall back to showing the raw string if it doesn't match that shape.
+                   const m = /^(.*)\s\(([-\d.]+),\s*([-\d.]+)\)$/.exec(raw);
+                   const name = m ? m[1] : raw;
+                   const mapsUrl = m ? 'https://www.google.com/maps?q=' + m[2] + ',' + m[3] : null;
+                   return (
+                  <div key={label} className="flex items-center gap-1 text-xs">
+                   <span className="text-gray-400 font-semibold w-6 flex-shrink-0">{label}:</span>
+                   {mapsUrl ? (
+                  <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-0.5 truncate" title={raw}>
+                   <MapPin className="w-3 h-3 flex-shrink-0" />{name}
+                  </a>
+                   ) : (
+                  <span className="text-gray-600 truncate" title={raw}>{name}</span>
+                   )}
+                  </div>
+                   );
+                  })}
+                   </div>
                   )}
                    </td>
                    <td className="px-4 py-3">
