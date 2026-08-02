@@ -2137,6 +2137,11 @@ import React, { useState, useEffect } from 'react';
                   finishTime: extractTime(ts.FinishTime || ts.finishTime || ts.CheckOutTime || ts.checkOutTime || ''),
                   regularHours: parseFloat(ts.RegularHours || ts.regularHours || 0),
                   overtimeHours: parseFloat(ts.OvertimeHours || ts.overtimeHours || 0),
+                  // Rate stamped onto this shift when its hours were actually computed (checkout).
+                  // null for shifts that predate this feature — callers fall back to the
+                  // employee's current rate for those, exactly as before.
+                  hourlyRate: (ts.HourlyRate != null ? ts.HourlyRate : (ts.hourlyRate != null ? ts.hourlyRate : null)),
+                  overtimeRate: (ts.OvertimeRate != null ? ts.OvertimeRate : (ts.overtimeRate != null ? ts.overtimeRate : null)),
                   status: (ts.Status || ts.status || 'pending').toLowerCase(),
                   notes: ts.Notes || ts.notes || '',
                   locationId: ts.LocationId || ts.locationId || null,
@@ -2754,22 +2759,33 @@ import React, { useState, useEffect } from 'react';
                 const totalOvertime = employeeTimesheets.reduce((sum, ts) => sum + ts.overtimeHours, 0);
                 const empOvertimeRate = employee.overtimeRate || payrollSettings.overtimeMultiplier;
 
-                let effectiveRegularHours = totalRegular;
+                // Pay is computed PER SHIFT using the rate that was stamped on that shift at the
+                // time it was worked (ts.hourlyRate/ts.overtimeRate) — so changing an employee's
+                // rate today only affects shifts from today onward, never past ones. Older shifts
+                // that predate this feature have no stamped rate and fall back to the employee's
+                // current rate (the best available approximation for pre-existing data).
                 let minimumHoursBonus = 0;
-                if (employee.minimumHours) {
-                  const minH = parseFloat(employee.minimumHours);
-                  employeeTimesheets.forEach(ts => {
-                   const dayTotal = (ts.regularHours || 0) + (ts.overtimeHours || 0);
+                let basePay = 0;
+                employeeTimesheets.forEach(ts => {
+                  const reg = ts.regularHours || 0;
+                  const ot = ts.overtimeHours || 0;
+                  const shiftRate = (ts.hourlyRate != null && ts.hourlyRate !== '') ? parseFloat(ts.hourlyRate) : (employee.hourlyRate || 0);
+                  const shiftOtMult = (ts.overtimeRate != null && ts.overtimeRate !== '') ? parseFloat(ts.overtimeRate) : empOvertimeRate;
+                  let shiftRegular = reg;
+                  if (employee.minimumHours) {
+                   const minH = parseFloat(employee.minimumHours);
+                   const dayTotal = reg + ot;
                    if (dayTotal > 0 && dayTotal < minH) {
-                  minimumHoursBonus += (minH - dayTotal);
+                  const bonus = minH - dayTotal;
+                  minimumHoursBonus += bonus;
+                  shiftRegular += bonus;
                    }
-                  });
-                  effectiveRegularHours = totalRegular + minimumHoursBonus;
-                }
-
-                const regularPay = effectiveRegularHours * (employee.hourlyRate || 0);
-                const overtimePay = totalOvertime * (employee.hourlyRate || 0) * empOvertimeRate;
-                const basePay = regularPay + overtimePay;
+                  }
+                  basePay += (shiftRegular * shiftRate) + (ot * shiftRate * shiftOtMult);
+                });
+                const effectiveRegularHours = totalRegular + minimumHoursBonus;
+                const regularPay = effectiveRegularHours * (employee.hourlyRate || 0); // display-only aggregate at current rate
+                const overtimePay = totalOvertime * (employee.hourlyRate || 0) * empOvertimeRate; // display-only aggregate at current rate
 
                 const totalBreakMinutes = employeeTimesheets.reduce((sum, ts) => {
                   return sum + (ts.breakMinutes || 0);
@@ -3341,7 +3357,13 @@ import React, { useState, useEffect } from 'react';
                   ? myPayRecord.overtimeRate
                   : (currentUser.overtimeRate != null && currentUser.overtimeRate !== '' ? currentUser.overtimeRate : null);
                 const myOtMult = myOtRaw != null ? parseFloat(myOtRaw) : (payrollSettings.overtimeMultiplier || 1.5);
-                const unpaidHoursValue = (unpaidRegularHours * myRate) + (unpaidOvertimeHours * myRate * myOtMult);
+                // Per-shift rate: use whatever rate was stamped on the shift when it was worked,
+                // so a rate change today doesn't retroactively re-price past unpaid shifts.
+                const unpaidHoursValue = unpaidApproved.reduce(function(sum, ts) {
+                  const shiftRate = (ts.hourlyRate != null && ts.hourlyRate !== '') ? parseFloat(ts.hourlyRate) : myRate;
+                  const shiftOtMult = (ts.overtimeRate != null && ts.overtimeRate !== '') ? parseFloat(ts.overtimeRate) : myOtMult;
+                  return sum + ((ts.regularHours || 0) * shiftRate) + ((ts.overtimeHours || 0) * shiftRate * shiftOtMult);
+                }, 0);
                 const currentLocationData = newTimesheet.locationId
                   ? workLocations.find(loc => loc.id === newTimesheet.locationId)
                   : null;
@@ -3819,7 +3841,11 @@ import React, { useState, useEffect } from 'react';
                   const allSettle = financialAdjustments.filter(a => a.employeeId === myId && a.type === 'acct_settle');
                   const allCredit = financialAdjustments.filter(a => a.employeeId === myId && a.type === 'account_credit');
 
-                  const earnOf = (t) => ((parseFloat(t.regularHours)||0)*rate) + ((parseFloat(t.overtimeHours)||0)*rate*otMult);
+                  const earnOf = (t) => {
+                   const shiftRate = (t.hourlyRate != null && t.hourlyRate !== '') ? parseFloat(t.hourlyRate) : rate;
+                   const shiftOtMult = (t.overtimeRate != null && t.overtimeRate !== '') ? parseFloat(t.overtimeRate) : otMult;
+                   return ((parseFloat(t.regularHours)||0)*shiftRate) + ((parseFloat(t.overtimeHours)||0)*shiftRate*shiftOtMult);
+                  };
 
                   // Authoritative ledger — mirrors the admin Employee Accounting calculation exactly.
                   // Running balance = every collection/earning/expense/settlement/credit to date, netted.
@@ -5963,7 +5989,11 @@ import React, { useState, useEffect } from 'react';
                    return t.id === ts.id ? Object.assign({}, t, { finishTime: fixFinishTime, regularHours: regular, overtimeHours: overtime, status: 'approved' }) : t;
                   });
                   const newTotalHours = updatedTs.reduce(function(s,t){ return s + (t.regularHours||0) + (t.overtimeHours||0); }, 0);
-                  const newTotalPay = updatedTs.reduce(function(s,t){ return s + ((t.regularHours||0)*(r.employee.hourlyRate||0)) + ((t.overtimeHours||0)*(r.employee.hourlyRate||0)*(r.employee.overtimeRate!=null?r.employee.overtimeRate:1.5)); }, 0);
+                  const newTotalPay = updatedTs.reduce(function(s,t){
+                   const shiftRate = (t.hourlyRate != null && t.hourlyRate !== '') ? parseFloat(t.hourlyRate) : (r.employee.hourlyRate||0);
+                   const shiftOtMult = (t.overtimeRate != null && t.overtimeRate !== '') ? parseFloat(t.overtimeRate) : (r.employee.overtimeRate!=null?r.employee.overtimeRate:1.5);
+                   return s + ((t.regularHours||0)*shiftRate) + ((t.overtimeHours||0)*shiftRate*shiftOtMult);
+                  }, 0);
                   return Object.assign({}, r, {
                    timesheets: updatedTs,
                    totalHours: newTotalHours,
@@ -6053,9 +6083,15 @@ import React, { useState, useEffect } from 'react';
                    const totalHours = totalRegular + totalOvertime;
 
                    const empOtMult = (employee.overtimeRate != null && employee.overtimeRate !== '') ? parseFloat(employee.overtimeRate) : (payrollSettings.overtimeMultiplier || 1.5);
-                   const regularPay = totalRegular * employee.hourlyRate;
-                   const overtimePay = totalOvertime * employee.hourlyRate * empOtMult;
-                   const basePay = regularPay + overtimePay;
+                   // Pay locked to the rate each shift was actually stamped with when worked —
+                   // changing the employee's rate today must not retroactively re-price past shifts.
+                   const basePay = empTimesheets.reduce(function(sum, ts) {
+                  const shiftRate = (ts.hourlyRate != null && ts.hourlyRate !== '') ? parseFloat(ts.hourlyRate) : employee.hourlyRate;
+                  const shiftOtMult = (ts.overtimeRate != null && ts.overtimeRate !== '') ? parseFloat(ts.overtimeRate) : empOtMult;
+                  return sum + ((ts.regularHours||0) * shiftRate) + ((ts.overtimeHours||0) * shiftRate * shiftOtMult);
+                   }, 0);
+                   const regularPay = totalRegular * employee.hourlyRate; // display-only aggregate at current rate
+                   const overtimePay = totalOvertime * employee.hourlyRate * empOtMult; // display-only aggregate at current rate
 
                    // Break minutes are shown for transparency only. The stored regular/overtime hours
                    // are ALREADY net of the break that was entered at submission (calculateHours
@@ -6370,7 +6406,12 @@ import React, { useState, useEffect } from 'react';
                   {row.timesheets.sort((a,b) => new Date(a.date)-new Date(b.date)).map(ts => {
                    const tHrs = (ts.regularHours||0) + (ts.overtimeHours||0);
                    const shiftBreakMin = (ts.breakMinutes||0) > 0 ? ts.breakMinutes : getAutoBreakMinutes(tHrs);
-                   const shiftPay = tHrs * (row.employee.hourlyRate||0);
+                   // Use the rate stamped on this shift when it was worked (falls back to the
+                   // employee's current rate for older records with no stamp) — this keeps each
+                   // row consistent with the report total above, which is computed the same way.
+                   const shiftRateForRow = (ts.hourlyRate != null && ts.hourlyRate !== '') ? parseFloat(ts.hourlyRate) : row.employee.hourlyRate;
+                   const shiftOtMultForRow = (ts.overtimeRate != null && ts.overtimeRate !== '') ? parseFloat(ts.overtimeRate) : ((row.employee.overtimeRate != null && row.employee.overtimeRate !== '') ? parseFloat(row.employee.overtimeRate) : (payrollSettings.overtimeMultiplier || 1.5));
+                   const shiftPay = ((ts.regularHours||0) * shiftRateForRow) + ((ts.overtimeHours||0) * shiftRateForRow * shiftOtMultForRow);
                    const sym = getCurrencySymbol(row.employee.currency||'GBP');
                    return (
                    <tr key={ts.id} className="border-b border-indigo-100 last:border-0">
@@ -8116,7 +8157,11 @@ import React, { useState, useEffect } from 'react';
                   // Stored hours are already net of break (deducted at submission), so earned is
                   // simply hours × rate. Break minutes kept for display only.
                   const breakMin = parseInt(ts.breakMinutes) || 0;
-                  const earned = (reg * hourlyRate) + (ot * hourlyRate * overtimeMultiplier);
+                  // Use the rate stamped on this shift when it was worked, not the employee's
+                  // current rate — a rate change today must not retroactively re-price this shift.
+                  const shiftRate = (ts.hourlyRate != null && ts.hourlyRate !== '') ? parseFloat(ts.hourlyRate) : hourlyRate;
+                  const shiftOtMult = (ts.overtimeRate != null && ts.overtimeRate !== '') ? parseFloat(ts.overtimeRate) : overtimeMultiplier;
+                  const earned = (reg * shiftRate) + (ot * shiftRate * shiftOtMult);
                   return { date: ts.date, regularHours: reg, overtimeHours: ot, breakMinutes: breakMin, earned: earned };
                   });
 
@@ -8132,7 +8177,12 @@ import React, { useState, useEffect } from 'react';
                   const priorCollected   = priorCollections.reduce(function(s,c){ return s + (c.amountCollected||0); }, 0);
                   const priorPaidAgents  = priorCollections.reduce(function(s,c){ return s + (c.amountPaid||0); }, 0);
                   const priorEarned = timesheets.filter(function(ts){ return ts.employeeId === parseInt(empId) && ts.status === 'approved' && ts.date < fromDate; })
-                   .reduce(function(s,ts){ const reg=parseFloat(ts.regularHours)||0, ot=parseFloat(ts.overtimeHours)||0; return s + (reg*hourlyRate)+(ot*hourlyRate*overtimeMultiplier); }, 0);
+                   .reduce(function(s,ts){
+                  const reg=parseFloat(ts.regularHours)||0, ot=parseFloat(ts.overtimeHours)||0;
+                  const shiftRate = (ts.hourlyRate != null && ts.hourlyRate !== '') ? parseFloat(ts.hourlyRate) : hourlyRate;
+                  const shiftOtMult = (ts.overtimeRate != null && ts.overtimeRate !== '') ? parseFloat(ts.overtimeRate) : overtimeMultiplier;
+                  return s + (reg*shiftRate)+(ot*shiftRate*shiftOtMult);
+                   }, 0);
                   const priorExpenses = expenses.filter(function(ex){ return ex.employeeId === parseInt(empId) && (ex.status==='approved'||ex.status==='paid') && ex.date < fromDate; })
                    .reduce(function(s,ex){ return s + (ex.amount||0); }, 0);
                   const priorSettlements = allSettlements.filter(function(a){ return a.date < fromDate; })
@@ -8690,8 +8740,12 @@ import React, { useState, useEffect } from 'react';
                   empTs.forEach(function(ts) {
                   const reg = parseFloat(ts.regularHours)||0;
                   const ot = parseFloat(ts.overtimeHours)||0;
+                  // Use the rate stamped on this shift when it was worked, not the employee's
+                  // current rate — a rate change today must not re-price shifts already worked.
+                  const shiftRate = (ts.hourlyRate != null && ts.hourlyRate !== '') ? parseFloat(ts.hourlyRate) : rate;
+                  const shiftOtMult = (ts.overtimeRate != null && ts.overtimeRate !== '') ? parseFloat(ts.overtimeRate) : otMult;
                   // Stored hours already exclude break; pay is simply hours × rate.
-                  pay += reg * rate + ot * rate * otMult;
+                  pay += reg * shiftRate + ot * shiftRate * shiftOtMult;
                   });
                   if (pay > 0) empPayroll.push({ name: emp.firstName + ' ' + emp.lastName, code: emp.employeeId, currency: getCurrencySymbol(emp.currency), pay: pay });
                   });
@@ -8737,7 +8791,11 @@ import React, { useState, useEffect } from 'react';
                   const rate = parseFloat(emp.hourlyRate)||0;
                   const otMult = (emp.overtimeRate != null && emp.overtimeRate !== '') ? parseFloat(emp.overtimeRate) : (payrollSettings.overtimeMultiplier || 1.5);
                   timesheets.filter(function(ts){ return ts.employeeId===emp.id && ts.status==='approved' && dateFilter(ts.date); })
-                   .forEach(function(ts){ pPay += (parseFloat(ts.regularHours)||0)*rate + (parseFloat(ts.overtimeHours)||0)*rate*otMult; });
+                   .forEach(function(ts){
+                  const shiftRate = (ts.hourlyRate != null && ts.hourlyRate !== '') ? parseFloat(ts.hourlyRate) : rate;
+                  const shiftOtMult = (ts.overtimeRate != null && ts.overtimeRate !== '') ? parseFloat(ts.overtimeRate) : otMult;
+                  pPay += (parseFloat(ts.regularHours)||0)*shiftRate + (parseFloat(ts.overtimeHours)||0)*shiftRate*shiftOtMult;
+                   });
                    });
                    return pNet - pExp - pPay;
                   };
