@@ -8806,11 +8806,20 @@ import React, { useState, useEffect } from 'react';
                    const bk = m ? m[1] : '__ALL__';
                    return bk === branchKey && a.date < fromDate;
                   }).reduce(function(s,a){ return s + (parseFloat(a.amount)||0); }, 0);
-                  const openingBalance = priorActivity - priorSettled;
+                  // A settlement payment always moves the balance TOWARD zero, regardless of which
+                  // way the debt runs. If priorActivity is positive (branch owed company), a
+                  // settlement reduces it; if negative (company owed branch), a settlement
+                  // increases it back toward zero. Always subtracting here was double-counting
+                  // any settlement made while the company owed the branch.
+                  const openingBalance = priorActivity >= 0 ? (priorActivity - priorSettled) : (priorActivity + priorSettled);
 
                   // Cash the branch should hand to company = brought-forward balance + this period's net,
-                  // minus expenses/payroll paid from branch cash this period, minus this period's settlements.
-                  const branchCashDue = openingBalance + netCollections - totalExpenses - totalPayroll - totalSettled;
+                  // minus expenses/payroll paid from branch cash this period. A settlement this period
+                  // always moves the balance TOWARD zero — subtract if the branch owed company,
+                  // add back if the company owed the branch (otherwise a settlement while the
+                  // company owes the branch would double the debt instead of clearing it).
+                  const rawBalance = openingBalance + netCollections - totalExpenses - totalPayroll;
+                  const branchCashDue = rawBalance >= 0 ? (rawBalance - totalSettled) : (rawBalance + totalSettled);
 
                   setReport({ totalCashCollected, totalBankCollected, totalCollections, totalPaidToAgents, netCollections, totalExpenses, totalPayroll, empPayroll, margin, byAgent: Object.values(byAgent), exps, periodStart: fromDate, periodEnd: toDate, branchSettlements, totalSettled, branchCashDue, openingBalance, branchName: branchFilter || 'All Branches' });
                 };
