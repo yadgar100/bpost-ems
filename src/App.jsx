@@ -5347,6 +5347,7 @@ import React, { useState, useEffect } from 'react';
             /* ── End IraqPayManager ─────────────────────────────────────────────────── */
 
             const AccountCreditsTab = ({ visEmp, financialAdjustments, visibleEmpIds, loadAdjustmentsFromAPI, apiCall, API_ENDPOINTS, getCurrencySymbol }) => {
+                const sym = getCurrencySymbol('GBP');
                 const allCredits = financialAdjustments.filter(function(a){return a.type==='account_credit' && visibleEmpIds.has(a.employeeId);});
                 const [filterEmpId, setFilterEmpId] = useState('');
                 const [filterFrom, setFilterFrom] = useState('');
@@ -5380,6 +5381,35 @@ import React, { useState, useEffect } from 'react';
                   if (!window.confirm('Delete credit of ' + sym + parseFloat(a.amount).toFixed(2) + ' for ' + a.employeeName + '?')) return;
                   try { await apiCall(API_ENDPOINTS.adjustments + '/' + a.id, { method: 'DELETE' }); await loadAdjustmentsFromAPI(); }
                   catch(e) { alert('Failed: ' + e.message); }
+                };
+                const [editingCreditId, setEditingCreditId] = useState(null);
+                const [editAmt, setEditAmt] = useState('');
+                const [editNote, setEditNote] = useState('');
+                const [editDate, setEditDate] = useState('');
+                const [editSaving, setEditSaving] = useState(false);
+                const startEditCredit = function(a) {
+                  setEditingCreditId(a.id);
+                  setEditAmt(String(a.amount));
+                  setEditNote(a.reason || '');
+                  setEditDate(a.date ? a.date.split('T')[0] : '');
+                };
+                const cancelEditCredit = function() {
+                  setEditingCreditId(null); setEditAmt(''); setEditNote(''); setEditDate('');
+                };
+                const saveEditCredit = async function(a) {
+                  const amt = parseFloat(editAmt);
+                  if (!amt || amt <= 0) { alert('Please enter a valid amount'); return; }
+                  if (!editDate) { alert('Please select a date'); return; }
+                  setEditSaving(true);
+                  try {
+                   await apiCall(API_ENDPOINTS.adjustments + '/' + a.id, {
+                  method: 'PUT',
+                  body: JSON.stringify({ type: 'account_credit', amount: amt, reason: editNote || 'Account credit', date: editDate, employeeId: a.employeeId })
+                   });
+                   await loadAdjustmentsFromAPI();
+                   cancelEditCredit();
+                  } catch(e) { alert('Failed: ' + e.message); }
+                  setEditSaving(false);
                 };
                 return (
                   <div className="space-y-4">
@@ -5444,18 +5474,37 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   <div className="space-y-2 max-h-80 overflow-y-auto">
                   {filteredCredits.length === 0 && <p className="text-gray-400 text-sm py-4">No account credits found.</p>}
-                  {[...filteredCredits].reverse().map(function(a) { return (
-                   <div key={a.id} className="bg-white border border-gray-200 rounded-lg p-3 flex items-center justify-between">
-                  <div>
-                   <p className="text-sm font-semibold text-gray-800">{a.employeeName}</p>
-                   <p className="text-xs text-gray-500">{new Date(a.date).toLocaleDateString('en-GB')} · {a.reason}</p>
+                  {[...filteredCredits].reverse().map(function(a) {
+                   if (editingCreditId === a.id) {
+                  return (
+                   <div key={a.id} className="bg-indigo-50 border border-indigo-300 rounded-lg p-3 space-y-2">
+                  <p className="text-sm font-semibold text-gray-800">{a.employeeName}</p>
+                  <div className="grid grid-cols-3 gap-2">
+                   <input type="date" value={editDate} onChange={function(e){setEditDate(e.target.value);}} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                   <input type="number" min="0.01" step="0.01" value={editAmt} onChange={function(e){setEditAmt(e.target.value);}} placeholder="Amount" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                   <input type="text" value={editNote} onChange={function(e){setEditNote(e.target.value);}} placeholder="Note" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
                   </div>
-                  <div className="flex items-center gap-3">
-                   <span className="font-bold text-indigo-700">{getCurrencySymbol('GBP')}{parseFloat(a.amount).toFixed(2)}</span>
-                   <button onClick={function(){handleDeleteCredit(a);}} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold hover:bg-red-200">Delete</button>
+                  <div className="flex gap-2">
+                   <button onClick={function(){saveEditCredit(a);}} disabled={editSaving} className="px-3 py-1 bg-indigo-600 text-white rounded text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50">{editSaving?'Saving...':'Save'}</button>
+                   <button onClick={cancelEditCredit} className="px-3 py-1 bg-gray-200 text-gray-700 rounded text-xs font-semibold hover:bg-gray-300">Cancel</button>
                   </div>
                    </div>
-                  ); })}
+                  );
+                   }
+                   return (
+                  <div key={a.id} className="bg-white border border-gray-200 rounded-lg p-3 flex items-center justify-between">
+                   <div>
+                  <p className="text-sm font-semibold text-gray-800">{a.employeeName}</p>
+                  <p className="text-xs text-gray-500">{new Date(a.date).toLocaleDateString('en-GB')} · {a.reason}</p>
+                   </div>
+                   <div className="flex items-center gap-2">
+                  <span className="font-bold text-indigo-700">{getCurrencySymbol('GBP')}{parseFloat(a.amount).toFixed(2)}</span>
+                  <button onClick={function(){startEditCredit(a);}} className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs font-semibold hover:bg-indigo-200">Edit</button>
+                  <button onClick={function(){handleDeleteCredit(a);}} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold hover:bg-red-200">Delete</button>
+                   </div>
+                  </div>
+                   );
+                  })}
                    </div>
                   {filteredCredits.length > 0 && (
                   <div className="mt-3 flex justify-between items-center bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3">
