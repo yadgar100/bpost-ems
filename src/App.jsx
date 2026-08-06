@@ -4037,13 +4037,21 @@ import React, { useState, useEffect } from 'react';
                 const [searchCode, setSearchCode] = useState('');
                 const [statusFilter, setStatusFilter] = useState('pending');
 
+                // A batch is "superseded" once something has been moved OUT of it into a new
+                // batch name (via the admin's move-batch action). Once that happens, that
+                // batch's already-COLLECTED items are permanently hidden from this employee's
+                // portal — they start fresh on the new batch instead of scrolling through
+                // months of old collected history every time they open the app.
+                const supersededBatches = new Set(myIraqPay.map(function(p){return p.oldBatchName;}).filter(Boolean));
+                const isHiddenCollected = function(p){ return p.status === 'collected' && supersededBatches.has(p.batchName); };
+
                 // Counts for header tabs
                 const pendingCount   = myIraqPay.filter(function(p){return p.status==='pending';}).length;
-                const collectedCount = myIraqPay.filter(function(p){return p.status==='collected';}).length;
+                const collectedCount = myIraqPay.filter(function(p){return p.status==='collected' && !isHiddenCollected(p);}).length;
 
                 // Search is GLOBAL — when active, it ignores batch filter so the employee can find any code
                 const searchActive = searchCode.trim().length > 0;
-                const base = myIraqPay.filter(function(p){ return p.status === statusFilter; });
+                const base = myIraqPay.filter(function(p){ return p.status === statusFilter && !isHiddenCollected(p); });
                 const batchFiltered = (!searchActive && selectedBatch) ? base.filter(function(p){return p.batchName === selectedBatch;}) : base;
                 const shown = searchActive
                   ? base.filter(function(p){ return p.shipmentCode.toLowerCase().includes(searchCode.trim().toLowerCase()); })
