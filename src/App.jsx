@@ -7411,6 +7411,24 @@ import React, { useState, useEffect } from 'react';
                 const [showAddForm, setShowAddForm] = useState(false);
                 const [lightboxImage, setLightboxImage] = useState(null);
                 const today = new Date().toISOString().split('T')[0];
+                // Default the visible list to the current week (Mon-Sun) so it doesn't keep
+                // growing forever as more expenses are added — admin can widen the range anytime.
+                const getMonday = function(d) {
+                  const dt = new Date(d);
+                  const day = dt.getDay(); // 0=Sun..6=Sat
+                  const diff = day === 0 ? -6 : 1 - day; // shift back to Monday
+                  dt.setDate(dt.getDate() + diff);
+                  return dt.toISOString().split('T')[0];
+                };
+                const getSunday = function(mondayStr) {
+                  const dt = new Date(mondayStr);
+                  dt.setDate(dt.getDate() + 6);
+                  return dt.toISOString().split('T')[0];
+                };
+                const defaultWeekStart = getMonday(today);
+                const defaultWeekEnd = getSunday(defaultWeekStart);
+                const [expDateFrom, setExpDateFrom] = useState(defaultWeekStart);
+                const [expDateTo, setExpDateTo] = useState(defaultWeekEnd);
                 const [addForm, setAddForm] = useState({ employeeId: '', date: today, category: '', description: '', amount: '', receiptNote: '', status: 'approved' });
                 const [addSaving, setAddSaving] = useState(false);
 
@@ -7450,13 +7468,18 @@ import React, { useState, useEffect } from 'react';
                   setAddSaving(false);
                 };
 
-                const allFiltered = expenses.filter(function(exp) {
+                const baseFiltered = expenses.filter(function(exp) {
                   if (!visEmp.some(function(e) { return e.id === exp.employeeId; })) return false;
                   if (expEmpFilter && exp.employeeId !== parseInt(expEmpFilter)) return false;
                   if (expBranchFilter) {
                    const emp = employees.find(function(e) { return e.id === exp.employeeId; });
                    if (!emp || !(emp.branches||[]).includes(expBranchFilter)) return false;
                   }
+                  if (expDateFrom && exp.date < expDateFrom) return false;
+                  if (expDateTo && exp.date > expDateTo) return false;
+                  return true;
+                });
+                const allFiltered = baseFiltered.filter(function(exp) {
                   return activeTab === 'all' ? true : exp.status === activeTab;
                 });
 
@@ -7629,8 +7652,8 @@ import React, { useState, useEffect } from 'react';
                   <div className="px-6 pt-4 pb-4 flex items-center gap-4 flex-wrap border-b border-gray-100">
                    <div className="flex gap-2">
                   {tabs.map(function(tab) {
-                   const count = expenses.filter(function(e) {
-                  return visEmp.some(function(v) { return v.id === e.employeeId; }) && (tab === 'all' ? true : e.status === tab);
+                   const count = baseFiltered.filter(function(e) {
+                  return tab === 'all' ? true : e.status === tab;
                    }).length;
                    const isActive = activeTab === tab;
                    return (
@@ -7642,6 +7665,18 @@ import React, { useState, useEffect } from 'react';
                   })}
                    </div>
                    <div className="ml-auto flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                   <label className="text-xs text-gray-500">From</label>
+                   <input type="date" value={expDateFrom} onChange={e => setExpDateFrom(e.target.value)} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none" />
+                   <label className="text-xs text-gray-500">To</label>
+                   <input type="date" value={expDateTo} onChange={e => setExpDateTo(e.target.value)} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none" />
+                   {(expDateFrom !== defaultWeekStart || expDateTo !== defaultWeekEnd) && (
+                  <button onClick={function(){ setExpDateFrom(defaultWeekStart); setExpDateTo(defaultWeekEnd); }} className="text-xs text-teal-600 hover:underline font-semibold">This week</button>
+                   )}
+                   {(expDateFrom || expDateTo) && (
+                  <button onClick={function(){ setExpDateFrom(''); setExpDateTo(''); }} className="text-xs text-gray-400 hover:underline">✕ All time</button>
+                   )}
+                  </div>
                   <select value={expEmpFilter} onChange={e => setExpEmpFilter(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none">
                    <option value="">All Employees</option>
                    {visEmp.filter(function(e) { return !e.isAdmin; }).map(function(e) {
@@ -7727,7 +7762,30 @@ import React, { useState, useEffect } from 'react';
                   );
                    })}
                   </tbody>
-                   </table>
+                   <tfoot>
+                  <tr className="bg-gray-50 border-t-2 border-gray-200 font-bold">
+                   <td className="px-3 py-3 text-gray-700" colSpan="4">Total ({allFiltered.length} claim{allFiltered.length!==1?'s':''})</td>
+                   <td className="px-3 py-3 text-gray-800">
+                  {(function() {
+                   // Sum per currency in case the filtered claims span more than one (different
+                   // employees' countries) — show each on its own line rather than mixing symbols.
+                   const totals = {};
+                   allFiltered.forEach(function(exp) {
+                  const em = visEmp.find(function(e){return e.id===exp.employeeId;});
+                  const cur = em ? resolveEmployeeCurrency(em) : (exp.currency || 'GBP');
+                  totals[cur] = (totals[cur] || 0) + (exp.amount || 0);
+                   });
+                   const keys = Object.keys(totals);
+                   if (keys.length === 0) return <span className="text-gray-400 font-normal">—</span>;
+                   return keys.map(function(cur) {
+                  return <div key={cur}>{getCurrencySymbol(cur)}{totals[cur].toFixed(2)}</div>;
+                   });
+                  })()}
+                   </td>
+                   <td colSpan="2"></td>
+                  </tr>
+                   </tfoot>
+                  </table>
                   </div>
                    )}
                   </div>
