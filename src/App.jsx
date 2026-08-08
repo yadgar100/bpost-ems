@@ -8187,12 +8187,32 @@ import React, { useState, useEffect } from 'react';
                 const setEmpId = (v) => onStateChange && onStateChange(function(s) { return {...s, empId: typeof v === 'function' ? v(s.empId) : v}; });
                 const fromDate = persistedState ? persistedState.fromDate : today.slice(0,8)+'01';
                 const setFromDate = (v) => onStateChange && onStateChange(function(s) { return {...s, fromDate: typeof v === 'function' ? v(s.fromDate) : v}; });
+                // Grey out dates up to and including the employee's last settlement — a new period
+                // must start the day after, so it can never overlap a period already settled.
+                const empLastSettleDate = empId ? (function() {
+                  const settles = financialAdjustments.filter(function(a){ return a.employeeId === parseInt(empId) && a.type === 'acct_settle'; });
+                  if (!settles.length) return null;
+                  return settles.map(function(a){ return a.date; }).sort().slice(-1)[0];
+                })() : null;
+                const minFromDate = empLastSettleDate ? (function() {
+                  const d = new Date(empLastSettleDate);
+                  d.setDate(d.getDate() + 1);
+                  return d.toISOString().split('T')[0];
+                })() : null;
                 const toDate = persistedState ? persistedState.toDate : today;
                 const setToDate = (v) => onStateChange && onStateChange(function(s) { return {...s, toDate: typeof v === 'function' ? v(s.toDate) : v}; });
                 const report = persistedState ? persistedState.report : null;
                 const setReport = (v) => onStateChange && onStateChange(function(s) { return {...s, report: typeof v === 'function' ? v(s.report) : v}; });
                 const [settling, setSettling] = useState(false);
                 const [settleNote, setSettleNote] = useState('');
+                // If the current From Date would overlap the employee's last settlement,
+                // auto-advance it to the day after — same convenience the date-picker's greyed-out
+                // days used to provide, since a manually-typed or stale date can bypass the min.
+                React.useEffect(function() {
+                  if (minFromDate && fromDate && fromDate < minFromDate) {
+                   setFromDate(minFromDate);
+                  }
+                }, [empId, minFromDate]);
                 const [settleAmount, setSettleAmount] = useState('');
                 const [settleDate, setSettleDate] = useState('');
 
@@ -8458,7 +8478,8 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">From Date</label>
-                  <input type="date" value={fromDate} onChange={function(e){setFromDate(e.target.value);setReport(null);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  <input type="date" value={fromDate} min={minFromDate || undefined} onChange={function(e){setFromDate(e.target.value);setReport(null);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  {minFromDate && <p className="text-xs text-gray-400 mt-1">Settled up to {new Date(empLastSettleDate).toLocaleDateString('en-GB')}</p>}
                   </div>
                   <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">To Date</label>
