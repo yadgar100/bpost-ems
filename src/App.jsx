@@ -346,17 +346,38 @@ import React, { useState, useEffect } from 'react';
                 const [savingId, setSavingId] = useState(null);
                 const showAddForm = persistedState ? persistedState.showAddForm : false;
                 const setShowAddForm = mk('showAddForm');
-                // addForm is LOCAL state — not persisted — so typing doesn't re-render parent
-                // Only dropdowns/date as controlled state — text/number as refs to avoid re-renders on keystroke
-                const [addEmpId, setAddEmpId] = useState('');
-                const [addAgentId, setAddAgentId] = useState('');
-                const [addDate, setAddDate] = useState(new Date().toISOString().split('T')[0]);
+                // addForm fields stay in LOCAL state/refs so typing doesn't trigger a root
+                // re-render on every keystroke (that was breaking input focus — see AgentManager).
+                // BUT: the ADMIN DASHBOARD parent screen is still remounted by background polls,
+                // which wipes any purely-local state a few seconds after the fact. To survive that
+                // without breaking typing, each field initializes from the last-synced value in
+                // root state (persistedState.addDraft) and re-syncs on blur (not on every keystroke) —
+                // so a poll hitting between fields never loses more than the field being actively typed.
+                const draft = (persistedState && persistedState.addDraft) || {};
+                const syncDraft = function(patch) {
+                  onStateChange && onStateChange(function(s){ return {...s, addDraft: Object.assign({}, s.addDraft, patch)}; });
+                };
+                const [addEmpId, setAddEmpId] = useState(draft.empId || '');
+                const [addAgentId, setAddAgentId] = useState(draft.agentId || '');
+                const [addDate, setAddDate] = useState(draft.date || new Date().toISOString().split('T')[0]);
                 const addFromRef = React.useRef(null);
                 const addToRef = React.useRef(null);
                 const addCollectedRef = React.useRef(null);
                 const addPaidRef = React.useRef(null);
                 const addBankRef = React.useRef(null);
                 const addNotesRef = React.useRef(null);
+                // Populate the ref-based fields from the draft once, right after the form's DOM
+                // nodes exist (they don't support a React "defaultValue that updates" pattern).
+                React.useEffect(function() {
+                  if (!showAddForm) return;
+                  if (addFromRef.current && draft.fromCode) addFromRef.current.value = draft.fromCode;
+                  if (addToRef.current && draft.toCode) addToRef.current.value = draft.toCode;
+                  if (addCollectedRef.current && draft.collected) addCollectedRef.current.value = draft.collected;
+                  if (addPaidRef.current && draft.paid) addPaidRef.current.value = draft.paid;
+                  if (addBankRef.current && draft.bank) addBankRef.current.value = draft.bank;
+                  if (addNotesRef.current && draft.notes) addNotesRef.current.value = draft.notes;
+                  // eslint-disable-next-line react-hooks/exhaustive-deps
+                }, [showAddForm]);
                 const [addSaving, setAddSaving] = useState(false);
 
                 React.useEffect(function() {
@@ -465,6 +486,7 @@ import React, { useState, useEffect } from 'react';
 
                    // Reset form
                    setAddEmpId(''); setAddAgentId(''); setAddDate(new Date().toISOString().split('T')[0]);
+                   syncDraft({ empId:'', agentId:'', date:new Date().toISOString().split('T')[0], fromCode:'', toCode:'', collected:'', paid:'', bank:'', notes:'' });
                    [addFromRef, addToRef, addCollectedRef, addPaidRef, addBankRef, addNotesRef].forEach(function(r){ if(r.current) r.current.value = ''; });
                    setShowAddForm(false);
 
@@ -681,14 +703,14 @@ import React, { useState, useEffect } from 'react';
                    <div className="grid grid-cols-2 gap-3 mb-3">
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Employee *</label>
-                   <select value={addEmpId} onChange={function(e){setAddEmpId(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                   <select value={addEmpId} onChange={function(e){setAddEmpId(e.target.value); syncDraft({empId: e.target.value});}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                   <option value="">Select employee...</option>
                   {[...visEmp].filter(function(e){return !e.isAdmin;}).sort(function(a,b){return (a.firstName+a.lastName).localeCompare(b.firstName+b.lastName);}).map(function(e){return <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>;})}
                    </select>
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Agent *</label>
-                   <select value={addAgentId} onChange={function(e){setAddAgentId(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                   <select value={addAgentId} onChange={function(e){setAddAgentId(e.target.value); syncDraft({agentId: e.target.value});}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                   <option value="">Select agent...</option>
                   {[...agents].sort(function(a,b){return (a.AgentCode||a.agentCode||'').localeCompare(b.AgentCode||b.agentCode||'');}).map(function(a){return <option key={a.Id||a.id} value={a.Id||a.id}>{a.AgentCode||a.agentCode} — {a.City||a.city}</option>;})}
                    </select>
@@ -697,33 +719,33 @@ import React, { useState, useEffect } from 'react';
                    <div className="grid grid-cols-3 gap-3 mb-3">
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Date *</label>
-                   <input type="date" value={addDate} onChange={function(e){setAddDate(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   <input type="date" value={addDate} onChange={function(e){setAddDate(e.target.value); syncDraft({date: e.target.value});}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">From Code</label>
-                   <input type="text" ref={addFromRef} defaultValue="" placeholder="e.g. OX79" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   <input type="text" ref={addFromRef} defaultValue="" onBlur={function(e){syncDraft({fromCode: e.target.value});}} placeholder="e.g. OX79" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">To Code</label>
-                   <input type="text" ref={addToRef} defaultValue="" placeholder="e.g. OX91" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   <input type="text" ref={addToRef} defaultValue="" onBlur={function(e){syncDraft({toCode: e.target.value});}} placeholder="e.g. OX91" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                    </div>
                    <div className="grid grid-cols-4 gap-3 mb-4">
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Cash Collected</label>
-                   <input type="number" min="0" step="0.01" ref={addCollectedRef} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   <input type="number" min="0" step="0.01" ref={addCollectedRef} defaultValue="" onBlur={function(e){syncDraft({collected: e.target.value});}} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Paid to Agent</label>
-                   <input type="number" min="0" step="0.01" ref={addPaidRef} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   <input type="number" min="0" step="0.01" ref={addPaidRef} defaultValue="" onBlur={function(e){syncDraft({paid: e.target.value});}} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Bank Transfer</label>
-                   <input type="number" min="0" step="0.01" ref={addBankRef} defaultValue="" placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   <input type="number" min="0" step="0.01" ref={addBankRef} defaultValue="" onBlur={function(e){syncDraft({bank: e.target.value});}} placeholder="0.00" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
-                   <input type="text" ref={addNotesRef} defaultValue="" placeholder="Optional" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                   <input type="text" ref={addNotesRef} defaultValue="" onBlur={function(e){syncDraft({notes: e.target.value});}} placeholder="Optional" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                    </div>
                    <div className="flex gap-2">
@@ -1391,7 +1413,7 @@ import React, { useState, useEffect } from 'react';
             const [showIraqPay, setShowIraqPay] = useState(false);
             const [iraqPayments, setIraqPayments] = useState([]);
             const [iraqPayState, setIraqPayState] = useState({ activeTab:'view', batchName:'', empId:'', filterEmp:'', filterStatus:'all', filterBatch:'', filterFrom:'', filterTo:'', previewRows:[] });
-            const [agentReportState, setAgentReportState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], empFilter:'', branchFilter:'', countryFilter:'', reportData:null, showAddForm:false });
+            const [agentReportState, setAgentReportState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], empFilter:'', branchFilter:'', countryFilter:'', reportData:null, showAddForm:false, addDraft: { empId:'', agentId:'', date:new Date().toISOString().split('T')[0], fromCode:'', toCode:'', collected:'', paid:'', bank:'', notes:'' } });
             // Lives at the root (never remounts) so in-progress work in the Agent Management
             // modal — bulk selections, an assign-in-progress, the edit form — survives even if
             // the modal itself gets torn down and recreated by a background refresh.
