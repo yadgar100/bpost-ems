@@ -8230,9 +8230,15 @@ import React, { useState, useEffect } from 'react';
                 // If the current From Date would overlap the employee's last settlement,
                 // auto-advance it to the day after — same convenience the date-picker's greyed-out
                 // days used to provide, since a manually-typed or stale date can bypass the min.
+                // Also push To Date forward if it would otherwise end up BEFORE the new From Date
+                // (e.g. a stale To Date left over from a previous employee) — an inverted range
+                // silently matches zero records instead of showing an error, which is worse.
                 React.useEffect(function() {
                   if (minFromDate && fromDate && fromDate < minFromDate) {
                    setFromDate(minFromDate);
+                   if (toDate && toDate < minFromDate) {
+                  setToDate(today > minFromDate ? today : minFromDate);
+                   }
                   }
                 }, [empId, minFromDate]);
                 const [settleAmount, setSettleAmount] = useState('');
@@ -8248,6 +8254,10 @@ import React, { useState, useEffect } from 'react';
 
                 const generateReport = function() {
                   if (!empId) { alert('Please select an employee'); return; }
+                  if (fromDate && toDate && fromDate > toDate) {
+                   alert('From Date (' + fromDate + ') is after To Date (' + toDate + ') — the range is inverted, so nothing would match. Please fix the dates.');
+                   return;
+                  }
                   const empTimesheets = timesheets.filter(function(ts) {
                   return ts.employeeId === parseInt(empId) && ts.status === 'approved' && ts.date >= fromDate && ts.date <= toDate;
                   }).sort(function(a,b) { return a.date > b.date ? 1 : -1; });
