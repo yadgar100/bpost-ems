@@ -8373,6 +8373,13 @@ import React, { useState, useEffect } from 'react';
                   const amount = parseFloat(settleAmount);
                   if (!amount || amount <= 0) { alert('Please enter a valid amount'); return; }
                   if (amount > Math.abs(report.balance) + 0.005) { alert('Amount cannot exceed the balance of ' + sym + Math.abs(report.balance).toFixed(2)); return; }
+                  // This period overlaps one or more periods already settled — block accidental
+                  // double-settlement here specifically, while still allowing the period to be
+                  // freely VIEWED/reviewed above (the date picker no longer restricts that).
+                  if (report.overlaps && report.overlaps.length > 0) {
+                   const list = report.overlaps.map(function(o){ return o.from + ' to ' + o.to + ' (' + sym + o.amount.toFixed(2) + ' on ' + o.date + ')'; }).join('\n');
+                   if (!window.confirm('\u26a0\ufe0f This period overlaps ' + report.overlaps.length + ' already-settled period(s):\n\n' + list + '\n\nSettling again may double-count that activity. Are you SURE you want to record another settlement for this range?')) return;
+                  }
                   const effectiveDate = settleDate || toDate;
                   if (effectiveDate < fromDate || effectiveDate > toDate) {
                    if (!window.confirm('\u26a0\ufe0f The settlement date (' + effectiveDate + ') is OUTSIDE this period (' + fromDate + ' to ' + toDate + ').\n\nIt will appear in a different period. Continue anyway?')) return;
@@ -8500,8 +8507,8 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">From Date</label>
-                  <input type="date" value={fromDate} min={minFromDate || undefined} onChange={function(e){setFromDate(e.target.value);setReport(null);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-                  {minFromDate && <p className="text-xs text-gray-400 mt-1">Settled up to {new Date(empLastSettleDate).toLocaleDateString('en-GB')}</p>}
+                  <input type="date" value={fromDate} onChange={function(e){setFromDate(e.target.value);setReport(null);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  {minFromDate && <p className="text-xs text-gray-400 mt-1">Settled up to {new Date(empLastSettleDate).toLocaleDateString('en-GB')} — pick an earlier date to review that period</p>}
                   </div>
                   <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">To Date</label>
