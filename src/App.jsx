@@ -1481,7 +1481,7 @@ import React, { useState, useEffect } from 'react';
             const [showFinancialManager, setShowFinancialManager] = useState(false);
             const [financialMgrState, setFinancialMgrState] = useState({ activeTab: 'add', adjustmentType: 'bonus', adjustmentData: { employeeId:'', type:'bonus', amount:'', reason:'', date: new Date().toISOString().split('T')[0], hours:'' } });
             const [showEmployeeAccounting, setShowEmployeeAccounting] = useState(false);
-            const [empAccountingState, setEmpAccountingState] = useState({ empId: '', fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], report: null });
+            const [empAccountingState, setEmpAccountingState] = useState({ empId: '', fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], report: null, autoAdvancedFor: null });
             const [showCompanyAccounting, setShowCompanyAccounting] = useState(false);
             const [companyAcctState, setCompanyAcctState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], branchFilter:'', countryFilter:'', report:null, collapsed:{collections:false,payroll:false,expenses:false,summary:false} });
             const [showPayrollSettings, setShowPayrollSettings] = useState(false);
@@ -8230,17 +8230,30 @@ import React, { useState, useEffect } from 'react';
                 // If the current From Date would overlap the employee's last settlement,
                 // auto-advance it to the day after — same convenience the date-picker's greyed-out
                 // days used to provide, since a manually-typed or stale date can bypass the min.
-                // Also push To Date forward if it would otherwise end up BEFORE the new From Date
-                // (e.g. a stale To Date left over from a previous employee) — an inverted range
-                // silently matches zero records instead of showing an error, which is worse.
+                // This must only happen ONCE per employee, tracked via a flag in the persisted root
+                // state (autoAdvancedFor) rather than relying on [empId, minFromDate] alone — this
+                // component's parent screen gets periodically recreated by background polling, which
+                // would otherwise re-run this effect on every such remount and silently snap a
+                // deliberately-chosen historical review date back to "next period", wiping out
+                // whatever the admin was reviewing.
+                const autoAdvancedFor = persistedState ? persistedState.autoAdvancedFor : null;
                 React.useEffect(function() {
-                  if (minFromDate && fromDate && fromDate < minFromDate) {
+                  if (minFromDate && fromDate && fromDate < minFromDate && autoAdvancedFor !== empId) {
                    setFromDate(minFromDate);
-                   if (toDate && toDate < minFromDate) {
-                  setToDate(today > minFromDate ? today : minFromDate);
-                   }
+                   onStateChange && onStateChange(function(s){ return {...s, autoAdvancedFor: empId}; });
                   }
                 }, [empId, minFromDate]);
+                // Independent, general safeguard: whenever From Date ends up AFTER To Date for
+                // ANY reason (the settlement auto-advance above, a stale date left over from
+                // switching employees, or the user typing one directly), push To Date forward to
+                // match. Deliberately NOT nested inside the effect above — that only fired when
+                // From Date itself needed correcting, so a stale To Date sitting behind an
+                // ALREADY-correct From Date was silently missed.
+                React.useEffect(function() {
+                  if (fromDate && toDate && fromDate > toDate) {
+                   setToDate(today > fromDate ? today : fromDate);
+                  }
+                }, [fromDate, toDate]);
                 const [settleAmount, setSettleAmount] = useState('');
                 const [settleDate, setSettleDate] = useState('');
 
