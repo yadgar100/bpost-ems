@@ -4849,9 +4849,19 @@ import React, { useState, useEffect } from 'react';
                    </select>
                    <select value={filterBatch} onChange={function(e){setFilterBatch(e.target.value);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
                   <option value="">All Batches</option>
-                  {[...new Set(iraqPayments.map(function(p){return p.batchName;}))].sort().map(function(b){
+                  {(function() {
+                   // Only show batches that end with a month (e.g. "Hawler-July", "Slemani-Aug") —
+                   // hides one-off/legacy batch names like "Cargo 437 - Hawler" or "HOLLAND-436-HAWL"
+                   // that don't follow the monthly naming pattern.
+                   const MONTH_RE = /-(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|jun(e)?|jul(y)?|aug(ust)?|sep(t|tember)?|oct(ober)?|nov(ember)?|dec(ember)?)$/i;
+                   const endsWithMonth = function(name) { return MONTH_RE.test((name||'').trim()); };
+                   return [...new Set(iraqPayments.map(function(p){return p.batchName;}))]
+                  .filter(endsWithMonth)
+                  .sort()
+                  .map(function(b){
                    return <option key={b} value={b}>{b} ({iraqPayments.filter(function(p){return p.batchName===b;}).length})</option>;
-                  })}
+                  });
+                   })()}
                    </select>
                    {filterBatch && (
                   <button onClick={handleDeleteBatch} disabled={deletingBatch} className="px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 disabled:opacity-50 flex items-center gap-1">
