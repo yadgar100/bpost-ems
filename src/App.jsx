@@ -5721,28 +5721,29 @@ import React, { useState, useEffect } from 'react';
                 return (
                   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl my-8">
-                  <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-                   <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                  <DollarSign className="w-7 h-7 text-green-600" />
-                  Financial Adjustments Manager
-                   </h2>
-                   <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-                  <X className="w-6 h-6" />
-                   </button>
-                  </div>
+                  <div className="sticky top-0 z-20 bg-white rounded-t-2xl">
+                   <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+                  <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                   <DollarSign className="w-7 h-7 text-green-600" />
+                   Financial Adjustments Manager
+                  </h2>
+                  <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+                   <X className="w-6 h-6" />
+                  </button>
+                   </div>
 
-                  <div className="flex border-b border-gray-200">
-                   <button
-                  onClick={() => setActiveTab('add')}
-                  className={`flex-1 px-6 py-3 font-semibold transition ${
-                   activeTab === 'add'
-                  ? 'bg-indigo-50 text-indigo-600 border-b-2 border-indigo-600'
-                  : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                   >
-                  Add Adjustment
-                   </button>
-                   <button
+                   <div className="flex border-b border-gray-200">
+                  <button
+                   onClick={() => setActiveTab('add')}
+                   className={`flex-1 px-6 py-3 font-semibold transition ${
+                  activeTab === 'add'
+                   ? 'bg-indigo-50 text-indigo-600 border-b-2 border-indigo-600'
+                   : 'text-gray-600 hover:bg-gray-50'
+                   }`}
+                  >
+                   Add Adjustment
+                  </button>
+                  <button
                   onClick={() => setActiveTab('history')}
                   className={`flex-1 px-6 py-3 font-semibold transition ${
                    activeTab === 'history'
@@ -5774,6 +5775,7 @@ import React, { useState, useEffect } from 'react';
                   Summary
                    </button>
                   </div>
+                   </div>
 
                   <div className="p-6">
 
@@ -6040,16 +6042,16 @@ import React, { useState, useEffect } from 'react';
                    </div>
 
                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Employee Summary</h3>
-                   <div className="overflow-x-auto">
+                   <div className="overflow-x-auto overflow-y-auto max-h-[60vh] border border-gray-200 rounded-lg">
                   <table className="w-full">
-                   <thead className="bg-gray-50">
+                   <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
-                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Employee</th>
-                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Bonuses</th>
-                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Penalties</th>
-                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Advances</th>
-                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Sick Pay</th>
-                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Net Adjustment</th>
+                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 bg-gray-50">Employee</th>
+                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 bg-gray-50">Bonuses</th>
+                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 bg-gray-50">Penalties</th>
+                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 bg-gray-50">Advances</th>
+                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 bg-gray-50">Sick Pay</th>
+                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 bg-gray-50">Net Adjustment</th>
                   </tr>
                    </thead>
                    <tbody className="divide-y divide-gray-200">
