@@ -4946,10 +4946,28 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   ) : (
                    <div>
-                  {p.collectedIQD>0 && <div className="text-green-700 font-semibold">IQD {p.collectedIQD.toLocaleString()}</div>}
-                  {p.collectedUSD>0 && <div className="text-green-700 font-semibold">${p.collectedUSD.toFixed(2)}</div>}
-                  {p.collectedGBP>0 && <div className="text-green-700 font-semibold">£{p.collectedGBP.toFixed(2)}</div>}
-                  {p.collectedEUR>0 && <div className="text-green-700 font-semibold">€{p.collectedEUR.toFixed(2)}</div>}
+                  {(function() {
+                   // Flag any currency where the collected amount is more than 2% short of
+                   // the recorded/expected amount — a likely under-collection worth investigating.
+                   const isShort = function(collected, amount) { return amount > 0 && collected > 0 && collected < amount * 0.98; };
+                   const line = function(amt, col, fmt) {
+                  if (!(col > 0)) return null;
+                  const short = isShort(col, amt);
+                  return (
+                   <div className={(short ? 'text-red-600' : 'text-green-700') + ' font-semibold flex items-center gap-1'} title={short ? 'Collected is ' + (100 - (col/amt*100)).toFixed(1) + '% short of the recorded amount (' + fmt(amt) + ') — investigate' : undefined}>
+                  {short && <span title="Under-collected">⚠️</span>}{fmt(col)}
+                   </div>
+                  );
+                   };
+                   return (
+                  <React.Fragment>
+                   {line(p.amountIQD, p.collectedIQD, function(v){ return 'IQD ' + v.toLocaleString(); })}
+                   {line(p.amountUSD, p.collectedUSD, function(v){ return '$' + v.toFixed(2); })}
+                   {line(p.amountGBP, p.collectedGBP, function(v){ return '£' + v.toFixed(2); })}
+                   {line(p.amountEUR, p.collectedEUR, function(v){ return '€' + v.toFixed(2); })}
+                  </React.Fragment>
+                   );
+                  })()}
                   {!p.collectedIQD&&!p.collectedUSD&&!p.collectedGBP&&!p.collectedEUR && <span className="text-gray-300">—</span>}
                    </div>
                   )}
