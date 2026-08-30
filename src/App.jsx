@@ -1479,7 +1479,7 @@ import React, { useState, useEffect } from 'react';
             const [showReportGenerator, setShowReportGenerator] = useState(false);
             const [reportGenState, setReportGenState] = useState({ startDate: (() => { const d=new Date(); d.setDate(d.getDate()-7); return d.toISOString().split('T')[0]; })(), endDate: new Date().toISOString().split('T')[0], selectedDepartment:'all', selectedEmployee:'all', selectedBranch:'all', selectedCountry:'all', reportType:'summary', generatedReport:null, expandedEmp:null });
             const [showFinancialManager, setShowFinancialManager] = useState(false);
-            const [financialMgrState, setFinancialMgrState] = useState({ activeTab: 'add', adjustmentType: 'bonus', adjustmentData: { employeeId:'', type:'bonus', amount:'', reason:'', date: new Date().toISOString().split('T')[0], hours:'' } });
+            const [financialMgrState, setFinancialMgrState] = useState({ activeTab: 'add', adjustmentType: 'bonus', adjustmentData: { employeeId:'', type:'bonus', amount:'', reason:'', date: new Date().toISOString().split('T')[0], hours:'', paymentMethod:'cash' } });
             const [showEmployeeAccounting, setShowEmployeeAccounting] = useState(false);
             const [empAccountingState, setEmpAccountingState] = useState({ empId: '', fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], report: null, autoAdvancedFor: null });
             const [showCompanyAccounting, setShowCompanyAccounting] = useState(false);
@@ -5565,7 +5565,7 @@ import React, { useState, useEffect } from 'react';
                 const adjReasonRef = React.useRef(null);
                 const activeTab = persistedState ? persistedState.activeTab : 'add'; const setActiveTab = mk('activeTab');
                 const adjustmentType = persistedState ? persistedState.adjustmentType : 'bonus'; const setAdjustmentType = mk('adjustmentType');
-                const adjustmentData = persistedState ? persistedState.adjustmentData : { employeeId:'', type:'bonus', amount:'', reason:'', date: new Date().toISOString().split('T')[0], hours:'' };
+                const adjustmentData = persistedState ? persistedState.adjustmentData : { employeeId:'', type:'bonus', amount:'', reason:'', date: new Date().toISOString().split('T')[0], hours:'', paymentMethod:'cash' };
                 const setAdjustmentData = (v) => onStateChange && onStateChange(function(s){return{...s,adjustmentData:typeof v==='function'?v(s.adjustmentData):v};});
                 // Credits state stays local (inside AccountCreditsTab component)
                 const [addingCredit, setAddingCredit] = useState(false);
@@ -5593,13 +5593,18 @@ import React, { useState, useEffect } from 'react';
                   if (!employee) return;
 
                   try {
+                   // Payment method is tagged into the reason text (same convention already used
+                   // for settlement periods, e.g. [PERIOD:...]) so it needs no backend schema
+                   // change, survives in the History list, and can be parsed out anywhere needed.
+                   const isBankPayment = adjustmentData.type === 'payment' && (adjustmentData.paymentMethod || 'cash') === 'bank';
+                   const taggedReason = isBankPayment ? '[BANK] ' + rsn : rsn;
                    const result = await apiCall(API_ENDPOINTS.adjustments, {
                   method: 'POST',
                   body: JSON.stringify({
                    employeeId: parseInt(adjustmentData.employeeId),
                    type: adjustmentData.type,
                    amount: parseFloat(amt),
-                   reason: rsn,
+                   reason: taggedReason,
                    date: adjustmentData.date,
                    hours: hrs ? parseFloat(hrs) : null
                   })
@@ -5814,6 +5819,25 @@ import React, { useState, useEffect } from 'react';
                   </div>
                    </div>
 
+                   {adjustmentData.type === 'payment' && (
+                  <div>
+                   <label className="block text-sm font-semibold text-gray-700 mb-2">Payment Method *</label>
+                   <select
+                  value={adjustmentData.paymentMethod || 'cash'}
+                  onChange={(e) => setAdjustmentData({...adjustmentData, paymentMethod: e.target.value})}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                   >
+                  <option value="cash">Cash</option>
+                  <option value="bank">Bank Transfer</option>
+                   </select>
+                   <p className="text-sm text-gray-500 mt-1">
+                  {(adjustmentData.paymentMethod || 'cash') === 'bank'
+                   ? "Bank transfers are excluded from cash accounting — they'll be reconciled from the bank statement instead."
+                   : 'Cash payments are counted in the branch/company cash accounting as usual.'}
+                   </p>
+                  </div>
+                   )}
+
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                    <label className="block text-sm font-semibold text-gray-700 mb-2">Amount ({adjustmentData.employeeId ? getEmployeeCurrency(parseInt(adjustmentData.employeeId)) : "£"}) *</label>
@@ -5922,8 +5946,13 @@ import React, { useState, useEffect } from 'react';
                   <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getAdjustmentColor(adjustment.type)}`}>
                    {adjustment.type.replace('_', ' ').toUpperCase()}
                   </span>
+                  {adjustment.type === 'payment' && (
+                   <span className={'px-2 py-0.5 rounded-full text-xs font-semibold ' + (/^\[BANK\]/.test(adjustment.reason||'') ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700')}>
+                  {/^\[BANK\]/.test(adjustment.reason||'') ? '🏦 Bank Transfer' : '💵 Cash'}
+                   </span>
+                  )}
                    </div>
-                   <p className="text-sm text-gray-600 mb-2">{adjustment.reason}</p>
+                   <p className="text-sm text-gray-600 mb-2">{(adjustment.reason||'').replace(/^\[BANK\]\s*/, '')}</p>
                    <div className="flex items-center gap-4 text-sm text-gray-500">
                   <span className="font-semibold text-lg">
                    {adjustment.type === 'bonus' || adjustment.type === 'sick_pay' ? '+' : '-'}
@@ -5987,6 +6016,26 @@ import React, { useState, useEffect } from 'react';
                    <p className="text-2xl font-bold text-purple-700">
                   {visibleAdjustments.filter(a => a.type === 'sick_pay').reduce((sum, a) => sum + a.amount, 0).toFixed(2)}
                    </p>
+                  </div>
+                  <div className="bg-emerald-50 p-4 rounded-lg">
+                   <div className="flex items-center gap-2 mb-2">
+                  <DollarSign className="w-5 h-5 text-emerald-600" />
+                  <p className="text-sm text-emerald-600 font-semibold">💵 Cash Payments</p>
+                   </div>
+                   <p className="text-2xl font-bold text-emerald-700">
+                  {visibleAdjustments.filter(a => a.type === 'payment' && !/^\[BANK\]/.test(a.reason||'')).reduce((sum, a) => sum + a.amount, 0).toFixed(2)}
+                   </p>
+                   <p className="text-xs text-emerald-600 mt-1">Counted in branch/company cash accounting</p>
+                  </div>
+                  <div className="bg-sky-50 p-4 rounded-lg">
+                   <div className="flex items-center gap-2 mb-2">
+                  <DollarSign className="w-5 h-5 text-sky-600" />
+                  <p className="text-sm text-sky-600 font-semibold">🏦 Bank Payments</p>
+                   </div>
+                   <p className="text-2xl font-bold text-sky-700">
+                  {visibleAdjustments.filter(a => a.type === 'payment' && /^\[BANK\]/.test(a.reason||'')).reduce((sum, a) => sum + a.amount, 0).toFixed(2)}
+                   </p>
+                   <p className="text-xs text-sky-600 mt-1">Excluded — reconciled from bank statement instead</p>
                   </div>
                    </div>
 
