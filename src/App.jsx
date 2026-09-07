@@ -1482,6 +1482,15 @@ import React, { useState, useEffect } from 'react';
             const [financialMgrState, setFinancialMgrState] = useState({ activeTab: 'add', adjustmentType: 'bonus', adjustmentData: { employeeId:'', type:'bonus', amount:'', reason:'', date: new Date().toISOString().split('T')[0], hours:'', paymentMethod:'cash' } });
             const [showEmployeeAccounting, setShowEmployeeAccounting] = useState(false);
             const [empAccountingState, setEmpAccountingState] = useState({ empId: '', fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], report: null, autoAdvancedFor: null });
+            // Lives at the root (never remounts) so the Timesheet Queue's date range, tab, and
+            // branch filter survive approve/reject actions and background refreshes — both
+            // recreate the queue component, which was wiping these back to defaults every time.
+            const [timesheetQueueState, setTimesheetQueueState] = useState({
+                tab: 'pending',
+                from: (function() { const d = new Date(); d.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1)); return d.toISOString().split('T')[0]; })(),
+                to: new Date().toISOString().split('T')[0],
+                branchFilter: ''
+            });
             const [showCompanyAccounting, setShowCompanyAccounting] = useState(false);
             const [companyAcctState, setCompanyAcctState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], branchFilter:'', countryFilter:'', report:null, collapsed:{collections:false,payroll:false,expenses:false,summary:false} });
             const [showPayrollSettings, setShowPayrollSettings] = useState(false);
@@ -11008,8 +11017,10 @@ import React, { useState, useEffect } from 'react';
                 );
             };
 
-            const TimesheetQueue = ({ visibleEmployees }) => {
-                const [tsTab, setTsTab] = useState('pending');
+            const TimesheetQueue = ({ visibleEmployees, persistedState, onStateChange }) => {
+                const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
+                const tsTab = persistedState ? persistedState.tab : 'pending';
+                const setTsTab = mk('tab');
 
                 const BreakEditor = ({ ts, effectiveBreak, autoBreak, employee }) => {
                   const [editing, setEditing] = useState(false);
@@ -11044,13 +11055,16 @@ import React, { useState, useEffect } from 'react';
                    </button>
                   );
                 };
-                const [tsFrom, setTsFrom] = useState(() => {
+                const tsFrom = persistedState ? persistedState.from : (function() {
                   const d = new Date();
                   d.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1));
                   return d.toISOString().split('T')[0];
-                });
-                const [tsTo, setTsTo] = useState(new Date().toISOString().split('T')[0]);
-                const [tsBranchFilter, setTsBranchFilter] = useState('');
+                })();
+                const setTsFrom = mk('from');
+                const tsTo = persistedState ? persistedState.to : new Date().toISOString().split('T')[0];
+                const setTsTo = mk('to');
+                const tsBranchFilter = persistedState ? persistedState.branchFilter : '';
+                const setTsBranchFilter = mk('branchFilter');
                 const tsFiltered = timesheets
                   .filter(ts => visibleEmployees.some(e => e.id === ts.employeeId))
                   .filter(ts => {
@@ -12073,7 +12087,7 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   </div>
 
-                  <TimesheetQueue visibleEmployees={visibleEmployees} />
+                  <TimesheetQueue visibleEmployees={visibleEmployees} persistedState={timesheetQueueState} onStateChange={setTimesheetQueueState} />
 
                   {(() => {
                    const pendingExp = expenses.filter(e => e.status === 'pending' && visibleEmployees.some(v => v.id === e.employeeId));
