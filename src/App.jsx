@@ -623,6 +623,35 @@ import React, { useState, useEffect } from 'react';
                 // Agent codes that have a gap — used to highlight their rows.
                 const gapAgents = new Set(sequenceGaps.map(function(x){ return x.agentCode; }));
 
+                // Flag agents who normally appear in this report but have ZERO collections in the
+                // most recent COMPLETE week (Monday–Sunday) within the selected date range — a
+                // sign they've gone quiet and may need checking on.
+                const missingWeekAgents = (function() {
+                  if (!reportData || reportData.length === 0) return { agents: [], weekFrom: null, weekTo: null };
+                  // Don't evaluate a week that hasn't finished yet — cap at today.
+                  const rangeEnd = toDate < today ? toDate : today;
+                  const endDt = new Date(rangeEnd);
+                  const dow = endDt.getDay(); // 0=Sun..6=Sat
+                  const lastSunday = new Date(endDt);
+                  lastSunday.setDate(lastSunday.getDate() - dow);
+                  const lastMonday = new Date(lastSunday);
+                  lastMonday.setDate(lastMonday.getDate() - 6);
+                  const weekFrom = lastMonday.toISOString().split('T')[0];
+                  const weekTo = lastSunday.toISOString().split('T')[0];
+                  // The report has to actually cover that whole week for this check to be meaningful.
+                  if (weekFrom < fromDate) return { agents: [], weekFrom: null, weekTo: null };
+
+                  const agentCity = {};
+                  reportData.forEach(function(c) { if (!agentCity[c.agentCode]) agentCity[c.agentCode] = c.agentCity; });
+                  const allAgentCodes = Object.keys(agentCity);
+                  const activeThisWeek = new Set(reportData.filter(function(c){ return c.date >= weekFrom && c.date <= weekTo; }).map(function(c){ return c.agentCode; }));
+                  const missing = allAgentCodes.filter(function(code){ return !activeThisWeek.has(code); }).sort();
+                  return {
+                   agents: missing.map(function(code){ return { agentCode: code, agentCity: agentCity[code] }; }),
+                   weekFrom: weekFrom, weekTo: weekTo
+                  };
+                })();
+
                 return (
                   <div ref={modalScrollRef} onScroll={handleModalScroll} className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl my-8">
@@ -782,6 +811,30 @@ import React, { useState, useEffect } from 'react';
                   <span className="text-gray-600">range {g.rangeText} —</span>
                   <span className="font-semibold text-red-600">missing: {g.label}</span>
                   <span className="text-xs text-gray-400">({g.missingCount} number{g.missingCount>1?'s':''})</span>
+                   </div>
+                  );
+                   })}
+                  </div>
+                   </div>
+                  </div>
+                   </div>
+                   )}
+                   {missingWeekAgents.agents.length > 0 && (
+                   <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4 mb-6">
+                  <div className="flex items-start gap-2">
+                   <span className="text-xl">🚩</span>
+                   <div className="flex-1">
+                  <p className="text-sm font-bold text-red-800">No collections last week — {missingWeekAgents.agents.length} agent{missingWeekAgents.agents.length>1?'s':''} with zero entries</p>
+                  <p className="text-xs text-red-600 mb-2">
+                   These agents have collections elsewhere in this report but nothing between {new Date(missingWeekAgents.weekFrom).toLocaleDateString('en-GB',{day:'2-digit',month:'short'})} and {new Date(missingWeekAgents.weekTo).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})} (Mon–Sun). Worth checking if something's wrong.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                   {missingWeekAgents.agents.map(function(a, i) {
+                  return (
+                   <div key={i} className="text-sm bg-white/70 rounded-lg px-3 py-1.5 flex items-center gap-1.5">
+                  <span className="font-bold text-red-900">{a.agentCode}</span>
+                  {a.agentCity && <span className="text-xs text-gray-500">({a.agentCity})</span>}
+                  <span className="text-xs text-red-600">— no entry this week</span>
                    </div>
                   );
                    })}
