@@ -7676,6 +7676,54 @@ import React, { useState, useEffect } from 'react';
                 const summarySym = summaryCurrency ? getCurrencySymbol(summaryCurrency) : '';
 
                 const [bulkPaying, setBulkPaying] = useState(false);
+                // Bulk approve/reject: tick rows, then act on all of them in one go. Avoids the
+                // full expense-list reload that handleAction does after every single approval,
+                // which is what made one-at-a-time approving so slow.
+                const [selectedIds, setSelectedIds] = useState([]);
+                const [bulkActing, setBulkActing] = useState(false);
+                const selectableRows = allFiltered.filter(function(e){ return e.status === 'pending'; });
+                const allSelectableSelected = selectableRows.length > 0 && selectableRows.every(function(e){ return selectedIds.includes(e.id); });
+                const toggleSelectAllExp = function() {
+                  const ids = selectableRows.map(function(e){ return e.id; });
+                  if (allSelectableSelected) setSelectedIds(selectedIds.filter(function(id){ return ids.indexOf(id) === -1; }));
+                  else setSelectedIds(Array.from(new Set(selectedIds.concat(ids))));
+                };
+                const toggleSelectExp = function(id) {
+                  setSelectedIds(selectedIds.includes(id) ? selectedIds.filter(function(x){ return x !== id; }) : selectedIds.concat([id]));
+                };
+                const handleBulkAction = async function(status) {
+                  const targets = allFiltered.filter(function(e){ return selectedIds.includes(e.id) && e.status === 'pending'; });
+                  if (!targets.length) { alert('No pending expenses selected.'); return; }
+                  const total = targets.reduce(function(s,e){ return s + (e.amount||0); }, 0);
+                  const verb = status === 'approved' ? 'APPROVE' : 'REJECT';
+                  if (!window.confirm(verb + ' ' + targets.length + ' selected expense claim(s)?\n\nTotal: ' + total.toFixed(2))) return;
+                  setBulkActing(true);
+                  let ok = 0;
+                  const failedIds = [];
+                  // The backend runs on serverless functions with a request timeout, so an
+                  // individual call can time out even though the update actually went through.
+                  // Retry once per record, and keep any still-failing ones SELECTED so they can
+                  // be retried by clicking again — rather than losing track of what didn't apply.
+                  for (const exp of targets) {
+                   let done = false;
+                   for (let attempt = 0; attempt < 2 && !done; attempt++) {
+                  try {
+                   const data = await apiCall(API_ENDPOINTS.expenses + '/' + exp.id, { method: 'PUT', body: JSON.stringify({ status: status }) });
+                   if (data && data.success) { ok++; done = true; }
+                  } catch(e) { /* fall through to retry, then record as failed */ }
+                   }
+                   if (!done) failedIds.push(exp.id);
+                  }
+                  // Reload ONCE at the end rather than after each record.
+                  await loadExpensesFromAPI();
+                  setSelectedIds(failedIds);
+                  setBulkActing(false);
+                  if (failedIds.length) {
+                   alert('✅ ' + ok + ' expense(s) ' + status + '.\n\n⚠️ ' + failedIds.length + ' did not complete (server timeout) and are still selected.\nCheck whether they applied, then click the button again to retry just those.');
+                  } else {
+                   alert('✅ ' + ok + ' expense(s) ' + status + '.');
+                  }
+                };
                 const handleBulkPayApproved = async () => {
                   // Pay every APPROVED expense currently visible under the active filters.
                   const toPay = allFiltered.filter(function(e){ return e.status === 'approved'; });
@@ -7685,24 +7733,35 @@ import React, { useState, useEffect } from 'react';
                   if (!window.confirm('Mark ' + toPay.length + ' approved expense(s) for ' + who + ' as PAID?\n\nTotal: ' + getCurrencySymbol(resolveEmployeeCurrency(visEmp.find(function(e){return toPay[0] && e.id===toPay[0].employeeId;})) || (toPay[0]&&toPay[0].currency) || 'GBP') + total.toFixed(2))) return;
                   setBulkPaying(true);
                   const paidBy = currentUser.firstName + ' ' + currentUser.lastName;
-                  let ok = 0, fail = 0;
+                  let ok = 0;
+                  const payFailed = [];
                   for (const exp of toPay) {
-                   try {
-                  const data = await apiCall(API_ENDPOINTS.expenses + '/' + exp.id, { method: 'PUT', body: JSON.stringify({ status: 'paid', paidBy: paidBy }) });
-                  if (data.success) ok++; else fail++;
-                   } catch(e) { fail++; }
+                   let done = false;
+                   for (let attempt = 0; attempt < 2 && !done; attempt++) {
+                  try {
+                   const data = await apiCall(API_ENDPOINTS.expenses + '/' + exp.id, { method: 'PUT', body: JSON.stringify({ status: 'paid', paidBy: paidBy }) });
+                   if (data && data.success) { ok++; done = true; }
+                  } catch(e) { /* retry once, then record as failed */ }
+                   }
+                   if (!done) payFailed.push(exp.id);
                   }
                   await loadExpensesFromAPI();
-                  setActiveTab('paid');
                   setBulkPaying(false);
-                  alert('✅ ' + ok + ' expense(s) marked as paid' + (fail ? '\n⚠️ ' + fail + ' failed.' : '.'));
+                  if (payFailed.length) {
+                   alert('✅ ' + ok + ' expense(s) marked as paid.\n\n⚠️ ' + payFailed.length + ' did not complete (server timeout). Re-check the Approved tab and run it again for those.');
+                  } else {
+                   setActiveTab('paid');
+                   alert('✅ ' + ok + ' expense(s) marked as paid.');
+                  }
                 };
 
                 const handleAction = async (id, status, extra) => {
                   const payload = Object.assign({ status: status }, extra || {});
                   try {
                    const data = await apiCall(API_ENDPOINTS.expenses + '/' + id, { method: 'PUT', body: JSON.stringify(payload) });
-                   if (data.success) { await loadExpensesFromAPI(); setActiveTab(status); }
+                   // Deliberately does NOT switch tabs — jumping to the target tab after each
+                   // action broke the flow of working down the Pending list one by one.
+                   if (data.success) { await loadExpensesFromAPI(); }
                    else alert('Error: ' + data.error);
                   } catch(e) { alert('Failed: ' + e.message); }
                 };
@@ -7866,6 +7925,25 @@ import React, { useState, useEffect } from 'react';
                   )}
                    </div>
                   </div>
+                  {selectedIds.length > 0 && (
+                   <div className="bg-teal-50 border-y border-teal-200 px-6 py-3 flex items-center justify-between flex-wrap gap-2">
+                  <span className="text-sm font-semibold text-teal-800">{selectedIds.length} selected</span>
+                  <div className="flex gap-2">
+                   <button onClick={function(){ handleBulkAction('approved'); }} disabled={bulkActing}
+                  className="bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50">
+                  {bulkActing ? 'Working…' : '✓ Approve Selected'}
+                   </button>
+                   <button onClick={function(){ handleBulkAction('rejected'); }} disabled={bulkActing}
+                  className="bg-red-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-red-700 disabled:opacity-50">
+                  ✕ Reject Selected
+                   </button>
+                   <button onClick={function(){ setSelectedIds([]); }}
+                  className="bg-white border border-teal-300 text-teal-700 px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-teal-50">
+                  Clear
+                   </button>
+                  </div>
+                   </div>
+                  )}
 
                   <div className="p-6">
                    {allFiltered.length === 0 ? (
@@ -7878,6 +7956,9 @@ import React, { useState, useEffect } from 'react';
                    <table className="w-full text-sm">
                   <thead className="bg-gray-50">
                    <tr>
+                  <th className="px-3 py-3 text-left">
+                   {selectableRows.length > 0 && <input type="checkbox" checked={allSelectableSelected} onChange={toggleSelectAllExp} className="w-4 h-4" title="Select all pending" />}
+                  </th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">Employee</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">Date</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">Category</th>
@@ -7892,7 +7973,10 @@ import React, { useState, useEffect } from 'react';
                   const _expEmp = visEmp.find(function(e){ return e.id === exp.employeeId; });
                   const expCur = _expEmp ? resolveEmployeeCurrency(_expEmp) : (exp.currency || 'GBP');
                   return (
-                   <tr key={exp.id} className="hover:bg-gray-50">
+                   <tr key={exp.id} className={'hover:bg-gray-50 ' + (selectedIds.includes(exp.id) ? 'bg-teal-50' : '')}>
+                  <td className="px-3 py-3">
+                   {exp.status === 'pending' && <input type="checkbox" checked={selectedIds.includes(exp.id)} onChange={function(){ toggleSelectExp(exp.id); }} className="w-4 h-4" />}
+                  </td>
                   <td className="px-3 py-3">
                    <div className="font-medium text-gray-800">{exp.employeeName}</div>
                    <div className="text-xs text-gray-500">{exp.employeeCode}</div>
@@ -7934,7 +8018,7 @@ import React, { useState, useEffect } from 'react';
                   </tbody>
                    <tfoot>
                   <tr className="bg-gray-50 border-t-2 border-gray-200 font-bold">
-                   <td className="px-3 py-3 text-gray-700" colSpan="4">Total ({allFiltered.length} claim{allFiltered.length!==1?'s':''})</td>
+                   <td className="px-3 py-3 text-gray-700" colSpan="5">Total ({allFiltered.length} claim{allFiltered.length!==1?'s':''})</td>
                    <td className="px-3 py-3 text-gray-800">
                   {(function() {
                    // Sum per currency in case the filtered claims span more than one (different
