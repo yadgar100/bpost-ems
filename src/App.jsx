@@ -9217,22 +9217,46 @@ import React, { useState, useEffect } from 'react';
                   <table className="w-full text-sm">
                   <thead><tr className="bg-green-50">{['Date','Agent','From','To','Collected','Paid to Agent','Bank Transfer (→ Company)'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-green-700">{h}</th>;})}</tr></thead>
                   <tbody className="divide-y divide-gray-100">
-                    {report.empCollections.map(function(c){return (
+                    {report.empCollections.map(function(c){
+                    const cSym = getCurrencySymbol(recordCurrency(c, emp));
+                    return (
                     <tr key={c.id} className="hover:bg-green-50">
                     <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{new Date(c.date).toLocaleDateString('en-GB')}</td>
                     <td className="px-3 py-2"><span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-bold">{c.agentCode}</span><span className="text-gray-400 text-xs ml-1">{c.agentCity}</span></td>
                     <td className="px-3 py-2 font-semibold">{c.fromCode||'—'}</td>
                     <td className="px-3 py-2 font-semibold">{c.toCode||'—'}</td>
-                    <td className="px-3 py-2 font-bold text-green-700">{sym}{c.amountCollected.toFixed(2)}</td>
-                    <td className="px-3 py-2 text-red-600 font-semibold">{c.amountPaid>0?'-'+sym+c.amountPaid.toFixed(2):'—'}</td>
-                    <td className="px-3 py-2 text-blue-600 font-semibold">{(c.bankAmount||0)>0?<span className="flex items-center gap-1"><span className="text-xs">🏦</span>{sym}{(c.bankAmount||0).toFixed(2)}</span>:'—'}</td>
+                    <td className="px-3 py-2 font-bold text-green-700">{cSym}{c.amountCollected.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-red-600 font-semibold">{c.amountPaid>0?'-'+cSym+c.amountPaid.toFixed(2):'—'}</td>
+                    <td className="px-3 py-2 text-blue-600 font-semibold">{(c.bankAmount||0)>0?<span className="flex items-center gap-1"><span className="text-xs">🏦</span>{cSym}{(c.bankAmount||0).toFixed(2)}</span>:'—'}</td>
                     </tr>
                     );})}
                     <tr className="bg-green-50 font-bold border-t-2 border-green-200">
                     <td colSpan="4" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Net Collections</td>
-                    <td className="px-3 py-2 text-green-700">{sym}{report.totalCollected.toFixed(2)}</td>
-                    <td className="px-3 py-2 text-red-600">-{sym}{report.totalPaidToAgents.toFixed(2)}</td>
-                    <td className="px-3 py-2 text-blue-600">{sym}{report.empCollections.reduce(function(s,c){return s+(c.bankAmount||0);},0).toFixed(2)}<span className="text-xs text-gray-400 ml-1">(co.)</span></td>
+                    <td className="px-3 py-2 text-green-700" colSpan="3">
+                    {(function() {
+                      // Split the net totals by currency rather than adding mismatched
+                      // currencies together under one (wrong) symbol.
+                      const byCur = {};
+                      report.empCollections.forEach(function(c) {
+                        const cur = recordCurrency(c, emp);
+                        if (!byCur[cur]) byCur[cur] = { collected: 0, paid: 0, bank: 0 };
+                        byCur[cur].collected += c.amountCollected;
+                        byCur[cur].paid += (c.amountPaid || 0);
+                        byCur[cur].bank += (c.bankAmount || 0);
+                      });
+                      return Object.keys(byCur).map(function(cur) {
+                        const s = getCurrencySymbol(cur);
+                        const t = byCur[cur];
+                        return (
+                          <span key={cur} className="inline-flex items-center gap-3 mr-4">
+                            <span className="text-green-700">{s}{t.collected.toFixed(2)}</span>
+                            {t.paid > 0 && <span className="text-red-600">-{s}{t.paid.toFixed(2)}</span>}
+                            {t.bank > 0 && <span className="text-blue-600">{s}{t.bank.toFixed(2)} (co.)</span>}
+                          </span>
+                        );
+                      });
+                    })()}
+                    </td>
                     </tr>
                   </tbody>
                   </table>
