@@ -315,6 +315,139 @@ import React, { useState, useEffect } from 'react';
             </svg>
         );
 
+            // ── Internal currency exchange panel (module scope = stable, never remounts) ──
+            // Sells from one currency account and buys into another at a stated rate.
+            // Persisted as ONE tagged adjustment so both legs move together atomically.
+            const FxExchangePanel = ({ employeeId, ledgers, apiCall, API_ENDPOINTS, loadAdjustmentsFromAPI, getCurrencySymbol, buildFxTag, parseFxTag, recentFx }) => {
+                const CURS = ['IQD', 'USD', 'GBP', 'EUR'];
+                const [open, setOpen] = useState(false);
+                const [fromCur, setFromCur] = useState('USD');
+                const [toCur, setToCur] = useState('IQD');
+                const [sellAmt, setSellAmt] = useState('');
+                const [rate, setRate] = useState('');
+                const [note, setNote] = useState('');
+                const [saving, setSaving] = useState(false);
+
+                const sell = parseFloat(sellAmt) || 0;
+                const rt = parseFloat(rate) || 0;
+                const buy = sell > 0 && rt > 0 ? sell * rt : 0;
+                const available = ledgers && ledgers[fromCur] ? ledgers[fromCur].balance : 0;
+                const insufficient = sell > 0 && sell > available + 0.005;
+
+                const submit = async function() {
+                  if (fromCur === toCur) { alert('Sell and buy currencies must be different.'); return; }
+                  if (!(sell > 0)) { alert('Enter an amount to sell.'); return; }
+                  if (!(rt > 0)) { alert('Enter an exchange rate.'); return; }
+                  if (insufficient && !window.confirm('Your ' + fromCur + ' account only holds ' + available.toFixed(2) + '. Record this exchange anyway?')) return;
+                  const buyRounded = parseFloat(buy.toFixed(2));
+                  const sellRounded = parseFloat(sell.toFixed(2));
+                  if (!window.confirm('Exchange:\n\nSELL  ' + getCurrencySymbol(fromCur) + sellRounded.toFixed(2) + ' (' + fromCur + ')\nBUY   ' + getCurrencySymbol(toCur) + buyRounded.toFixed(2) + ' (' + toCur + ')\nRate  1 ' + fromCur + ' = ' + rt + ' ' + toCur + '\n\nConfirm?')) return;
+                  setSaving(true);
+                  try {
+                   const reason = buildFxTag(fromCur, toCur, rt, sellRounded, buyRounded) + (note ? ' ' + note : '');
+                   const res = await apiCall(API_ENDPOINTS.adjustments, {
+                  method: 'POST',
+                  body: JSON.stringify({
+                   employeeId: employeeId,
+                   type: 'account_credit',
+                   amount: 0,
+                   reason: reason,
+                   date: new Date().toISOString().split('T')[0],
+                   hours: null
+                  })
+                   });
+                   if (res && res.success === false) throw new Error(res.error || 'API error');
+                   await loadAdjustmentsFromAPI();
+                   setSellAmt(''); setRate(''); setNote(''); setOpen(false);
+                  } catch(e) { alert('Failed to record exchange: ' + e.message); }
+                  setSaving(false);
+                };
+
+                const fc = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400';
+
+                return (
+                  <div className="bg-white rounded-xl shadow p-5 mb-6">
+                   <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                   <DollarSign className="w-5 h-5 text-sky-600" />Currency Exchange
+                  </h2>
+                  <button onClick={function(){ setOpen(!open); }} className="bg-sky-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-sky-700">
+                   {open ? 'Cancel' : 'New Exchange'}
+                  </button>
+                   </div>
+                   {open && (
+                  <div className="mt-4 space-y-3 bg-sky-50 border border-sky-200 rounded-lg p-4">
+                   <div className="grid grid-cols-2 gap-3">
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Sell from</label>
+                   <select value={fromCur} onChange={function(e){ setFromCur(e.target.value); }} className={fc}>
+                  {CURS.map(function(c){ return <option key={c} value={c}>{getCurrencySymbol(c)} {c}</option>; })}
+                   </select>
+                   <p className="text-[11px] mt-1 text-gray-500">Available: {getCurrencySymbol(fromCur)}{available.toFixed(2)}</p>
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Buy into</label>
+                   <select value={toCur} onChange={function(e){ setToCur(e.target.value); }} className={fc}>
+                  {CURS.filter(function(c){ return c !== fromCur; }).map(function(c){ return <option key={c} value={c}>{getCurrencySymbol(c)} {c}</option>; })}
+                   </select>
+                  </div>
+                   </div>
+                   <div className="grid grid-cols-2 gap-3">
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Amount to sell ({fromCur}) *</label>
+                   <input type="number" min="0" step="0.01" value={sellAmt} onChange={function(e){ setSellAmt(e.target.value); }} placeholder="0.00" className={fc} />
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Rate (1 {fromCur} = ? {toCur}) *</label>
+                   <input type="number" min="0" step="any" value={rate} onChange={function(e){ setRate(e.target.value); }} placeholder="0.00" className={fc} />
+                  </div>
+                   </div>
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Note (optional)</label>
+                  <input type="text" value={note} onChange={function(e){ setNote(e.target.value); }} placeholder="e.g. exchanged at Erbil bazaar" className={fc} />
+                   </div>
+                   {buy > 0 && (
+                  <div className="bg-white border-2 border-sky-300 rounded-lg p-3 text-center">
+                   <p className="text-xs text-gray-500 mb-1">You will receive</p>
+                   <p className="text-2xl font-bold text-sky-700">{getCurrencySymbol(toCur)}{buy.toFixed(2)}</p>
+                   <p className="text-[11px] text-gray-500 mt-1">
+                  −{getCurrencySymbol(fromCur)}{sell.toFixed(2)} from {fromCur} &nbsp;·&nbsp; +{getCurrencySymbol(toCur)}{buy.toFixed(2)} to {toCur}
+                   </p>
+                  </div>
+                   )}
+                   {insufficient && <p className="text-xs text-red-600 font-semibold">⚠️ Exceeds your available {fromCur} balance ({getCurrencySymbol(fromCur)}{available.toFixed(2)}).</p>}
+                   <button onClick={submit} disabled={saving || !(sell > 0) || !(rt > 0)}
+                  className={'w-full py-2.5 rounded-lg font-semibold text-sm ' + (saving || !(sell>0) || !(rt>0) ? 'bg-gray-300 text-gray-500' : 'bg-sky-600 text-white hover:bg-sky-700')}>
+                  {saving ? 'Recording…' : 'Record Exchange'}
+                   </button>
+                  </div>
+                   )}
+                   {(recentFx || []).length > 0 && (
+                  <div className="mt-4">
+                   <p className="text-xs font-semibold text-gray-500 mb-2">Recent exchanges</p>
+                   <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {[...recentFx].sort(function(a,b){ return a.date > b.date ? -1 : 1; }).map(function(a) {
+                   const fx = parseFxTag(a.reason);
+                   if (!fx) return null;
+                   return (
+                  <div key={a.id} className="flex items-center justify-between text-xs bg-gray-50 rounded-lg px-3 py-2">
+                   <div>
+                  <span className="font-semibold text-amber-700">−{getCurrencySymbol(fx.from)}{fx.sell.toFixed(2)}</span>
+                  <span className="text-gray-400 mx-1.5">→</span>
+                  <span className="font-semibold text-sky-700">+{getCurrencySymbol(fx.to)}{fx.buy.toFixed(2)}</span>
+                  <span className="text-gray-400 ml-2">@ {fx.rate}</span>
+                   </div>
+                   <span className="text-gray-400">{new Date(a.date).toLocaleDateString('en-GB',{day:'2-digit',month:'short'})}</span>
+                  </div>
+                   );
+                  })}
+                   </div>
+                  </div>
+                   )}
+                  </div>
+                );
+            };
+
             const AgentReport = ({ onClose, visibleEmployees: visEmp, onRefresh, persistedState, onStateChange, agentCollections, agents, apiCall, API_ENDPOINTS, hasPermission, getCurrencySymbol, resolveEmployeeCurrency, loadAgentCollectionsFromAPI, branchList }) => {
                 const today = new Date().toISOString().split('T')[0];
                 const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
@@ -1295,6 +1428,7 @@ import React, { useState, useEffect } from 'react';
                   overtimeRate: (u.overtimeRate != null ? u.overtimeRate : (u.OvertimeRate != null ? u.OvertimeRate : null)),
                   standardHours: u.standardHours || u.StandardHours || null,
                   minimumHours: u.minimumHours || u.MinimumHours || null,
+                  multiCurrency: (u.MultiCurrency === true || u.MultiCurrency === 1 || u.multiCurrency === true || u.multiCurrency === 1),
                   branches: (() => { try { return JSON.parse(u.Branches || u.branches || '[]'); } catch(e) { return Array.isArray(u.branches) ? u.branches : []; } })(),
                   assignedLocations: u.assignedLocations || u.AssignedLocations || [],
                   adminPermissions: parsePermissions(u.adminPermissions || u.AdminPermissions)
@@ -2199,6 +2333,40 @@ import React, { useState, useEffect } from 'react';
                 return emp ? getCurrencySymbol(resolveEmployeeCurrency(emp)) : '£';
             };
 
+            // ── Multi-currency accounts ────────────────────────────────────────────────
+            // Permitted employees hold FOUR independent ledgers (IQD/USD/GBP/EUR) instead of
+            // a single balance. Expenses and collections are recorded against a chosen
+            // currency and only ever move that currency's balance. An internal FX exchange
+            // debits one ledger and credits another at a stated rate.
+            const MULTI_CURRENCIES = ['IQD', 'USD', 'GBP', 'EUR'];
+
+            // Permission lives on the employee record (a per-employee toggle in Employee Management).
+            const isMultiCurrencyEmployee = (emp) => {
+                if (!emp) return false;
+                return emp.multiCurrency === true || emp.multiCurrency === 1 || emp.multiCurrency === 'true';
+            };
+
+            // FX exchanges are stored as an 'account_credit'-style adjustment whose reason carries
+            // a machine-readable tag — same convention already used for [BANK] payments and
+            // [PERIOD:...] settlements, so this needs no DB schema change.
+            //   [FX:USD>IQD@1450|sell=100|buy=145000]
+            const FX_TAG_RE = /^\[FX:([A-Z]{3})>([A-Z]{3})@([\d.]+)\|sell=([\d.]+)\|buy=([\d.]+)\]/;
+            const buildFxTag = (from, to, rate, sellAmt, buyAmt) =>
+                '[FX:' + from + '>' + to + '@' + rate + '|sell=' + sellAmt + '|buy=' + buyAmt + ']';
+            const parseFxTag = (reason) => {
+                const m = FX_TAG_RE.exec(reason || '');
+                if (!m) return null;
+                return { from: m[1], to: m[2], rate: parseFloat(m[3]), sell: parseFloat(m[4]), buy: parseFloat(m[5]) };
+            };
+            const stripTags = (reason) => (reason || '').replace(FX_TAG_RE, '').replace(/^\[BANK\]\s*/, '').trim();
+
+            // Currency an individual record belongs to. Falls back to the employee's default
+            // currency for older records saved before multi-currency was enabled.
+            const recordCurrency = (rec, emp) => {
+                const c = (rec && (rec.currency || rec.Currency)) || '';
+                return MULTI_CURRENCIES.indexOf(c) !== -1 ? c : resolveEmployeeCurrency(emp);
+            };
+
             const extractTime = (val) => {
                 if (!val) return '';
                 if (val.includes('T')) return val.split('T')[1].substring(0, 5);
@@ -2270,6 +2438,7 @@ import React, { useState, useEffect } from 'react';
                   overtimeRate: (data.user.OvertimeRate != null ? data.user.OvertimeRate : (data.user.overtimeRate != null ? data.user.overtimeRate : null)),
                   standardHours: data.user.StandardHours || data.user.standardHours || null,
                   minimumHours: data.user.MinimumHours || data.user.minimumHours || null,
+                  multiCurrency: (data.user.MultiCurrency === true || data.user.MultiCurrency === 1 || data.user.multiCurrency === true || data.user.multiCurrency === 1),
                   branches: (() => { try { return JSON.parse(data.user.Branches || data.user.branches || '[]'); } catch(e) { return Array.isArray(data.user.branches) ? data.user.branches : []; } })(),
                   assignedLocations: data.user.AssignedLocations || data.user.assignedLocations || [],
                   adminPermissions: parsePermissions(data.user.AdminPermissions || data.user.adminPermissions)
@@ -2361,6 +2530,7 @@ import React, { useState, useEffect } from 'react';
                   overtimeRate: (u.overtimeRate != null ? u.overtimeRate : (u.OvertimeRate != null ? u.OvertimeRate : null)),
                   standardHours: u.standardHours || u.StandardHours || null,
                   minimumHours: u.minimumHours || u.MinimumHours || null,
+                  multiCurrency: (u.MultiCurrency === true || u.MultiCurrency === 1 || u.multiCurrency === true || u.multiCurrency === 1),
                   branches: (() => { try { return JSON.parse(u.Branches || u.branches || '[]'); } catch(e) { return Array.isArray(u.branches) ? u.branches : []; } })(),
                   assignedLocations: u.assignedLocations || u.AssignedLocations || [],
                   adminPermissions: parsePermissions(u.adminPermissions || u.AdminPermissions)
@@ -2401,7 +2571,9 @@ import React, { useState, useEffect } from 'react';
                   adminPermissions: parsePermissions(emp.AdminPermissions || emp.adminPermissions),
                   standardHours: emp.StandardHours || emp.standardHours || null,
                   overtimeRate: emp.OvertimeRate || emp.overtimeRate || null,
-                  minimumHours: emp.MinimumHours !== undefined ? (emp.MinimumHours || emp.minimumHours || null) : (emp.minimumHours || null)
+                  minimumHours: emp.MinimumHours !== undefined ? (emp.MinimumHours || emp.minimumHours || null) : (emp.minimumHours || null),
+                  // Multi-currency flag. Stored server-side; falls back to false for older records.
+                  multiCurrency: (emp.MultiCurrency === true || emp.MultiCurrency === 1 || emp.multiCurrency === true || emp.multiCurrency === 1)
                    }));
                    lockScroll();
                    setEmployees(mappedEmployees);
@@ -3942,10 +4114,98 @@ import React, { useState, useEffect } from 'react';
                   const sumCredit = allCredit.reduce((s,a) => s + (parseFloat(a.amount)||0), 0);
                   const empBalance = sumColl - sumEarned - sumExp - sumSettle - sumCredit;
 
+                  // ── Per-currency ledgers (multi-currency employees only) ───────────────
+                  // Each currency is an independent account. A USD expense only moves USD.
+                  // Earnings (timesheets) always land in the employee's DEFAULT currency,
+                  // since wages are set in one currency. FX exchanges move value between
+                  // ledgers: the sell side debits, the buy side credits.
+                  const isMultiCur = isMultiCurrencyEmployee(myEmpRecord);
+                  const defaultCur = resolveEmployeeCurrency(myEmpRecord);
+                  const allFx = financialAdjustments.filter(a => a.employeeId === myId && parseFxTag(a.reason));
+                  const currencyLedgers = (function() {
+                   if (!isMultiCur) return null;
+                   const led = {};
+                   MULTI_CURRENCIES.forEach(function(c) {
+                  led[c] = { collected: 0, earned: 0, expenses: 0, settled: 0, credits: 0, fxIn: 0, fxOut: 0, balance: 0 };
+                   });
+                   allColl.forEach(function(c) {
+                  const cur = recordCurrency(c, myEmpRecord);
+                  if (led[cur]) led[cur].collected += (c.amountCollected||0) - (c.amountPaid||0);
+                   });
+                   // Wages are paid in the employee's default currency.
+                   if (led[defaultCur]) led[defaultCur].earned += sumEarned;
+                   allExp.forEach(function(x) {
+                  const cur = recordCurrency(x, myEmpRecord);
+                  if (led[cur]) led[cur].expenses += (x.amount||0);
+                   });
+                   allSettle.forEach(function(a) {
+                  const cur = recordCurrency(a, myEmpRecord);
+                  if (led[cur]) led[cur].settled += (parseFloat(a.amount)||0);
+                   });
+                   allCredit.forEach(function(a) {
+                  if (parseFxTag(a.reason)) return; // FX legs handled separately below
+                  const cur = recordCurrency(a, myEmpRecord);
+                  if (led[cur]) led[cur].credits += (parseFloat(a.amount)||0);
+                   });
+                   allFx.forEach(function(a) {
+                  const fx = parseFxTag(a.reason);
+                  if (!fx) return;
+                  if (led[fx.from]) led[fx.from].fxOut += fx.sell;
+                  if (led[fx.to]) led[fx.to].fxIn += fx.buy;
+                   });
+                   MULTI_CURRENCIES.forEach(function(c) {
+                  const L = led[c];
+                  // Positive = employee holds / owes company this much in that currency.
+                  L.balance = L.collected - L.earned - L.expenses - L.settled - L.credits - L.fxOut + L.fxIn;
+                   });
+                   return led;
+                  })();
+
                   const lastSettleDate = allSettle.length ? allSettle.map(a => a.date).sort().slice(-1)[0] : null;
                   const unsettledCollections = lastSettleDate ? myCollections.filter(c => c.date > lastSettleDate) : myCollections;
 
-                  const balanceCard = (
+                  const balanceCard = isMultiCur ? (
+                   <div className="bg-white rounded-xl shadow p-5 mb-6">
+                  <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-1">
+                   <Truck className="w-5 h-5 text-orange-600" />My Currency Accounts
+                  </h2>
+                  <p className="text-xs text-gray-400 mb-4">Each currency is a separate account. Spending in one currency only affects that account.</p>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                   {MULTI_CURRENCIES.map(function(cur) {
+                  const L = currencyLedgers[cur];
+                  const bal = L.balance;
+                  const csym = getCurrencySymbol(cur);
+                  const hasActivity = L.collected || L.earned || L.expenses || L.settled || L.credits || L.fxIn || L.fxOut;
+                  return (
+                   <div key={cur} className={'rounded-xl border-2 p-4 ' + (bal > 0.005 ? 'bg-red-50 border-red-200' : bal < -0.005 ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200')}>
+                  <div className="flex items-center justify-between mb-1">
+                   <span className="text-xs font-bold text-gray-600">{cur}</span>
+                   {cur === defaultCur && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-semibold">wages</span>}
+                  </div>
+                  <p className="text-xl font-bold" style={{color: bal > 0.005 ? '#dc2626' : bal < -0.005 ? '#16a34a' : '#6b7280'}}>
+                   {csym}{Math.abs(bal) < 0.005 ? '0.00' : Math.abs(bal).toFixed(2)}
+                  </p>
+                  <p className="text-[11px] font-semibold mt-0.5" style={{color: bal > 0.005 ? '#dc2626' : bal < -0.005 ? '#16a34a' : '#9ca3af'}}>
+                   {bal > 0.005 ? 'You owe' : bal < -0.005 ? 'Owed to you' : 'Settled'}
+                  </p>
+                  {hasActivity ? (
+                   <div className="mt-2 pt-2 border-t border-gray-200 space-y-0.5 text-[10px] text-gray-500">
+                  {L.collected ? <div className="flex justify-between"><span>Collected</span><span>+{csym}{L.collected.toFixed(2)}</span></div> : null}
+                  {L.earned ? <div className="flex justify-between"><span>Earnings</span><span>-{csym}{L.earned.toFixed(2)}</span></div> : null}
+                  {L.expenses ? <div className="flex justify-between"><span>Expenses</span><span>-{csym}{L.expenses.toFixed(2)}</span></div> : null}
+                  {L.credits ? <div className="flex justify-between"><span>Credits</span><span>-{csym}{L.credits.toFixed(2)}</span></div> : null}
+                  {L.settled ? <div className="flex justify-between"><span>Settled</span><span>-{csym}{L.settled.toFixed(2)}</span></div> : null}
+                  {L.fxIn ? <div className="flex justify-between text-sky-600"><span>FX bought</span><span>+{csym}{L.fxIn.toFixed(2)}</span></div> : null}
+                  {L.fxOut ? <div className="flex justify-between text-amber-600"><span>FX sold</span><span>-{csym}{L.fxOut.toFixed(2)}</span></div> : null}
+                   </div>
+                  ) : <p className="text-[10px] text-gray-300 mt-2">No activity</p>}
+                   </div>
+                  );
+                   })}
+                  </div>
+                  {lastSettleDate && <p className="text-xs text-gray-400 mt-3">Last settled up to {new Date(lastSettleDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</p>}
+                   </div>
+                  ) : (
                    <div className="bg-white rounded-xl shadow p-5 mb-6">
                   <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
                    <Truck className="w-5 h-5 text-orange-600" />My Account Balance
@@ -3962,7 +4222,25 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   );
 
-                  if (unsettledCollections.length === 0) return balanceCard;
+                  // ── Internal currency exchange ─────────────────────────────────────────
+                  // Sell from one account, buy into another at a stated rate. Recorded as a
+                  // single tagged adjustment so both legs always move together and can never
+                  // drift apart.
+                  const fxPanel = isMultiCur ? <FxExchangePanel
+                   employeeId={myId}
+                   ledgers={currencyLedgers}
+                   apiCall={apiCall}
+                   API_ENDPOINTS={API_ENDPOINTS}
+                   loadAdjustmentsFromAPI={loadAdjustmentsFromAPI}
+                   getCurrencySymbol={getCurrencySymbol}
+                   buildFxTag={buildFxTag}
+                   parseFxTag={parseFxTag}
+                   recentFx={allFx}
+                  /> : null;
+
+                  const headerBlocks = <React.Fragment>{balanceCard}{fxPanel}</React.Fragment>;
+
+                  if (unsettledCollections.length === 0) return headerBlocks;
 
                   const colMin = unsettledCollections.map(c=>c.date).sort()[0];
                   const [colFrom, setColFrom] = React.useState(() => lastSettleDate || colMin);
@@ -3993,6 +4271,7 @@ import React, { useState, useEffect } from 'react';
                   return (
                    <React.Fragment>
                   {balanceCard}
+                  {fxPanel}
                    <div className="bg-white rounded-xl shadow p-5 mb-6">
                   <div className="flex items-center justify-between mb-4">
                    <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
@@ -6809,7 +7088,8 @@ import React, { useState, useEffect } from 'react';
                    standardHours: employee.standardHours !== null && employee.standardHours !== undefined ? employee.standardHours.toString() : '',
                    overtimeRate: employee.overtimeRate !== null && employee.overtimeRate !== undefined ? employee.overtimeRate.toString() : '',
                    minimumHoursEnabled: !!(employee.minimumHours),
-                   minimumHours: employee.minimumHours !== null && employee.minimumHours !== undefined ? employee.minimumHours.toString() : '10'
+                   minimumHours: employee.minimumHours !== null && employee.minimumHours !== undefined ? employee.minimumHours.toString() : '10',
+                   multiCurrency: isMultiCurrencyEmployee(employee)
                   });
                 };
 
@@ -6819,7 +7099,8 @@ import React, { useState, useEffect } from 'react';
                    hourlyRate: parseFloat(editData.hourlyRate),
                    standardHours: editData.standardHours !== '' ? parseFloat(editData.standardHours) : null,
                    overtimeRate: editData.overtimeRate !== '' ? parseFloat(editData.overtimeRate) : null,
-                   minimumHours: editData.minimumHoursEnabled ? (parseFloat(editData.minimumHours) || 10) : null
+                   minimumHours: editData.minimumHoursEnabled ? (parseFloat(editData.minimumHours) || 10) : null,
+                   multiCurrency: !!editData.multiCurrency
                   });
                   setEditingEmployee(null);
                   setEditData(null);
@@ -7096,6 +7377,25 @@ import React, { useState, useEffect } from 'react';
                   <p className="text-xs text-amber-700">When enabled, employees will be paid for a minimum number of hours per day even if they work less.</p>
                    )}
                   </div>
+                  <div className="border border-sky-200 bg-sky-50 rounded-lg p-3">
+                   <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-sky-800 uppercase tracking-wide">🌍 Multi-Currency Account</p>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                   <input
+                  type="checkbox"
+                  checked={!!editData.multiCurrency}
+                  onChange={(e) => setEditData({...editData, multiCurrency: e.target.checked})}
+                  className="w-4 h-4 text-sky-600 rounded"
+                   />
+                   <span className="text-xs font-semibold text-sky-800">Enable</span>
+                  </label>
+                   </div>
+                   <p className="text-xs text-sky-700">
+                  {editData.multiCurrency
+                   ? 'This employee holds four separate accounts (IQD, USD, GBP, EUR). They can record expenses and collections in any of them, and exchange between them at a set rate. Wages are paid in ' + (getCurrencyForCountry(editData.country) || editData.currency || 'GBP') + '.'
+                   : 'When enabled, this employee gets four separate currency accounts instead of a single balance, plus an internal exchange tool.'}
+                   </p>
+                  </div>
                   <div className="flex gap-2 pt-2">
                    <button
                   onClick={() => saveEmployeeChanges(employee.id)}
@@ -7365,11 +7665,14 @@ import React, { useState, useEffect } from 'react';
 
             const ExpenseForm = ({ onClose }) => {
                 const today = new Date().toISOString().split('T')[0];
-                const emptyForm = { date: today, category: '', receiptImage: null };
+                const myEmpRec = employees.find(e => e.id === currentUser.id) || currentUser;
+                const multiCur = isMultiCurrencyEmployee(myEmpRec);
+                const myDefaultCur = resolveEmployeeCurrency(myEmpRec);
+                const emptyForm = { date: today, category: '', receiptImage: null, currency: myDefaultCur };
                 const [form, setForm] = useState(() => {
                   try {
                    const saved = JSON.parse(localStorage.getItem('bpost_pending_form') || 'null');
-                   return { date: saved ? saved.date || today : today, category: saved ? saved.category || '' : '', receiptImage: null };
+                   return { date: saved ? saved.date || today : today, category: saved ? saved.category || '' : '', receiptImage: null, currency: (saved && saved.currency) || myDefaultCur };
                   } catch(e) { return emptyForm; }
                 });
                 // Text inputs as uncontrolled refs — no re-render on keystroke
@@ -7422,7 +7725,7 @@ import React, { useState, useEffect } from 'react';
                   if (!form.category || !amt) { alert('Category and amount are required'); return; }
                   const isDuplicate = items.some(i => i.category === form.category && i.date === form.date && parseFloat(i.amount) === parseFloat(amt) && i.description === desc);
                   if (isDuplicate) { alert('An identical item is already in your list.'); return; }
-                  setItems([...items, { date: form.date, category: form.category, description: desc, amount: parseFloat(amt), receiptNote: rNote, receiptImage: form.receiptImage, id: Date.now() }]);
+                  setItems([...items, { date: form.date, category: form.category, description: desc, amount: parseFloat(amt), currency: form.currency || myDefaultCur, receiptNote: rNote, receiptImage: form.receiptImage, id: Date.now() }]);
                   // Clear refs and reset category/image
                   if (descriptionRef.current) descriptionRef.current.value = '';
                   if (amountRef.current) amountRef.current.value = '';
@@ -7445,7 +7748,7 @@ import React, { useState, useEffect } from 'react';
                    for (const item of items) {
                   await apiCall(API_ENDPOINTS.expenses, {
                    method: 'POST',
-                   body: JSON.stringify({ date: item.date, category: item.category, description: item.description, amount: item.amount, currency: resolveEmployeeCurrency(currentUser), receiptNote: item.receiptNote || '', receiptImage: item.receiptImage || null })
+                   body: JSON.stringify({ date: item.date, category: item.category, description: item.description, amount: item.amount, currency: item.currency || resolveEmployeeCurrency(currentUser), receiptNote: item.receiptNote || '', receiptImage: item.receiptImage || null })
                   });
                    }
                    await loadExpensesFromAPI();
@@ -7499,8 +7802,20 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                    <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Amount ({getCurrencySymbol(resolveEmployeeCurrency(currentUser))}) *</label>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                   Amount ({getCurrencySymbol(multiCur ? (form.currency || myDefaultCur) : resolveEmployeeCurrency(currentUser))}) *
+                  </label>
                   <input type="number" min="0.01" step="0.01" ref={amountRef} defaultValue="" placeholder="0.00" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none" />
+                  {multiCur && (
+                   <div className="mt-2">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Paid from account *</label>
+                  <select value={form.currency || myDefaultCur} onChange={function(e){ setForm(Object.assign({}, form, {currency: e.target.value})); }}
+                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none">
+                   {MULTI_CURRENCIES.map(function(c){ return <option key={c} value={c}>{getCurrencySymbol(c)} {c}</option>; })}
+                  </select>
+                  <p className="text-[11px] text-gray-400 mt-1">This expense will be deducted from your {form.currency || myDefaultCur} account only.</p>
+                   </div>
+                  )}
                    </div>
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Receipt Photo</label>
@@ -8266,7 +8581,11 @@ import React, { useState, useEffect } from 'react';
                 const bankAmountRef = React.useRef(null);
                 const notesRef = React.useRef(null);
                 const [saving, setSaving] = useState(false);
-                const sym = getCurrencySymbol(resolveEmployeeCurrency(currentUser));
+                const myEmpRecCol = employees.find(e => e.id === currentUser.id) || currentUser;
+                const multiCurCol = isMultiCurrencyEmployee(myEmpRecCol);
+                const defaultCurCol = resolveEmployeeCurrency(myEmpRecCol);
+                const [colCurrency, setColCurrency] = useState(defaultCurCol);
+                const sym = getCurrencySymbol(multiCurCol ? colCurrency : resolveEmployeeCurrency(currentUser));
 
                 const selectedAgent = myAgents.find(function(a) { return a.id === parseInt(agentId); });
 
@@ -8294,7 +8613,7 @@ import React, { useState, useEffect } from 'react';
                    amountPaid: parseFloat(amountPaidRef.current ? amountPaidRef.current.value : '') || 0,
                    bankAmount: parseFloat(bankAmountRef.current ? bankAmountRef.current.value : '') || 0,
                    boxesQty: 0,
-                   currency: resolveEmployeeCurrency(currentUser),
+                   currency: multiCurCol ? colCurrency : resolveEmployeeCurrency(currentUser),
                    notes: notesRef.current ? notesRef.current.value : ''
                   })
                    });
@@ -8344,6 +8663,15 @@ import React, { useState, useEffect } from 'react';
                   <input type="date" value={date} onChange={function(e) { setDate(e.target.value); }} className={fc} />
                    </div>
                   </div>
+                  {multiCurCol && (
+                   <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+                  <label className="block text-xs font-semibold text-indigo-800 mb-1">Collected in currency *</label>
+                  <select value={colCurrency} onChange={function(e){ setColCurrency(e.target.value); }} className={fc}>
+                   {MULTI_CURRENCIES.map(function(c){ return <option key={c} value={c}>{getCurrencySymbol(c)} {c}</option>; })}
+                  </select>
+                  <p className="text-[11px] text-indigo-600 mt-1">This collection will be added to your {colCurrency} account.</p>
+                   </div>
+                  )}
                   {selectedAgent && (
                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
@@ -8611,7 +8939,73 @@ import React, { useState, useEffect } from 'react';
                    grossBalance, previousPayments, totalAccountCredits, balance
                   });
 
-                  setReport({ tsRows, empExpenses, empCollections, empAdjustments, accountCredits, totalEarned, totalExpenses, totalCollected, totalPaidToAgents, grossBalance, previousPayments, previousBonuses, previousPenalties, totalAccountCredits, pendingCreditsTotal, balance, hourlyRate, settlementRecords, overlaps, openingBalance, periodActivity });
+                  // ── Per-currency breakdown (multi-currency employees only) ─────────────
+                  // Same ledger rules as the employee portal: each currency is independent,
+                  // wages land in the employee's default currency, FX moves value between them.
+                  const empIsMulti = isMultiCurrencyEmployee(emp);
+                  const empDefaultCur = resolveEmployeeCurrency(emp);
+                  const currencyBreakdown = (function() {
+                   if (!empIsMulti) return null;
+                   const led = {};
+                   MULTI_CURRENCIES.forEach(function(c) {
+                  led[c] = { collected:0, paidAgents:0, earned:0, expenses:0, settled:0, credits:0, fxIn:0, fxOut:0, opening:0, balance:0 };
+                   });
+                   // Period activity
+                   empCollections.forEach(function(c) {
+                  const cur = recordCurrency(c, emp);
+                  if (led[cur]) { led[cur].collected += (c.amountCollected||0); led[cur].paidAgents += (c.amountPaid||0); }
+                   });
+                   if (led[empDefaultCur]) led[empDefaultCur].earned += totalEarned;
+                   empExpenses.forEach(function(e) {
+                  const cur = recordCurrency(e, emp);
+                  if (led[cur]) led[cur].expenses += (e.amount||0);
+                   });
+                   settlementRecords.forEach(function(a) {
+                  const cur = recordCurrency(a, emp);
+                  if (led[cur]) led[cur].settled += (parseFloat(a.amount)||0);
+                   });
+                   accountCredits.forEach(function(a) {
+                  if (parseFxTag(a.reason)) return;
+                  const cur = recordCurrency(a, emp);
+                  if (led[cur]) led[cur].credits += (parseFloat(a.amount)||0);
+                   });
+                   // FX within the period
+                   financialAdjustments.filter(function(a){
+                  return a.employeeId === parseInt(empId) && parseFxTag(a.reason) && a.date >= fromDate && a.date <= toDate;
+                   }).forEach(function(a) {
+                  const fx = parseFxTag(a.reason);
+                  if (led[fx.from]) led[fx.from].fxOut += fx.sell;
+                  if (led[fx.to]) led[fx.to].fxIn += fx.buy;
+                   });
+                   // Opening balances (everything strictly before fromDate), per currency
+                   priorCollections.forEach(function(c) {
+                  const cur = recordCurrency(c, emp);
+                  if (led[cur]) led[cur].opening += (c.amountCollected||0) - (c.amountPaid||0);
+                   });
+                   if (led[empDefaultCur]) led[empDefaultCur].opening -= priorEarned;
+                   expenses.filter(function(ex){ return ex.employeeId === parseInt(empId) && (ex.status==='approved'||ex.status==='paid') && ex.date < fromDate; })
+                  .forEach(function(ex) { const cur = recordCurrency(ex, emp); if (led[cur]) led[cur].opening -= (ex.amount||0); });
+                   allSettlements.filter(function(a){ return a.date < fromDate; })
+                  .forEach(function(a) { const cur = recordCurrency(a, emp); if (led[cur]) led[cur].opening -= (parseFloat(a.amount)||0); });
+                   financialAdjustments.filter(function(a){ return a.employeeId === parseInt(empId) && a.type === 'account_credit' && a.date < fromDate; })
+                  .forEach(function(a) {
+                   const fx = parseFxTag(a.reason);
+                   if (fx) {
+                  if (led[fx.from]) led[fx.from].opening -= fx.sell;
+                  if (led[fx.to]) led[fx.to].opening += fx.buy;
+                   } else {
+                  const cur = recordCurrency(a, emp);
+                  if (led[cur]) led[cur].opening -= (parseFloat(a.amount)||0);
+                   }
+                  });
+                   MULTI_CURRENCIES.forEach(function(c) {
+                  const L = led[c];
+                  L.balance = L.opening + L.collected - L.paidAgents - L.earned - L.expenses - L.settled - L.credits - L.fxOut + L.fxIn;
+                   });
+                   return led;
+                  })();
+
+                  setReport({ tsRows, empExpenses, empCollections, empAdjustments, accountCredits, totalEarned, totalExpenses, totalCollected, totalPaidToAgents, grossBalance, previousPayments, previousBonuses, previousPenalties, totalAccountCredits, pendingCreditsTotal, balance, hourlyRate, settlementRecords, overlaps, openingBalance, periodActivity, currencyBreakdown, empIsMulti, empDefaultCur });
                 };
 
                 const handleDeleteSettlement = async function(s) {
@@ -8909,8 +9303,51 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   )}
 
+                  {report.empIsMulti && report.currencyBreakdown && (
+                  <div className="rounded-2xl border-2 border-sky-300 bg-sky-50 p-6 mb-6">
+                    <p className="text-sm font-bold text-sky-800 uppercase tracking-wider mb-1">Currency Accounts</p>
+                    <p className="text-xs text-sky-600 mb-4">This employee holds separate accounts per currency. Each is settled independently — wages are paid in {report.empDefaultCur}.</p>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    {MULTI_CURRENCIES.map(function(cur) {
+                      const L = report.currencyBreakdown[cur];
+                      const csym = getCurrencySymbol(cur);
+                      const active = L.opening || L.collected || L.paidAgents || L.earned || L.expenses || L.settled || L.credits || L.fxIn || L.fxOut;
+                      return (
+                      <div key={cur} className={'rounded-xl border-2 p-3 bg-white ' + (L.balance > 0.005 ? 'border-red-200' : L.balance < -0.005 ? 'border-green-200' : 'border-gray-200')}>
+                        <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold text-gray-600">{cur}</span>
+                        {cur === report.empDefaultCur && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-semibold">wages</span>}
+                        </div>
+                        <p className="text-lg font-bold" style={{color: L.balance > 0.005 ? '#dc2626' : L.balance < -0.005 ? '#16a34a' : '#6b7280'}}>
+                        {csym}{Math.abs(L.balance) < 0.005 ? '0.00' : Math.abs(L.balance).toFixed(2)}
+                        </p>
+                        <p className="text-[10px] font-semibold" style={{color: L.balance > 0.005 ? '#dc2626' : L.balance < -0.005 ? '#16a34a' : '#9ca3af'}}>
+                        {L.balance > 0.005 ? 'Employee owes' : L.balance < -0.005 ? 'Company owes' : 'Clear'}
+                        </p>
+                        {active ? (
+                        <div className="mt-2 pt-2 border-t border-gray-100 space-y-0.5 text-[10px] text-gray-500">
+                          {Math.abs(L.opening) >= 0.005 ? <div className="flex justify-between"><span>Opening</span><span>{L.opening>0?'+':''}{csym}{L.opening.toFixed(2)}</span></div> : null}
+                          {L.collected ? <div className="flex justify-between"><span>Collected</span><span>+{csym}{L.collected.toFixed(2)}</span></div> : null}
+                          {L.paidAgents ? <div className="flex justify-between"><span>Paid agents</span><span>-{csym}{L.paidAgents.toFixed(2)}</span></div> : null}
+                          {L.earned ? <div className="flex justify-between"><span>Earnings</span><span>-{csym}{L.earned.toFixed(2)}</span></div> : null}
+                          {L.expenses ? <div className="flex justify-between"><span>Expenses</span><span>-{csym}{L.expenses.toFixed(2)}</span></div> : null}
+                          {L.credits ? <div className="flex justify-between"><span>Credits</span><span>-{csym}{L.credits.toFixed(2)}</span></div> : null}
+                          {L.settled ? <div className="flex justify-between"><span>Settled</span><span>-{csym}{L.settled.toFixed(2)}</span></div> : null}
+                          {L.fxIn ? <div className="flex justify-between text-sky-600"><span>FX bought</span><span>+{csym}{L.fxIn.toFixed(2)}</span></div> : null}
+                          {L.fxOut ? <div className="flex justify-between text-amber-600"><span>FX sold</span><span>-{csym}{L.fxOut.toFixed(2)}</span></div> : null}
+                        </div>
+                        ) : <p className="text-[10px] text-gray-300 mt-2">No activity</p>}
+                      </div>
+                      );
+                    })}
+                    </div>
+                  </div>
+                  )}
+
                   <div className={'rounded-2xl border-2 p-6 mb-6 ' + (report.balance > 0 ? 'bg-red-50 border-red-300' : report.balance < 0 ? 'bg-green-50 border-green-300' : 'bg-gray-50 border-gray-300')}>
-                  <p className="text-sm font-bold text-gray-600 uppercase tracking-wider mb-4">Final Balance Summary</p>
+                  <p className="text-sm font-bold text-gray-600 uppercase tracking-wider mb-4">
+                    {report.empIsMulti ? 'Combined Summary (all currencies — reference only)' : 'Final Balance Summary'}
+                  </p>
                   <div className="space-y-2 mb-4">
                   {Math.abs(report.openingBalance) >= 0.01 && (
                   <div className="flex justify-between text-sm pb-2 mb-1 border-b border-dashed border-gray-300">
