@@ -8721,6 +8721,7 @@ import React, { useState, useEffect } from 'react';
                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Today's Records</p>
                    <div className="space-y-2">
                   {todayCollections.map(function(col) {
+                   const colSym = getCurrencySymbol(col.currency || defaultCurCol);
                    return (
                   <div key={col.id} className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-2.5 flex items-center justify-between">
                    <div>
@@ -8728,9 +8729,9 @@ import React, { useState, useEffect } from 'react';
                   <span className="text-gray-500 text-xs ml-2">{col.fromCode} to {col.toCode}</span>
                    </div>
                    <div className="flex items-center gap-3 text-sm">
-                  <span className="text-green-600 font-bold">+{sym}{col.amountCollected.toFixed(2)}</span>
-                  {col.amountPaid > 0 && <span className="text-red-500 font-semibold">-{sym}{col.amountPaid.toFixed(2)}</span>}
-                  {col.bankAmount > 0 && <span className="text-blue-600 font-semibold">Bank:{sym}{col.bankAmount.toFixed(2)}</span>}
+                  <span className="text-green-600 font-bold">+{colSym}{col.amountCollected.toFixed(2)}</span>
+                  {col.amountPaid > 0 && <span className="text-red-500 font-semibold">-{colSym}{col.amountPaid.toFixed(2)}</span>}
+                  {col.bankAmount > 0 && <span className="text-blue-600 font-semibold">Bank:{colSym}{col.bankAmount.toFixed(2)}</span>}
                   <button onClick={function() { handleDelete(col.id); }} className="text-red-400 hover:text-red-600 font-bold">X</button>
                    </div>
                   </div>
@@ -8739,8 +8740,27 @@ import React, { useState, useEffect } from 'react';
                   <div className="flex justify-between px-4 py-2 bg-gray-100 rounded-lg text-sm font-bold">
                    <span>Today's Total</span>
                    <span className="text-green-700">
-                   {sym}{todayCollections.reduce(function(s,c) { return s+c.amountCollected; }, 0).toFixed(2)} cash
-                   {todayCollections.some(function(c){return c.bankAmount>0;}) && <span className="text-blue-600 ml-2">+ {sym}{todayCollections.reduce(function(s,c) { return s+c.bankAmount; }, 0).toFixed(2)} bank</span>}
+                   {(function() {
+                  // Group today's totals by currency in case more than one was used today,
+                  // rather than mixing them under a single (wrong) symbol.
+                  const byCur = {};
+                  todayCollections.forEach(function(c) {
+                   const cur = c.currency || defaultCurCol;
+                   if (!byCur[cur]) byCur[cur] = { cash: 0, bank: 0 };
+                   byCur[cur].cash += c.amountCollected;
+                   byCur[cur].bank += (c.bankAmount || 0);
+                  });
+                  return Object.keys(byCur).map(function(cur) {
+                   const s = getCurrencySymbol(cur);
+                   const t = byCur[cur];
+                   return (
+                  <span key={cur} className="mr-3">
+                   {s}{t.cash.toFixed(2)} cash
+                   {t.bank > 0 && <span className="text-blue-600 ml-1">+ {s}{t.bank.toFixed(2)} bank</span>}
+                  </span>
+                   );
+                  });
+                   })()}
                    </span>
                   </div>
                    </div>
