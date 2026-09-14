@@ -4261,9 +4261,10 @@ import React, { useState, useEffect } from 'react';
                   const agentOptions = [...new Map(unsettledCollections.map(c => [c.agentId, {id:c.agentId, code:c.agentCode, city:c.agentCity}])).values()];
 
                   const exportCSV = () => {
-                   let csv = 'Date,Agent Code,City,From,To,Collected,Paid,Bank Transfer\n';
+                   let csv = 'Date,Agent Code,City,From,To,Currency,Collected,Paid,Bank Transfer\n';
                    filtered.forEach(c => {
-                  csv += `"${c.date}","${c.agentCode}","${c.agentCity}","${c.fromCode}","${c.toCode}",${c.amountCollected.toFixed(2)},${c.amountPaid.toFixed(2)},${(c.bankAmount||0).toFixed(2)}\n`;
+                  const cur = recordCurrency(c, myEmpRecord);
+                  csv += `"${c.date}","${c.agentCode}","${c.agentCity}","${c.fromCode}","${c.toCode}","${cur}",${c.amountCollected.toFixed(2)},${c.amountPaid.toFixed(2)},${(c.bankAmount||0).toFixed(2)}\n`;
                    });
                    const blob = new Blob([csv], {type:'text/csv'});
                    const url = URL.createObjectURL(blob);
@@ -4288,15 +4289,39 @@ import React, { useState, useEffect } from 'react';
                   <div className="grid grid-cols-3 gap-2 mb-4">
                    <div className="bg-green-50 border border-green-200 rounded-lg p-2.5 text-center">
                   <p className="text-xs text-green-600 font-semibold">Cash Collected</p>
-                  <p className="text-lg font-bold text-green-700">{sym}{unsettledCollections.reduce((s,c)=>s+c.amountCollected,0).toFixed(2)}</p>
+                  <p className="text-sm font-bold text-green-700">
+                   {(function() {
+                  const byCur = {};
+                  unsettledCollections.forEach(function(c){ const cur = recordCurrency(c, myEmpRecord); byCur[cur] = (byCur[cur]||0) + c.amountCollected; });
+                  const keys = Object.keys(byCur);
+                  if (keys.length === 0) return sym + '0.00';
+                  return keys.map(function(cur){ return <div key={cur}>{getCurrencySymbol(cur)}{byCur[cur].toFixed(2)}</div>; });
+                   })()}
+                  </p>
                    </div>
                    <div className="bg-red-50 border border-red-200 rounded-lg p-2.5 text-center">
                   <p className="text-xs text-red-600 font-semibold">Paid Out</p>
-                  <p className="text-lg font-bold text-red-700">{sym}{unsettledCollections.reduce((s,c)=>s+c.amountPaid,0).toFixed(2)}</p>
+                  <p className="text-sm font-bold text-red-700">
+                   {(function() {
+                  const byCur = {};
+                  unsettledCollections.forEach(function(c){ const cur = recordCurrency(c, myEmpRecord); byCur[cur] = (byCur[cur]||0) + c.amountPaid; });
+                  const keys = Object.keys(byCur).filter(function(k){ return byCur[k] > 0; });
+                  if (keys.length === 0) return sym + '0.00';
+                  return keys.map(function(cur){ return <div key={cur}>{getCurrencySymbol(cur)}{byCur[cur].toFixed(2)}</div>; });
+                   })()}
+                  </p>
                    </div>
                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-center">
                   <p className="text-xs text-blue-600 font-semibold">Bank Transfer</p>
-                  <p className="text-lg font-bold text-blue-700">{sym}{unsettledCollections.reduce((s,c)=>s+(c.bankAmount||0),0).toFixed(2)}</p>
+                  <p className="text-sm font-bold text-blue-700">
+                   {(function() {
+                  const byCur = {};
+                  unsettledCollections.forEach(function(c){ const cur = recordCurrency(c, myEmpRecord); byCur[cur] = (byCur[cur]||0) + (c.bankAmount||0); });
+                  const keys = Object.keys(byCur).filter(function(k){ return byCur[k] > 0; });
+                  if (keys.length === 0) return sym + '0.00';
+                  return keys.map(function(cur){ return <div key={cur}>{getCurrencySymbol(cur)}{byCur[cur].toFixed(2)}</div>; });
+                   })()}
+                  </p>
                    </div>
                   </div>
                   <div className="flex flex-wrap gap-2 mb-4 pb-4 border-b border-gray-100">
@@ -4325,7 +4350,9 @@ import React, { useState, useEffect } from 'react';
                   <tr>{['Date','Agent','From','To','Collected','Paid','Bank'].map(h=><th key={h} className="px-3 py-2 text-left text-xs font-bold text-orange-700 uppercase tracking-wide">{h}</th>)}</tr>
                    </thead>
                    <tbody className="divide-y divide-gray-100">
-                  {filtered.map(col => (
+                  {filtered.map(col => {
+                   const cSym = getCurrencySymbol(recordCurrency(col, myEmpRecord));
+                   return (
                    <tr key={col.id} className="hover:bg-orange-50">
                   <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{new Date(col.date).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'})}</td>
                   <td className="px-3 py-2">
@@ -4334,18 +4361,39 @@ import React, { useState, useEffect } from 'react';
                   </td>
                   <td className="px-3 py-2 font-semibold text-gray-700">{col.fromCode||'—'}</td>
                   <td className="px-3 py-2 font-semibold text-gray-700">{col.toCode||'—'}</td>
-                  <td className="px-3 py-2 font-bold text-green-700">{sym}{col.amountCollected.toFixed(2)}</td>
-                  <td className="px-3 py-2 font-bold text-red-600">{col.amountPaid > 0 ? sym+col.amountPaid.toFixed(2) : '—'}</td>
-                  <td className="px-3 py-2 font-bold text-blue-600">{(col.bankAmount||0) > 0 ? sym+(col.bankAmount||0).toFixed(2) : '—'}</td>
+                  <td className="px-3 py-2 font-bold text-green-700">{cSym}{col.amountCollected.toFixed(2)}</td>
+                  <td className="px-3 py-2 font-bold text-red-600">{col.amountPaid > 0 ? cSym+col.amountPaid.toFixed(2) : '—'}</td>
+                  <td className="px-3 py-2 font-bold text-blue-600">{(col.bankAmount||0) > 0 ? cSym+(col.bankAmount||0).toFixed(2) : '—'}</td>
                    </tr>
-                  ))}
+                   );
+                  })}
                    </tbody>
                    <tfoot>
                   <tr className="border-t-2 border-orange-200 bg-orange-50 font-bold">
                    <td colSpan="4" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Total ({filtered.length} record{filtered.length!==1?'s':''})</td>
-                   <td className="px-3 py-2 text-green-700">{sym}{totalCollected.toFixed(2)}</td>
-                   <td className="px-3 py-2 text-red-600">{sym}{totalPaid.toFixed(2)}</td>
-                   <td className="px-3 py-2 text-blue-600">{sym}{filtered.reduce((s,c)=>s+(c.bankAmount||0),0).toFixed(2)}</td>
+                   <td className="px-3 py-2 text-green-700" colSpan="3">
+                  {(function() {
+                   const byCur = {};
+                   filtered.forEach(function(c){
+                  const cur = recordCurrency(c, myEmpRecord);
+                  if (!byCur[cur]) byCur[cur] = { collected:0, paid:0, bank:0 };
+                  byCur[cur].collected += c.amountCollected;
+                  byCur[cur].paid += (c.amountPaid||0);
+                  byCur[cur].bank += (c.bankAmount||0);
+                   });
+                   return Object.keys(byCur).map(function(cur){
+                  const s2 = getCurrencySymbol(cur);
+                  const t = byCur[cur];
+                  return (
+                   <span key={cur} className="inline-flex items-center gap-3 mr-4">
+                  <span>{s2}{t.collected.toFixed(2)}</span>
+                  {t.paid > 0 && <span className="text-red-600">{s2}{t.paid.toFixed(2)}</span>}
+                  {t.bank > 0 && <span className="text-blue-600">{s2}{t.bank.toFixed(2)}</span>}
+                   </span>
+                  );
+                   });
+                  })()}
+                   </td>
                   </tr>
                    </tfoot>
                   </table>
