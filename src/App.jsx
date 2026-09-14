@@ -350,7 +350,10 @@ import React, { useState, useEffect } from 'react';
                   body: JSON.stringify({
                    employeeId: employeeId,
                    type: 'account_credit',
-                   amount: 0,
+                   // The backend requires a non-zero amount; the real sell/buy figures live in the
+                   // tag. Every place that sums account_credit amounts now explicitly excludes
+                   // FX-tagged records, so this value is never double-counted as a generic credit.
+                   amount: sellRounded,
                    reason: reason,
                    date: new Date().toISOString().split('T')[0],
                    hours: null
@@ -3867,7 +3870,7 @@ import React, { useState, useEffect } from 'react';
                    })()}
 
                   {(() => {
-                   const myCredits = financialAdjustments.filter(function(a){return a.employeeId===currentUser.id && a.type==='account_credit' && (!lastSettleDateTs || a.date > lastSettleDateTs);}).sort(function(a,b){return a.date>b.date?-1:1;});
+                   const myCredits = financialAdjustments.filter(function(a){return a.employeeId===currentUser.id && a.type==='account_credit' && !parseFxTag(a.reason) && (!lastSettleDateTs || a.date > lastSettleDateTs);}).sort(function(a,b){return a.date>b.date?-1:1;});
                    if (!myCredits.length) return null;
                    const sym2 = myCurrencySym;
                    return (
@@ -4095,7 +4098,7 @@ import React, { useState, useEffect } from 'react';
                   const allTs = timesheets.filter(t => t.employeeId === myId && t.status === 'approved');
                   const allExp = expenses.filter(x => x.employeeId === myId && (x.status === 'approved' || x.status === 'paid'));
                   const allSettle = financialAdjustments.filter(a => a.employeeId === myId && a.type === 'acct_settle');
-                  const allCredit = financialAdjustments.filter(a => a.employeeId === myId && a.type === 'account_credit');
+                  const allCredit = financialAdjustments.filter(a => a.employeeId === myId && a.type === 'account_credit' && !parseFxTag(a.reason));
 
                   const earnOf = (t) => {
                    const shiftRate = (t.hourlyRate != null && t.hourlyRate !== '') ? parseFloat(t.hourlyRate) : rate;
@@ -5746,7 +5749,7 @@ import React, { useState, useEffect } from 'react';
 
             const AccountCreditsTab = ({ visEmp, financialAdjustments, visibleEmpIds, loadAdjustmentsFromAPI, apiCall, API_ENDPOINTS, getCurrencySymbol }) => {
                 const sym = getCurrencySymbol('GBP');
-                const allCredits = financialAdjustments.filter(function(a){return a.type==='account_credit' && visibleEmpIds.has(a.employeeId);});
+                const allCredits = financialAdjustments.filter(function(a){return a.type==='account_credit' && !parseFxTag(a.reason) && visibleEmpIds.has(a.employeeId);});
                 const [filterEmpId, setFilterEmpId] = useState('');
                 const [filterFrom, setFilterFrom] = useState('');
                 const [filterTo, setFilterTo] = useState('');
@@ -8903,7 +8906,7 @@ import React, { useState, useEffect } from 'react';
                   });
 
                   const accountCredits = financialAdjustments.filter(function(a) {
-                  return a.employeeId === parseInt(empId) && a.type === 'account_credit' && a.date >= fromDate && a.date <= toDate;
+                  return a.employeeId === parseInt(empId) && a.type === 'account_credit' && !parseFxTag(a.reason) && a.date >= fromDate && a.date <= toDate;
                   });
                   const approvedCredits = accountCredits;
                   const totalAccountCredits = approvedCredits.reduce(function(s,a) { return s + (parseFloat(a.amount)||0); }, 0);
@@ -8947,7 +8950,7 @@ import React, { useState, useEffect } from 'react';
                    .reduce(function(s,ex){ return s + (ex.amount||0); }, 0);
                   const priorSettlements = allSettlements.filter(function(a){ return a.date < fromDate; })
                    .reduce(function(s,a){ return s + (parseFloat(a.amount)||0); }, 0);
-                  const priorCredits = financialAdjustments.filter(function(a){ return a.employeeId === parseInt(empId) && a.type === 'account_credit' && a.date < fromDate; })
+                  const priorCredits = financialAdjustments.filter(function(a){ return a.employeeId === parseInt(empId) && a.type === 'account_credit' && !parseFxTag(a.reason) && a.date < fromDate; })
                    .reduce(function(s,a){ return s + (parseFloat(a.amount)||0); }, 0);
                   const openingBalance = (priorCollected - priorPaidAgents - priorEarned - priorExpenses) - priorSettlements - priorCredits;
 
