@@ -9205,20 +9205,23 @@ import React, { useState, useEffect } from 'react';
                   return '<tr><td>'+new Date(r.date).toLocaleDateString('en-GB')+'</td><td>'+r.regularHours.toFixed(1)+'h</td><td>'+(r.overtimeHours>0?r.overtimeHours.toFixed(1)+'h':'—')+'</td><td>'+sym+report.hourlyRate.toFixed(2)+'/hr</td><td><b>'+sym+r.earned.toFixed(2)+'</b></td></tr>';
                   }).join('');
                   const collRows = report.empCollections.map(function(c) {
-                  return '<tr><td>'+new Date(c.date).toLocaleDateString('en-GB')+'</td><td>'+c.agentCode+' – '+c.agentCity+'</td><td>'+c.fromCode+'</td><td>'+c.toCode+'</td><td><b>'+sym+c.amountCollected.toFixed(2)+'</b></td><td>'+(c.amountPaid>0?'-'+sym+c.amountPaid.toFixed(2):'—')+'</td></tr>';
+                  const cSym = getCurrencySymbol(recordCurrency(c, emp));
+                  return '<tr><td>'+new Date(c.date).toLocaleDateString('en-GB')+'</td><td>'+c.agentCode+' – '+c.agentCity+'</td><td>'+c.fromCode+'</td><td>'+c.toCode+'</td><td><b>'+cSym+c.amountCollected.toFixed(2)+'</b></td><td>'+(c.amountPaid>0?'-'+cSym+c.amountPaid.toFixed(2):'—')+'</td></tr>';
                   }).join('');
                   const expRows = report.empExpenses.map(function(e) {
-                  return '<tr><td>'+new Date(e.date).toLocaleDateString('en-GB')+'</td><td>'+e.category+'</td><td>'+(e.description||'—')+'</td><td>'+e.status+'</td><td><b>'+sym+e.amount.toFixed(2)+'</b></td></tr>';
+                  const eSym = getCurrencySymbol(recordCurrency(e, emp));
+                  return '<tr><td>'+new Date(e.date).toLocaleDateString('en-GB')+'</td><td>'+e.category+'</td><td>'+(e.description||'—')+'</td><td>'+e.status+'</td><td><b>'+eSym+e.amount.toFixed(2)+'</b></td></tr>';
                   }).join('');
                   const creditRows = (report.accountCredits||[]).map(function(cr) {
-                  return '<tr><td>'+new Date(cr.date).toLocaleDateString('en-GB')+'</td><td>'+(cr.reason||'Cash to accountant')+'</td><td><b>'+sym+(parseFloat(cr.amount)||0).toFixed(2)+'</b></td></tr>';
+                  const crSym = getCurrencySymbol(recordCurrency(cr, emp));
+                  return '<tr><td>'+new Date(cr.date).toLocaleDateString('en-GB')+'</td><td>'+(cr.reason||'Cash to accountant')+'</td><td><b>'+crSym+(parseFloat(cr.amount)||0).toFixed(2)+'</b></td></tr>';
                   }).join('');
                   const css = '<style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:Arial,sans-serif;font-size:10px;color:#1f2937;padding:16px;}h1{font-size:16px;color:#4338ca;margin-bottom:3px;}.meta{display:flex;justify-content:space-between;padding:8px 12px;background:#f3f4f6;border-radius:6px;margin:8px 0 14px;}.sec-title{font-size:9px;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;color:#374151;margin-bottom:4px;padding-bottom:3px;border-bottom:2px solid #e5e7eb;display:flex;justify-content:space-between;}.sec{margin-bottom:12px;}table{width:100%;border-collapse:collapse;font-size:9px;}th{background:#f9fafb;text-align:left;padding:3px 6px;font-size:8px;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb;}td{padding:3px 6px;border-bottom:1px solid #f3f4f6;}.sum{background:#fef2f2;border:2px solid #fecaca;border-radius:6px;padding:10px;margin-top:12px;}.srow{display:flex;justify-content:space-between;padding:2px 0;font-size:10px;}.stotal{display:flex;justify-content:space-between;padding-top:7px;margin-top:6px;border-top:2px solid #e5e7eb;font-size:13px;font-weight:bold;}.footer{margin-top:14px;text-align:center;font-size:8px;color:#9ca3af;}@page{size:A4 portrait;margin:10mm;}@media print{html,body{height:100%;width:100%;}body{padding:8px;font-size:9px;}h1{font-size:14px;}.meta{padding:6px 10px;margin:6px 0 10px;}.sec{margin-bottom:8px;}.sum{padding:8px;margin-top:8px;}.footer{margin-top:8px;}}</style>';
                   const body = '<h1>Employee Accounting Report</h1><p style="color:#6b7280;font-size:11px;margin-bottom:4px;">Generated: '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})+'</p>'
                   +'<div class="meta"><div><b style="font-size:15px;">'+emp.firstName+' '+emp.lastName+'</b><br><span style="color:#6b7280;">'+emp.employeeId+' · '+emp.department+' · '+sym+(parseFloat(emp.hourlyRate)||0).toFixed(2)+'/hr</span></div><div style="text-align:right;"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;">Period</span><br><b>'+periodStr+'</b></div></div>'
                   +(report.empCollections.length>0?'<div class="sec"><div class="sec-title"><span>Agent Collections</span><span>'+sym+report.totalCollected.toFixed(2)+'</span></div><table><thead><tr><th>Date</th><th>Agent</th><th>From</th><th>To</th><th>Collected</th><th>Paid to Agent</th></tr></thead><tbody>'+collRows+'<tr style="background:#f0fdf4;font-weight:bold;"><td colspan="4" style="text-align:right;padding-right:8px;">Net</td><td>'+sym+report.totalCollected.toFixed(2)+'</td><td style="color:#dc2626;">-'+sym+report.totalPaidToAgents.toFixed(2)+'</td></tr></tbody></table></div>':'')
                   +(report.tsRows.length>0?'<div class="sec"><div class="sec-title"><span>Earnings from Timesheets</span><span>'+sym+report.totalEarned.toFixed(2)+'</span></div><table><thead><tr><th>Date</th><th>Regular</th><th>Overtime</th><th>Rate</th><th>Earned</th></tr></thead><tbody>'+tsRows+'<tr style="background:#eff6ff;font-weight:bold;"><td colspan="4" style="text-align:right;padding-right:8px;">Total</td><td>'+sym+report.totalEarned.toFixed(2)+'</td></tr></tbody></table></div>':'')
-                  +(report.empExpenses.length>0?'<div class="sec"><div class="sec-title"><span>Approved Expenses</span><span>'+sym+report.totalExpenses.toFixed(2)+'</span></div><table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Status</th><th>Amount</th></tr></thead><tbody>'+expRows+'<tr style="background:#f0fdfa;font-weight:bold;"><td colspan="4" style="text-align:right;padding-right:8px;">Total</td><td>'+sym+report.totalExpenses.toFixed(2)+'</td></tr></tbody></table></div>':'')
+                  +(report.empExpenses.length>0?'<div class="sec"><div class="sec-title"><span>Approved Expenses</span><span>'+(function(){var byCur={};report.empExpenses.forEach(function(e){var cur=recordCurrency(e,emp);byCur[cur]=(byCur[cur]||0)+e.amount;});return Object.keys(byCur).map(function(cur){return getCurrencySymbol(cur)+byCur[cur].toFixed(2);}).join(' + ');})()+'</span></div><table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Status</th><th>Amount</th></tr></thead><tbody>'+expRows+'<tr style="background:#f0fdfa;font-weight:bold;"><td colspan="4" style="text-align:right;padding-right:8px;">Total</td><td>'+(function(){var byCur={};report.empExpenses.forEach(function(e){var cur=recordCurrency(e,emp);byCur[cur]=(byCur[cur]||0)+e.amount;});return Object.keys(byCur).map(function(cur){return getCurrencySymbol(cur)+byCur[cur].toFixed(2);}).join(' + ');})()+'</td></tr></tbody></table></div>':'')
                   +((report.accountCredits&&report.accountCredits.length>0)?'<div class="sec"><div class="sec-title"><span>Account Credits (Cash to Accountant)</span><span>'+sym+report.totalAccountCredits.toFixed(2)+'</span></div><table><thead><tr><th>Date</th><th>Note</th><th>Amount</th></tr></thead><tbody>'+creditRows+'<tr style="background:#eef2ff;font-weight:bold;"><td colspan="2" style="text-align:right;padding-right:8px;">Total</td><td>'+sym+report.totalAccountCredits.toFixed(2)+'</td></tr></tbody></table></div>':'')
                   +'<div class="sum"><div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:10px;">Final Balance Summary</div>'
                   +(Math.abs(report.openingBalance)>=0.01?'<div class="srow" style="border-bottom:1px dashed #e5e7eb;padding-bottom:5px;margin-bottom:3px;"><span style="font-weight:600;">Opening Balance (carried forward)</span><span style="color:'+(report.openingBalance>0?'#dc2626':'#16a34a')+';font-weight:600;">'+(report.openingBalance>0?'+':'-')+sym+Math.abs(report.openingBalance).toFixed(2)+'</span></div>':'')
@@ -9418,23 +9421,39 @@ import React, { useState, useEffect } from 'react';
                   </Section>
                   )}
 
-                  <Section title="Approved Expenses" color="bg-teal-500" total={sym + report.totalExpenses.toFixed(2)}>
+                  <Section title="Approved Expenses" color="bg-teal-500" total={(function() {
+                   const byCur = {};
+                   report.empExpenses.forEach(function(e){ const cur = recordCurrency(e, emp); byCur[cur] = (byCur[cur]||0) + e.amount; });
+                   const keys = Object.keys(byCur);
+                   if (keys.length === 0) return sym + '0.00';
+                   return keys.map(function(cur){ return getCurrencySymbol(cur) + byCur[cur].toFixed(2); }).join(' + ');
+                  })()}>
                   {report.empExpenses.length === 0 ? <p className="text-gray-400 text-sm">No approved expenses in this period</p> : (
                   <table className="w-full text-sm">
                   <thead><tr className="bg-teal-50">{['Date','Category','Description','Status','Amount'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-teal-700">{h}</th>;})}</tr></thead>
                   <tbody className="divide-y divide-gray-100">
-                    {report.empExpenses.map(function(e){return (
+                    {report.empExpenses.map(function(e){
+                    const eSym = getCurrencySymbol(recordCurrency(e, emp));
+                    return (
                     <tr key={e.id} className="hover:bg-teal-50">
                     <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-GB')}</td>
                     <td className="px-3 py-2"><span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-semibold">{e.category}</span></td>
                     <td className="px-3 py-2 text-gray-600">{e.description||'—'}</td>
                     <td className="px-3 py-2"><span className={'px-2 py-0.5 rounded-full text-xs font-semibold capitalize ' + (e.status==='paid'?'bg-blue-100 text-blue-700':'bg-green-100 text-green-700')}>{e.status}</span></td>
-                    <td className="px-3 py-2 font-bold text-teal-700">{sym}{e.amount.toFixed(2)}</td>
+                    <td className="px-3 py-2 font-bold text-teal-700">{eSym}{e.amount.toFixed(2)}</td>
                     </tr>
                     );})}
                     <tr className="bg-teal-50 font-bold border-t-2 border-teal-200">
                     <td colSpan="4" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Total Expenses</td>
-                    <td className="px-3 py-2 text-teal-700">{sym}{report.totalExpenses.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-teal-700">
+                    {(function() {
+                      const byCur = {};
+                      report.empExpenses.forEach(function(e){ const cur = recordCurrency(e, emp); byCur[cur] = (byCur[cur]||0) + e.amount; });
+                      const keys = Object.keys(byCur);
+                      if (keys.length === 0) return sym + '0.00';
+                      return keys.map(function(cur){ return <div key={cur}>{getCurrencySymbol(cur)}{byCur[cur].toFixed(2)}</div>; });
+                    })()}
+                    </td>
                     </tr>
                   </tbody>
                   </table>
