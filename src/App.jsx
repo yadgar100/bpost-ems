@@ -5088,7 +5088,19 @@ import React, { useState, useEffect } from 'react';
                   const batchToDelete = filterBatch;
                   if (!batchToDelete) { alert('Select a batch to delete'); return; }
                   const batchRecords = iraqPayments.filter(function(p){ return p.batchName === batchToDelete; });
-                  if (!window.confirm('Delete ALL ' + batchRecords.length + ' records in batch "' + batchToDelete + '"? This cannot be undone.')) return;
+                  // Deleting a whole batch is permanent (a real hard delete, no undo) — require
+                  // TYPING the batch name back, not just clicking through a generic confirm().
+                  // A stray click on this button (it sits right next to the batch dropdown) used
+                  // to be enough to wipe a batch with only one OK-click; this closes that gap.
+                  const typed = window.prompt(
+                   '⚠️ This will PERMANENTLY delete ' + batchRecords.length + ' record(s) in batch "' + batchToDelete + '".\n\n' +
+                   'This cannot be undone — there is no recovery. To confirm, type the batch name exactly:\n\n"' + batchToDelete + '"'
+                  );
+                  if (typed === null) return; // cancelled
+                  if (typed.trim() !== batchToDelete) {
+                   alert('Batch name did not match — nothing was deleted.');
+                   return;
+                  }
                   setDeletingBatch(true);
                   try {
                    for (const p of batchRecords) {
