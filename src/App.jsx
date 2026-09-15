@@ -4150,6 +4150,16 @@ import React, { useState, useEffect } from 'react';
                   const cur = recordCurrency(c, myEmpRecord);
                   if (led[cur]) led[cur].collected += (c.amountCollected||0) - (c.amountPaid||0);
                    });
+                   // Pay in Iraq collections are a separate system with their own per-currency
+                   // columns (a single shipment can have amounts in more than one currency),
+                   // so they're added here directly rather than through recordCurrency.
+                   iraqPayments.filter(function(p){ return parseInt(p.employeeId) === myId && p.status === 'collected'; })
+                  .forEach(function(p) {
+                   if (led.IQD) led.IQD.collected += (p.collectedIQD||0);
+                   if (led.USD) led.USD.collected += (p.collectedUSD||0);
+                   if (led.GBP) led.GBP.collected += (p.collectedGBP||0);
+                   if (led.EUR) led.EUR.collected += (p.collectedEUR||0);
+                   });
                    // Wages are paid in the employee's default currency.
                    if (led[defaultCur]) led[defaultCur].earned += sumEarned;
                    allExp.forEach(function(x) {
@@ -9050,6 +9060,17 @@ import React, { useState, useEffect } from 'react';
                   const cur = recordCurrency(c, emp);
                   if (led[cur]) { led[cur].collected += (c.amountCollected||0); led[cur].paidAgents += (c.amountPaid||0); }
                    });
+                   // Pay in Iraq collections within this period — a separate system with its own
+                   // per-currency columns, added directly rather than through recordCurrency.
+                   iraqPayments.filter(function(p){
+                  return parseInt(p.employeeId) === parseInt(empId) && p.status === 'collected'
+                   && p.collectedAt && p.collectedAt.slice(0,10) >= fromDate && p.collectedAt.slice(0,10) <= toDate;
+                   }).forEach(function(p) {
+                  if (led.IQD) led.IQD.collected += (p.collectedIQD||0);
+                  if (led.USD) led.USD.collected += (p.collectedUSD||0);
+                  if (led.GBP) led.GBP.collected += (p.collectedGBP||0);
+                  if (led.EUR) led.EUR.collected += (p.collectedEUR||0);
+                   });
                    if (led[empDefaultCur]) led[empDefaultCur].earned += totalEarned;
                    empExpenses.forEach(function(e) {
                   const cur = recordCurrency(e, emp);
@@ -9076,6 +9097,15 @@ import React, { useState, useEffect } from 'react';
                    priorCollections.forEach(function(c) {
                   const cur = recordCurrency(c, emp);
                   if (led[cur]) led[cur].opening += (c.amountCollected||0) - (c.amountPaid||0);
+                   });
+                   iraqPayments.filter(function(p){
+                  return parseInt(p.employeeId) === parseInt(empId) && p.status === 'collected'
+                   && p.collectedAt && p.collectedAt.slice(0,10) < fromDate;
+                   }).forEach(function(p) {
+                  if (led.IQD) led.IQD.opening += (p.collectedIQD||0);
+                  if (led.USD) led.USD.opening += (p.collectedUSD||0);
+                  if (led.GBP) led.GBP.opening += (p.collectedGBP||0);
+                  if (led.EUR) led.EUR.opening += (p.collectedEUR||0);
                    });
                    if (led[empDefaultCur]) led[empDefaultCur].opening -= priorEarned;
                    expenses.filter(function(ex){ return ex.employeeId === parseInt(empId) && (ex.status==='approved'||ex.status==='paid') && ex.date < fromDate; })
