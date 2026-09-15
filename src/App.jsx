@@ -8948,6 +8948,11 @@ import React, { useState, useEffect } from 'react';
                   return c.employeeId === parseInt(empId) && c.date >= fromDate && c.date <= toDate;
                   }).sort(function(a,b) { return a.date > b.date ? 1 : -1; });
 
+                  const empIraqPay = iraqPayments.filter(function(p) {
+                  return parseInt(p.employeeId) === parseInt(empId) && p.status === 'collected'
+                   && p.collectedAt && p.collectedAt.slice(0,10) >= fromDate && p.collectedAt.slice(0,10) <= toDate;
+                  }).sort(function(a,b) { return (a.collectedAt||'') > (b.collectedAt||'') ? 1 : -1; });
+
                   const hourlyRate = parseFloat(emp.hourlyRate) || 0;
                   const overtimeMultiplier = (emp.overtimeRate != null && emp.overtimeRate !== '') ? parseFloat(emp.overtimeRate) : (payrollSettings.overtimeMultiplier || 1.5);
 
@@ -9130,7 +9135,7 @@ import React, { useState, useEffect } from 'react';
                    return led;
                   })();
 
-                  setReport({ tsRows, empExpenses, empCollections, empAdjustments, accountCredits, totalEarned, totalExpenses, totalCollected, totalPaidToAgents, grossBalance, previousPayments, previousBonuses, previousPenalties, totalAccountCredits, pendingCreditsTotal, balance, hourlyRate, settlementRecords, overlaps, openingBalance, periodActivity, currencyBreakdown, empIsMulti, empDefaultCur });
+                  setReport({ tsRows, empExpenses, empCollections, empIraqPay, empAdjustments, accountCredits, totalEarned, totalExpenses, totalCollected, totalPaidToAgents, grossBalance, previousPayments, previousBonuses, previousPenalties, totalAccountCredits, pendingCreditsTotal, balance, hourlyRate, settlementRecords, overlaps, openingBalance, periodActivity, currencyBreakdown, empIsMulti, empDefaultCur });
                 };
 
                 const handleDeleteSettlement = async function(s) {
@@ -9406,6 +9411,53 @@ import React, { useState, useEffect } from 'react';
                   </table>
                   )}
                   </Section>
+
+                  {(report.empIraqPay && report.empIraqPay.length > 0) && (
+                  <Section title="Pay in Iraq Collections" color="bg-indigo-500" total={(function() {
+                   const byCur = { IQD:0, USD:0, GBP:0, EUR:0 };
+                   report.empIraqPay.forEach(function(p){
+                  byCur.IQD += (p.collectedIQD||0); byCur.USD += (p.collectedUSD||0);
+                  byCur.GBP += (p.collectedGBP||0); byCur.EUR += (p.collectedEUR||0);
+                   });
+                   return Object.keys(byCur).filter(function(c){return byCur[c]>0;}).map(function(c){return getCurrencySymbol(c)+(c==='IQD'?byCur[c].toLocaleString():byCur[c].toFixed(2));}).join(' + ') || sym+'0.00';
+                  })()}>
+                  <table className="w-full text-sm">
+                  <thead><tr className="bg-indigo-50">{['Date','Shipment','Batch','To Office','Collected'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-indigo-700">{h}</th>;})}</tr></thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {report.empIraqPay.map(function(p){
+                    const amounts = [];
+                    if (p.collectedIQD>0) amounts.push(getCurrencySymbol('IQD')+p.collectedIQD.toLocaleString());
+                    if (p.collectedUSD>0) amounts.push(getCurrencySymbol('USD')+p.collectedUSD.toFixed(2));
+                    if (p.collectedGBP>0) amounts.push(getCurrencySymbol('GBP')+p.collectedGBP.toFixed(2));
+                    if (p.collectedEUR>0) amounts.push(getCurrencySymbol('EUR')+p.collectedEUR.toFixed(2));
+                    return (
+                    <tr key={p.id} className="hover:bg-indigo-50">
+                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{p.collectedAt ? new Date(p.collectedAt).toLocaleDateString('en-GB') : '—'}</td>
+                    <td className="px-3 py-2"><span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold">{p.shipmentCode}</span></td>
+                    <td className="px-3 py-2 text-gray-600">{p.batchName||'—'}</td>
+                    <td className="px-3 py-2 text-gray-600">{p.toOffice||'—'}</td>
+                    <td className="px-3 py-2 font-bold text-indigo-700">{amounts.join(' / ')||'—'}</td>
+                    </tr>
+                    );})}
+                    <tr className="bg-indigo-50 font-bold border-t-2 border-indigo-200">
+                    <td colSpan="4" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Total ({report.empIraqPay.length} shipment{report.empIraqPay.length!==1?'s':''})</td>
+                    <td className="px-3 py-2 text-indigo-700">
+                    {(function() {
+                      const byCur = { IQD:0, USD:0, GBP:0, EUR:0 };
+                      report.empIraqPay.forEach(function(p){
+                        byCur.IQD += (p.collectedIQD||0); byCur.USD += (p.collectedUSD||0);
+                        byCur.GBP += (p.collectedGBP||0); byCur.EUR += (p.collectedEUR||0);
+                      });
+                      return Object.keys(byCur).filter(function(c){return byCur[c]>0;}).map(function(c){
+                        return <div key={c}>{getCurrencySymbol(c)}{c==='IQD'?byCur[c].toLocaleString():byCur[c].toFixed(2)}</div>;
+                      });
+                    })()}
+                    </td>
+                    </tr>
+                  </tbody>
+                  </table>
+                  </Section>
+                  )}
 
                   <Section title="Earnings from Approved Timesheets" color="bg-blue-500" total={sym + report.totalEarned.toFixed(2)}>
                   {report.tsRows.length === 0 ? <p className="text-gray-400 text-sm">No approved timesheets in this period</p> : (
