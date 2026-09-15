@@ -2361,11 +2361,26 @@ import React, { useState, useEffect } from 'react';
                 if (!m) return null;
                 return { from: m[1], to: m[2], rate: parseFloat(m[3]), sell: parseFloat(m[4]), buy: parseFloat(m[5]) };
             };
-            const stripTags = (reason) => (reason || '').replace(FX_TAG_RE, '').replace(/^\[BANK\]\s*/, '').trim();
+            const stripTags = (reason) => (reason || '').replace(FX_TAG_RE, '').replace(/^\[BANK\]\s*/, '').replace(/\[CUR:[A-Z]{3}\]\s*/, '').trim();
 
-            // Currency an individual record belongs to. Falls back to the employee's default
-            // currency for older records saved before multi-currency was enabled.
+            // Settlements (and other adjustment types with no Currency column) tag which account
+            // they apply to the same way — [CUR:USD]. Without this, a settlement of one currency
+            // account would silently fall back to the employee's DEFAULT currency below, wrongly
+            // crediting the wrong ledger.
+            const CUR_TAG_RE = /\[CUR:([A-Z]{3})\]/;
+            const buildCurTag = (cur) => '[CUR:' + cur + ']';
+            const extractCurTag = (reason) => {
+                const m = CUR_TAG_RE.exec(reason || '');
+                return m && MULTI_CURRENCIES.indexOf(m[1]) !== -1 ? m[1] : null;
+            };
+
+            // Currency an individual record belongs to. Checks the [CUR:XXX] tag first (for
+            // record types with no Currency column, e.g. settlements), then an actual Currency
+            // column, then falls back to the employee's default currency for older records saved
+            // before multi-currency was enabled.
             const recordCurrency = (rec, emp) => {
+                const tagged = extractCurTag(rec && rec.reason);
+                if (tagged) return tagged;
                 const c = (rec && (rec.currency || rec.Currency)) || '';
                 return MULTI_CURRENCIES.indexOf(c) !== -1 ? c : resolveEmployeeCurrency(emp);
             };
@@ -8858,6 +8873,15 @@ import React, { useState, useEffect } from 'react';
                 const setReport = (v) => onStateChange && onStateChange(function(s) { return {...s, report: typeof v === 'function' ? v(s.report) : v}; });
                 const [settling, setSettling] = useState(false);
                 const [settleNote, setSettleNote] = useState('');
+                // Per-currency settling: which currency's inline settle form is open, plus its
+                // own amount/date/note. A mixed-currency employee can't meaningfully settle one
+                // combined figure (it's adding IQD and USD together), so each account is settled
+                // independently, tagged with [CUR:XXX] so it lands in the right ledger.
+                const [curSettleOpen, setCurSettleOpen] = useState(null);
+                const [curSettleAmt, setCurSettleAmt] = useState('');
+                const [curSettleDate, setCurSettleDate] = useState('');
+                const [curSettleNoteVal, setCurSettleNoteVal] = useState('');
+                const [curSettling, setCurSettling] = useState(false);
                 // If the current From Date would overlap the employee's last settlement,
                 // auto-advance it to the day after — same convenience the date-picker's greyed-out
                 // days used to provide, since a manually-typed or stale date can bypass the min.
@@ -8894,7 +8918,7 @@ import React, { useState, useEffect } from 'react';
                 }, [report]);
 
                 const emp = visEmp.find(function(e) { return e.id === parseInt(empId); });
-                const sym = emp ? getCurrencySymbol(emp.currency) : getCurrencySymbol('GBP');
+                const sym = emp ? getCurrencySymbol(resolveEmployeeCurrency(emp)) : getCurrencySymbol('GBP');
 
                 const generateReport = function() {
                   if (!empId) { alert('Please select an employee'); return; }
@@ -9134,6 +9158,42 @@ import React, { useState, useEffect } from 'react';
                   } else alert('Error: ' + data.error);
                   } catch(e) { alert('Failed: ' + e.message); }
                   setSettling(false);
+                };
+
+                const handleSettleCurrency = async function(cur) {
+                  if (!report || !report.currencyBreakdown) return;
+                  const L = report.currencyBreakdown[cur];
+                  const amount = parseFloat(curSettleAmt);
+                  if (!amount || amount <= 0) { alert('Please enter a valid amount'); return; }
+                  if (amount > Math.abs(L.balance) + 0.005) { alert('Amount cannot exceed this account\'s balance of ' + getCurrencySymbol(cur) + Math.abs(L.balance).toFixed(2)); return; }
+                  const effectiveDate = curSettleDate || toDate;
+                  const isPartial = amount < Math.abs(L.balance) - 0.005;
+                  const confirmMsg = (isPartial
+                   ? 'Record partial settlement of ' + getCurrencySymbol(cur) + amount.toFixed(2) + ' on the ' + cur + ' account, dated ' + effectiveDate + '?\nRemaining: ' + getCurrencySymbol(cur) + (Math.abs(L.balance) - amount).toFixed(2) + ' will carry forward.'
+                   : 'Record full settlement of the ' + cur + ' account — ' + getCurrencySymbol(cur) + amount.toFixed(2) + ' dated ' + effectiveDate + '?');
+                  if (!window.confirm(confirmMsg)) return;
+                  setCurSettling(true);
+                  try {
+                   const periodTag = '[PERIOD:' + fromDate + '..' + toDate + ']';
+                   const curTag = buildCurTag(cur);
+                   const reason = periodTag + ' ' + curTag + ' ' + (curSettleNoteVal || ((isPartial ? 'Partial' : 'Full') + ' settlement of ' + cur + ' account ' + fromDate + ' to ' + toDate));
+                   // Same direction convention as the combined settle: positive balance (employee
+                   // owes) → employee pays in → +amount; negative (company owes) → company pays
+                   // out → -amount, moving that specific currency's balance toward zero.
+                   const signedAmount = L.balance >= 0 ? amount : -amount;
+                   const data = await apiCall(API_ENDPOINTS.adjustments, {
+                  method: 'POST',
+                  body: JSON.stringify({ employeeId: parseInt(empId), type: 'acct_settle', amount: signedAmount, reason: reason, date: effectiveDate })
+                   });
+                   if (data.success) {
+                  await loadAdjustmentsFromAPI();
+                  alert((isPartial ? 'Partial' : 'Full') + ' settlement of the ' + cur + ' account recorded on ' + effectiveDate + '.');
+                  setReport(null);
+                  setCurSettleOpen(null);
+                  setCurSettleAmt(''); setCurSettleDate(''); setCurSettleNoteVal('');
+                   } else alert('Error: ' + data.error);
+                  } catch(e) { alert('Failed: ' + e.message); }
+                  setCurSettling(false);
                 };
 
                 const printReport = function() {
@@ -9432,6 +9492,32 @@ import React, { useState, useEffect } from 'react';
                           {L.fxOut ? <div className="flex justify-between text-amber-600"><span>FX sold</span><span>-{csym}{L.fxOut.toFixed(2)}</span></div> : null}
                         </div>
                         ) : <p className="text-[10px] text-gray-300 mt-2">No activity</p>}
+                        {Math.abs(L.balance) >= 0.005 && (
+                        <div className="mt-2 pt-2 border-t border-gray-100">
+                          {curSettleOpen === cur ? (
+                          <div className="space-y-1.5">
+                            <input type="number" min="0.01" step="0.01" max={Math.abs(L.balance)} value={curSettleAmt}
+                              onChange={function(e){ setCurSettleAmt(e.target.value); }} placeholder={Math.abs(L.balance).toFixed(2)}
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs" />
+                            <input type="date" value={curSettleDate || toDate}
+                              onChange={function(e){ setCurSettleDate(e.target.value); }}
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs" />
+                            <div className="flex gap-1">
+                              <button onClick={function(){ handleSettleCurrency(cur); }} disabled={curSettling}
+                                className={'flex-1 py-1 rounded text-[10px] font-bold text-white ' + (L.balance > 0 ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700')}>
+                                {curSettling ? '…' : 'Confirm'}
+                              </button>
+                              <button onClick={function(){ setCurSettleOpen(null); }} className="px-2 py-1 rounded text-[10px] font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200">✕</button>
+                            </div>
+                          </div>
+                          ) : (
+                          <button onClick={function(){ setCurSettleOpen(cur); setCurSettleAmt(Math.abs(L.balance).toFixed(2)); setCurSettleDate(toDate); setCurSettleNoteVal(''); }}
+                            className={'w-full py-1 rounded text-[10px] font-bold ' + (L.balance > 0 ? 'bg-red-50 text-red-700 hover:bg-red-100' : 'bg-green-50 text-green-700 hover:bg-green-100')}>
+                            Settle this account
+                          </button>
+                          )}
+                        </div>
+                        )}
                       </div>
                       );
                     })}
@@ -9519,7 +9605,13 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   </div>
 
-                  {report.balance !== 0 && (
+                  {report.balance !== 0 && report.empIsMulti && (
+                  <div className="border-t border-gray-200 pt-4 mt-4">
+                  <p className="text-sm text-gray-500">This employee holds separate currency accounts — settle each one individually using the "Settle this account" button on its card in the Currency Accounts panel above.</p>
+                  </div>
+                  )}
+
+                  {report.balance !== 0 && !report.empIsMulti && (
                   <div className="border-t border-gray-200 pt-4 mt-4">
                   <p className="text-xs font-semibold text-gray-600 mb-3 uppercase tracking-wide">Settle Balance</p>
                   <div className="flex gap-3 items-end flex-wrap mb-2">
