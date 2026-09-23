@@ -8007,7 +8007,7 @@ import React, { useState, useEffect } from 'react';
 
                 const handleAdminAdd = async () => {
                   if (!addForm.employeeId || !addForm.category || !addForm.amount) {
-                   alert('Employee, category and amount are required');
+                   alert('Employee, category and amount are required fields.');
                    return;
                   }
                   setAddSaving(true);
@@ -8035,21 +8035,35 @@ import React, { useState, useEffect } from 'react';
                   setAddForm({ employeeId: '', date: today, category: '', description: '', amount: '', receiptNote: '', status: 'approved' });
                   setShowAddForm(false);
                   setActiveTab(addForm.status);
-                  alert('Expense added successfully');
-                   } else { alert('Error: ' + data.error); }
-                  } catch(e) { alert('Failed: ' + e.message); }
+                  alert('The expense has been added successfully.');
+                   } else { alert('Unable to complete the request: ' + data.error); }
+                  } catch(e) { alert('Unable to complete the request: ' + e.message); }
                   setAddSaving(false);
                 };
 
-                const baseFiltered = expenses.filter(function(exp) {
+                // Expenses within the selected branch and date range, before the employee filter is applied.
+                // This set drives the Employee dropdown so that only employees who actually have
+                // expense claims in the current view are offered for selection.
+                const expensesInScope = expenses.filter(function(exp) {
                   if (!visEmp.some(function(e) { return e.id === exp.employeeId; })) return false;
-                  if (expEmpFilter && exp.employeeId !== parseInt(expEmpFilter)) return false;
                   if (expBranchFilter) {
                    const emp = employees.find(function(e) { return e.id === exp.employeeId; });
                    if (!emp || !(emp.branches||[]).includes(expBranchFilter)) return false;
                   }
                   if (expDateFrom && exp.date < expDateFrom) return false;
                   if (expDateTo && exp.date > expDateTo) return false;
+                  return true;
+                });
+                const employeeIdsWithExpenses = new Set(expensesInScope.map(function(exp) { return exp.employeeId; }));
+                const employeesWithExpenses = visEmp.filter(function(e) {
+                  return !e.isAdmin && employeeIdsWithExpenses.has(e.id);
+                });
+                // If the selected employee no longer has expenses under the current branch/date range,
+                // fall back to "All Employees" so the list and the dropdown never disagree.
+                const activeEmpFilter = (expEmpFilter && employeeIdsWithExpenses.has(parseInt(expEmpFilter))) ? expEmpFilter : '';
+
+                const baseFiltered = expensesInScope.filter(function(exp) {
+                  if (activeEmpFilter && exp.employeeId !== parseInt(activeEmpFilter)) return false;
                   return true;
                 });
                 const allFiltered = baseFiltered.filter(function(exp) {
@@ -8071,7 +8085,7 @@ import React, { useState, useEffect } from 'react';
                 // Currency for the summary cards: derive from the active employee/branch filter, or
                 // from the filtered set if it's all one currency; otherwise show no symbol (mixed).
                 const summaryCurrency = (function() {
-                  if (expEmpFilter) { return resolveEmployeeCurrency(visEmp.find(function(e){return e.id===parseInt(expEmpFilter);})); }
+                  if (activeEmpFilter) { return resolveEmployeeCurrency(visEmp.find(function(e){return e.id===parseInt(activeEmpFilter);})); }
                   const setCur = new Set(allFiltered.map(function(exp){ const em = visEmp.find(function(e){return e.id===exp.employeeId;}); return em ? resolveEmployeeCurrency(em) : (exp.currency || 'GBP'); }));
                   if (setCur.size === 1) return Array.from(setCur)[0];
                   return null; // mixed currencies — don't imply a single symbol
@@ -8096,7 +8110,7 @@ import React, { useState, useEffect } from 'react';
                 };
                 const handleBulkAction = async function(status) {
                   const targets = allFiltered.filter(function(e){ return selectedIds.includes(e.id) && e.status === 'pending'; });
-                  if (!targets.length) { alert('No pending expenses selected.'); return; }
+                  if (!targets.length) { alert('No pending expenses have been selected.'); return; }
                   const total = targets.reduce(function(s,e){ return s + (e.amount||0); }, 0);
                   const verb = status === 'approved' ? 'APPROVE' : 'REJECT';
                   if (!window.confirm(verb + ' ' + targets.length + ' selected expense claim(s)?\n\nTotal: ' + total.toFixed(2))) return;
@@ -8130,9 +8144,9 @@ import React, { useState, useEffect } from 'react';
                 const handleBulkPayApproved = async () => {
                   // Pay every APPROVED expense currently visible under the active filters.
                   const toPay = allFiltered.filter(function(e){ return e.status === 'approved'; });
-                  if (!toPay.length) { alert('No approved expenses to pay under the current filter.'); return; }
+                  if (!toPay.length) { alert('There are no approved expenses to pay under the current filters.'); return; }
                   const total = toPay.reduce(function(s,e){ return s + (e.amount||0); }, 0);
-                  const who = expEmpFilter ? ((visEmp.find(function(e){return e.id===parseInt(expEmpFilter);})||{}).firstName + "'s") : "all employees'";
+                  const who = activeEmpFilter ? ((visEmp.find(function(e){return e.id===parseInt(activeEmpFilter);})||{}).firstName + "'s") : "all employees'";
                   if (!window.confirm('Mark ' + toPay.length + ' approved expense(s) for ' + who + ' as PAID?\n\nTotal: ' + getCurrencySymbol(resolveEmployeeCurrency(visEmp.find(function(e){return toPay[0] && e.id===toPay[0].employeeId;})) || (toPay[0]&&toPay[0].currency) || 'GBP') + total.toFixed(2))) return;
                   setBulkPaying(true);
                   const paidBy = currentUser.firstName + ' ' + currentUser.lastName;
@@ -8165,8 +8179,8 @@ import React, { useState, useEffect } from 'react';
                    // Deliberately does NOT switch tabs — jumping to the target tab after each
                    // action broke the flow of working down the Pending list one by one.
                    if (data.success) { await loadExpensesFromAPI(); }
-                   else alert('Error: ' + data.error);
-                  } catch(e) { alert('Failed: ' + e.message); }
+                   else alert('Unable to complete the request: ' + data.error);
+                  } catch(e) { alert('Unable to complete the request: ' + e.message); }
                 };
 
                 const handleDelete = async (id) => {
@@ -8174,7 +8188,7 @@ import React, { useState, useEffect } from 'react';
                   try {
                    await apiCall(API_ENDPOINTS.expenses + '/' + id, { method: 'DELETE' });
                    await loadExpensesFromAPI();
-                  } catch(e) { alert('Failed: ' + e.message); }
+                  } catch(e) { alert('Unable to complete the request: ' + e.message); }
                 };
 
                 const tabs = ['all', 'pending', 'approved', 'paid', 'rejected'];
@@ -8232,7 +8246,7 @@ import React, { useState, useEffect } from 'react';
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Category *</label>
                   <select value={addForm.category} onChange={e => setAddForm(Object.assign({}, addForm, {category: e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-400">
-                   <option value="">Select...</option>
+                   <option value="">Select Category</option>
                    {EXPENSE_CATEGORIES.map(function(cat) { return <option key={cat} value={cat}>{cat}</option>; })}
                   </select>
                    </div>
@@ -8259,7 +8273,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   <div className="flex gap-3 mt-4">
                    <button onClick={handleAdminAdd} disabled={addSaving} className={'px-5 py-2 rounded-lg font-semibold text-sm transition ' + (addSaving ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-teal-600 text-white hover:bg-teal-700')}>
-                  {addSaving ? 'Saving...' : 'Save Expense'}
+                  {addSaving ? 'Saving…' : 'Save Expense'}
                    </button>
                    <button onClick={() => setShowAddForm(false)} className="px-5 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold text-sm hover:bg-gray-300 transition">Cancel</button>
                   </div>
@@ -8306,12 +8320,12 @@ import React, { useState, useEffect } from 'react';
                   <button onClick={function(){ setExpDateFrom(defaultWeekStart); setExpDateTo(defaultWeekEnd); }} className="text-xs text-teal-600 hover:underline font-semibold">This week</button>
                    )}
                    {(expDateFrom || expDateTo) && (
-                  <button onClick={function(){ setExpDateFrom(''); setExpDateTo(''); }} className="text-xs text-gray-400 hover:underline">✕ All time</button>
+                  <button onClick={function(){ setExpDateFrom(''); setExpDateTo(''); }} className="text-xs text-gray-400 hover:underline">✕ All Dates</button>
                    )}
                   </div>
-                  <select value={expEmpFilter} onChange={e => setExpEmpFilter(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none">
+                  <select value={activeEmpFilter} onChange={e => setExpEmpFilter(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none">
                    <option value="">All Employees</option>
-                   {visEmp.filter(function(e) { return !e.isAdmin; }).map(function(e) {
+                   {employeesWithExpenses.map(function(e) {
                   return <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>;
                    })}
                   </select>
@@ -8352,7 +8366,7 @@ import React, { useState, useEffect } from 'react';
                    {allFiltered.length === 0 ? (
                   <div className="text-center py-12 text-gray-400">
                    <Receipt className="w-12 h-12 mx-auto mb-3 opacity-40" />
-                   <p>No {activeTab} expense claims</p>
+                   <p>{activeTab === 'all' ? 'No expense claims found' : 'No ' + activeTab + ' expense claims found'}</p>
                   </div>
                    ) : (
                   <div className="overflow-x-auto">
@@ -8408,7 +8422,7 @@ import React, { useState, useEffect } from 'react';
                    <button onClick={() => handleAction(exp.id, 'rejected')} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold hover:bg-red-200">Reject</button>
                   )}
                   {exp.status === 'approved' && (
-                   <button onClick={() => handleAction(exp.id, 'paid', { paidBy: currentUser.firstName + ' ' + currentUser.lastName })} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold hover:bg-blue-200">Mark Paid</button>
+                   <button onClick={() => handleAction(exp.id, 'paid', { paidBy: currentUser.firstName + ' ' + currentUser.lastName })} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold hover:bg-blue-200">Mark as Paid</button>
                   )}
                   {hasPermission('canDeleteAgentCollections') && (
                    <button onClick={() => handleDelete(exp.id)} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold hover:bg-red-200">Delete</button>
