@@ -530,7 +530,7 @@ import React, { useState, useEffect } from 'react';
                    setReportData(function(prev) { return prev ? prev.filter(function(c) { return c.id !== col.id; }) : prev; });
                    // Sync parent agentCollections state so report stays correct on re-open
                    if (onRefresh) await onRefresh();
-                  } catch(e) { alert('Failed to delete: ' + e.message); }
+                  } catch(e) { alert('Unable to delete the record: ' + e.message); }
                 };
 
                 // Bank payment approval — purely a "this transfer has been verified/received" flag.
@@ -552,13 +552,13 @@ import React, { useState, useEffect } from 'react';
                   } catch(e) {
                    // revert on failure
                    setReportData(function(prev) { return prev ? prev.map(function(c) { return c.id === col.id ? Object.assign({}, c, { notes: col.notes }) : c; }) : prev; });
-                   alert('Failed to update bank approval: ' + e.message);
+                   alert('Unable to update the bank approval: ' + e.message);
                   }
                 };
 
                 const handleAddCollection = async function() {
-                  if (!addEmpId || !addAgentId) { alert('Please select an employee and an agent'); return; }
-                  if (!addDate) { alert('Please select a date'); return; }
+                  if (!addEmpId || !addAgentId) { alert('Please select an employee and an agent.'); return; }
+                  if (!addDate) { alert('Please select a date.'); return; }
                   setAddSaving(true);
                   try {
                    const payload = {
@@ -626,9 +626,9 @@ import React, { useState, useEffect } from 'react';
                    [addFromRef, addToRef, addCollectedRef, addPaidRef, addBankRef, addNotesRef].forEach(function(r){ if(r.current) r.current.value = ''; });
                    setShowAddForm(false);
 
-                   const widenedMsg = needsWiden ? '\n\n📅 Date filter was widened to include ' + payload.date + '.' : '';
+                   const widenedMsg = needsWiden ? '\n\n📅 The date filter has been widened to include ' + payload.date + '.' : '';
                    alert('✅ Collection saved:\n\nEmployee: ' + empName + '\nAgent: ' + agentLabel + '\nDate: ' + payload.date + '\n\nReport refreshed (' + filtered.length + ' records visible).' + widenedMsg);
-                  } catch(e) { alert('❌ Failed to save collection: ' + e.message); }
+                  } catch(e) { alert('❌ Unable to save the collection record: ' + e.message); }
                   setAddSaving(false);
                 };
 
@@ -657,8 +657,8 @@ import React, { useState, useEffect } from 'react';
                   await loadAgentCollectionsFromAPI();
                   setEditingId(null);
                   setReportData(null);
-                   } else alert('Error: ' + data.error);
-                  } catch(e) { alert('Failed: ' + e.message); }
+                   } else alert('Unable to complete the request: ' + data.error);
+                  } catch(e) { alert('Unable to complete the request: ' + e.message); }
                   setSavingId(null);
                 };
 
@@ -914,7 +914,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                    </div>
                    <div className="flex gap-2">
-                  <button type="button" onClick={handleAddCollection} disabled={addSaving} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">{addSaving?'Saving...':'Save Collection'}</button>
+                  <button type="button" onClick={handleAddCollection} disabled={addSaving} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">{addSaving?'Saving…':'Save Collection'}</button>
                   <button type="button" onClick={function(){setShowAddForm(false);}} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200">Cancel</button>
                    </div>
                   </div>
@@ -922,7 +922,7 @@ import React, { useState, useEffect } from 'react';
 
                   <div className="p-6">
                    {!reportData ? (
-                  <div className="text-center py-16 text-gray-400"><Truck className="w-16 h-16 mx-auto mb-4 opacity-30" /><p>Select a date range and click Generate Report</p></div>
+                  <div className="text-center py-16 text-gray-400"><Truck className="w-16 h-16 mx-auto mb-4 opacity-30" /><p>Select a date range and choose Generate Report</p></div>
                    ) : reportData.length === 0 ? (
                   <div className="text-center py-16 text-gray-400"><p>No collection records found for this period</p></div>
                    ) : (
@@ -937,7 +937,7 @@ import React, { useState, useEffect } from 'react';
                    <span className="text-xl">⚠️</span>
                    <div className="flex-1">
                   <p className="text-sm font-bold text-amber-800">Sequence gaps detected — {sequenceGaps.length} agent{sequenceGaps.length>1?'s':''} with missing shipment numbers</p>
-                  <p className="text-xs text-amber-600 mb-2">These numbers fall inside the agent's collected range but were never recorded. Investigate or add the missing collections.</p>
+                  <p className="text-xs text-amber-600 mb-2">These numbers fall inside the agent's collected range but were never recorded. Please investigate or add the missing collection records.</p>
                   <div className="space-y-1">
                    {sequenceGaps.map(function(g, i) {
                   return (
@@ -962,7 +962,7 @@ import React, { useState, useEffect } from 'react';
                    <div className="flex-1">
                   <p className="text-sm font-bold text-red-800">No collections last week — {missingWeekAgents.agents.length} agent{missingWeekAgents.agents.length>1?'s':''} with zero entries</p>
                   <p className="text-xs text-red-600 mb-2">
-                   These agents have collections elsewhere in this report but nothing between {new Date(missingWeekAgents.weekFrom).toLocaleDateString('en-GB',{day:'2-digit',month:'short'})} and {new Date(missingWeekAgents.weekTo).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})} (Mon–Sun). Worth checking if something's wrong.
+                   These agents have collections elsewhere in this report but nothing between {new Date(missingWeekAgents.weekFrom).toLocaleDateString('en-GB',{day:'2-digit',month:'short'})} and {new Date(missingWeekAgents.weekTo).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})} (Mon–Sun). Please verify whether any records are missing.
                   </p>
                   <div className="flex flex-wrap gap-2">
                    {missingWeekAgents.agents.map(function(a, i) {
@@ -2056,7 +2056,7 @@ import React, { useState, useEffect } from 'react';
                    await loadTimesheetsFromAPI();
                   }
                    } catch(e) { console.error('Failed to save check-in:', e); }
-                   alert(`✓ Check-in successful at ${verification.location.name}\nTime: ${currentTime}\nDistance: ${verification.distance}m from location center`);
+                   alert(`✓ Check-in successful at ${verification.location.name}\nTime: ${currentTime}\nDistance: ${verification.distance}m from the location centre`);
                   } else {
                    setNewTimesheet({
                   ...newTimesheet,
@@ -2114,7 +2114,7 @@ import React, { useState, useEffect } from 'react';
                    await loadTimesheetsFromAPI();
                   } catch(e) { console.error('Failed to update checkout:', e); }
                    }
-                   alert(`✓ Check-out successful at ${verification.location.name}\nTime: ${currentTime}\nSent to admin for approval`);
+                   alert(`✓ Check-out successful at ${verification.location.name}\nTime: ${currentTime}\nSent to the administrator for approval`);
                   }
 
                   setScanningMode(null);
@@ -2796,11 +2796,11 @@ import React, { useState, useEffect } from 'react';
 
             const handleSubmitTimesheet = async () => {
                 if (!newTimesheet.startTime || !newTimesheet.finishTime) {
-                  alert('Please complete check-in and check-out using QR code scanning');
+                  alert('Please complete both check-in and check-out by scanning the QR code.');
                   return;
                 }
                 if (!newTimesheet.locationId) {
-                  alert('Location verification required. Please scan QR code at your work location.');
+                  alert('Location verification is required. Please scan the QR code at your work location.');
                   return;
                 }
                 setPendingBreakMinutes('');
@@ -2887,13 +2887,13 @@ import React, { useState, useEffect } from 'react';
                    setNewTimesheet(cleared);
                    if (notesRef && notesRef.current) notesRef.current.value = '';
                    localStorage.removeItem('bpost_current_timesheet');
-                   alert('✓ Timesheet submitted successfully!');
+                   alert('✓ Your timesheet has been submitted successfully.');
                   } else {
-                   alert('Failed to submit timesheet: ' + (data.error || 'Unknown error'));
+                   alert('Unable to submit the timesheet: ' + (data.error || 'Unknown error'));
                   }
                 } catch (error) {
                   console.error('Failed to submit timesheet:', error);
-                  alert('Failed to submit timesheet: ' + error.message);
+                  alert('Unable to submit the timesheet: ' + error.message);
                 } finally {
                   setIsSubmittingTimesheet(false);
                 }
@@ -3120,10 +3120,10 @@ import React, { useState, useEffect } from 'react';
                   }
                   setLoading(false);
                   if (result.success) {
-                   setSuccess(adminReset ? `Password reset for ${targetEmployee.firstName} ${targetEmployee.lastName}!` : 'Password changed successfully!');
+                   setSuccess(adminReset ? `Password reset for ${targetEmployee.firstName} ${targetEmployee.lastName}.` : 'Password changed successfully.');
                    setTimeout(onClose, 1500);
                   } else {
-                   setError(result.error || 'Failed to change password.');
+                   setError(result.error || 'Unable to change the password.');
                   }
                 };
 
@@ -3177,7 +3177,7 @@ import React, { useState, useEffect } from 'react';
 
                 const onSubmit = async (e) => {
                   e.preventDefault();
-                  setError('Logging in...');
+                  setError('Signing in…');
                   const success = await handleLogin(email, password);
                   if (success) {
                    setError('');
@@ -3278,7 +3278,7 @@ import React, { useState, useEffect } from 'react';
                   e.preventDefault();
                   const success = await handleRegisterEmployee(formData);
                   if (success) {
-                   alert('Registration successful! You are now logged in.');
+                   alert('Registration successful. You are now signed in.');
 
                   }
                 };
@@ -3432,7 +3432,7 @@ import React, { useState, useEffect } from 'react';
 
                 const startCameraScanning = () => {
                   if (typeof Html5Qrcode === 'undefined') {
-                   alert('QR Scanner not loaded. Please try manual entry.');
+                   alert('The QR scanner could not be loaded. Please use manual entry instead.');
                    setScanMethod('manual');
                    return;
                   }
@@ -3463,7 +3463,7 @@ import React, { useState, useEffect } from 'react';
                    setIsScanning(true);
                   }).catch(err => {
                    console.error('Camera error:', err);
-                   alert('Unable to access camera. Please allow camera permissions or use manual entry.');
+                   alert('Unable to access the camera. Please allow camera permissions or use manual entry.');
                    setScanMethod('manual');
                   });
                 };
@@ -4596,7 +4596,7 @@ import React, { useState, useEffect } from 'react';
                    {p.collectedIQD>0 && <div className="bg-white rounded-lg px-3 py-2 border border-green-100"><p className="text-xs text-gray-400">IQD collected</p><p className="font-bold text-sm text-green-700">{p.collectedIQD.toLocaleString()}</p></div>}
                    {p.collectedEUR>0 && <div className="bg-white rounded-lg px-3 py-2 border border-green-100"><p className="text-xs text-gray-400">EUR collected</p><p className="font-bold text-sm text-green-700">€{p.collectedEUR.toFixed(2)}</p></div>}
                   </div>
-                  <p className="text-xs text-gray-400 mt-2 italic">🔒 Locked — contact admin to make corrections</p>
+                  <p className="text-xs text-gray-400 mt-2 italic">🔒 Locked — please contact an administrator to make corrections</p>
                    </div>
                   );
                 }
@@ -4609,7 +4609,7 @@ import React, { useState, useEffect } from 'react';
                    collectedEUR: parseFloat(collEUR.current?collEUR.current.value:0)||0,
                   };
                   const anyCollected = payload.collectedIQD||payload.collectedUSD||payload.collectedGBP||payload.collectedEUR;
-                  if (!anyCollected) { alert('Please enter at least one collected amount'); return; }
+                  if (!anyCollected) { alert('Please enter at least one collected amount.'); return; }
                   // Mark as collected when any amount is submitted
                   payload.status = 'collected';
                   setSaving(true);
@@ -4617,7 +4617,7 @@ import React, { useState, useEffect } from 'react';
                    await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method:'PUT', body: JSON.stringify(payload) });
                    await loadIraqPaymentsFromAPI();
                    setRecorded(true);
-                  } catch(e) { alert('Failed: ' + e.message); }
+                  } catch(e) { alert('Unable to record the collection: ' + e.message); }
                   setSaving(false);
                 };
                 if (recorded) return (
@@ -4625,7 +4625,7 @@ import React, { useState, useEffect } from 'react';
                   <span className="text-2xl">✅</span>
                   <div>
                    <p className="font-bold text-green-800">{p.shipmentCode} — Collected</p>
-                   <p className="text-xs text-green-600">Successfully recorded. Thank you!</p>
+                   <p className="text-xs text-green-600">Successfully recorded. Thank you.</p>
                   </div>
                   </div>
                 );
@@ -4757,23 +4757,23 @@ import React, { useState, useEffect } from 'react';
                    return r.shipmentCode && /^[A-Za-z]{1,5}[0-9]{2,}/.test(r.shipmentCode.trim());
                   });
                   setPreviewRows(mapped);
-                   } catch(err) { alert('Could not parse file: ' + err.message); }
+                   } catch(err) { alert('Unable to read the file: ' + err.message); }
                   };
                   reader.readAsBinaryString(file);
                 };
 
                 const handleUpload = async function() {
-                  if (!batchName.trim()) { alert('Please enter a batch name'); return; }
-                  if (!empId) { alert('Please select an employee'); return; }
-                  if (!previewRows.length) { alert('No records to upload'); return; }
+                  if (!batchName.trim()) { alert('Please enter a batch name.'); return; }
+                  if (!empId) { alert('Please select an employee.'); return; }
+                  if (!previewRows.length) { alert('There are no records to upload.'); return; }
                   setUploading(true);
                   try {
                    await apiCall(API_ENDPOINTS.iraqPay + '/batch', { method:'POST', body: JSON.stringify({ batchName: batchName.trim(), employeeId: parseInt(empId), records: previewRows }) });
                    await loadIraqPaymentsFromAPI();
                    setBatchName(''); setEmpId(''); setPreviewRows([]);
                    setActiveTab('view');
-                   alert('Batch uploaded successfully!');
-                  } catch(e) { alert('Upload failed: ' + e.message); }
+                   alert('The batch has been uploaded successfully.');
+                  } catch(e) { alert('Unable to upload the batch: ' + e.message); }
                   setUploading(false);
                 };
 
@@ -4794,13 +4794,13 @@ import React, { useState, useEffect } from 'react';
                    await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method:'PUT', body: JSON.stringify(vals) });
                    await loadIraqPaymentsFromAPI();
                    setEditingId(null); setEditVals({});
-                  } catch(e) { alert('Failed: ' + e.message); }
+                  } catch(e) { alert('Unable to save the changes: ' + e.message); }
                 };
 
                 const handleDelete = async function(p) {
                   if (!window.confirm('Delete shipment ' + p.shipmentCode + '?')) return;
                   try { await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method:'DELETE' }); await loadIraqPaymentsFromAPI(); }
-                  catch(e) { alert('Failed: ' + e.message); }
+                  catch(e) { alert('Unable to delete the shipment: ' + e.message); }
                 };
 
                 // ── Reassign a shipment to a different employee and/or batch in one step ──
@@ -4826,7 +4826,7 @@ import React, { useState, useEffect } from 'react';
                   const newEmpName = newEmp ? (newEmp.firstName + ' ' + newEmp.lastName) : 'selected employee';
                   const batchChanged = (reassignBatch || '') !== (reassignRec.batchName || '');
                   const empChanged = parseInt(reassignEmp) !== parseInt(reassignRec.employeeId);
-                  if (!empChanged && !batchChanged) { alert('Nothing changed — pick a different employee or batch.'); return; }
+                  if (!empChanged && !batchChanged) { alert('No changes were made. Please select a different employee or batch.'); return; }
                   const msg = 'Reassign shipment ' + reassignRec.shipmentCode + '?\n\n'
                    + 'From: ' + oldEmpName + (reassignRec.batchName ? ' (batch ' + reassignRec.batchName + ')' : '') + '\n'
                    + 'To:   ' + newEmpName + (reassignBatch ? ' (batch ' + reassignBatch + ')' : '') + '\n\n'
@@ -4845,7 +4845,7 @@ import React, { useState, useEffect } from 'react';
                    await loadIraqPaymentsFromAPI();
                    closeReassign();
                    alert('✅ ' + reassignRec.shipmentCode + ' reassigned to ' + newEmpName + (reassignBatch ? ' in batch ' + reassignBatch : '') + '.');
-                  } catch(e) { alert('Failed to reassign: ' + e.message); }
+                  } catch(e) { alert('Unable to reassign the shipment: ' + e.message); }
                   setReassigning(false);
                 };
 
@@ -4919,9 +4919,9 @@ import React, { useState, useEffect } from 'react';
                 };
 
                 const submitAddShipment = async function() {
-                  if (!addShipForm.shipmentCode.trim()) { alert('Shipment code is required'); return; }
-                  if (!addShipForm.batchName.trim())    { alert('Batch name is required'); return; }
-                  if (!addShipForm.employeeId)          { alert('Please select an employee'); return; }
+                  if (!addShipForm.shipmentCode.trim()) { alert('Shipment code is required.'); return; }
+                  if (!addShipForm.batchName.trim())    { alert('Batch name is required.'); return; }
+                  if (!addShipForm.employeeId)          { alert('Please select an employee.'); return; }
                   setAddShipSaving(true);
                   try {
                    const recvParts = [addShipForm.receiverName.trim(), addShipForm.receiverMobile.trim()].filter(Boolean);
@@ -4942,7 +4942,7 @@ import React, { useState, useEffect } from 'react';
                    clearShipDraft();
                    setShowAddShipment(false);
                    alert('✅ Shipment ' + body.shipmentCode + ' added to batch "' + body.batchName + '"');
-                  } catch(e) { alert('Add failed: ' + e.message); }
+                  } catch(e) { alert('Unable to add the shipment: ' + e.message); }
                   setAddShipSaving(false);
                 };
                 const moveTotIQD = moveBatchRecords.reduce(function(s,p){return s+(p.amountIQD||0);},0);
@@ -4951,7 +4951,7 @@ import React, { useState, useEffect } from 'react';
                 const moveTotEUR = moveBatchRecords.reduce(function(s,p){return s+(p.amountEUR||0);},0);
 
                 const openMoveBatchModal = async function() {
-                  if (!filterBatch) { alert('Please select a batch first'); return; }
+                  if (!filterBatch) { alert('Please select a batch first.'); return; }
                   setMoveBatchName('');
                   setMoveBatchDone(false);
                   setMoveBatchAssignEmp('');
@@ -4990,7 +4990,7 @@ import React, { useState, useEffect } from 'react';
                    });
                    setMoveBatchDone(true);
                    await loadIraqPaymentsFromAPI();
-                  } catch(e) { alert('Move failed: ' + e.message); }
+                  } catch(e) { alert('Unable to move the batch: ' + e.message); }
                   setMoveBatchConfirming(false);
                 };
 
@@ -5086,7 +5086,7 @@ import React, { useState, useEffect } from 'react';
 
                 const handleDeleteBatch = async function() {
                   const batchToDelete = filterBatch;
-                  if (!batchToDelete) { alert('Select a batch to delete'); return; }
+                  if (!batchToDelete) { alert('Please select a batch to delete.'); return; }
                   const batchRecords = iraqPayments.filter(function(p){ return p.batchName === batchToDelete; });
                   // Deleting a whole batch is permanent (a real hard delete, no undo) — require
                   // TYPING the batch name back, not just clicking through a generic confirm().
@@ -5109,7 +5109,7 @@ import React, { useState, useEffect } from 'react';
                    await loadIraqPaymentsFromAPI();
                    setFilterBatch('');
                    alert('Batch "' + batchToDelete + '" deleted — ' + batchRecords.length + ' records removed.');
-                  } catch(e) { alert('Failed: ' + e.message); }
+                  } catch(e) { alert('Unable to delete the batch: ' + e.message); }
                   setDeletingBatch(false);
                 };
 
@@ -5482,7 +5482,7 @@ import React, { useState, useEffect } from 'react';
                    <select value={reassignBatch} onChange={function(e){ setReassignBatch(e.target.value); }} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-400">
                   {[...new Set(iraqPayments.map(function(p){return p.batchName;}))].filter(Boolean).sort().map(function(b){ return <option key={b} value={b}>{b}</option>; })}
                    </select>
-                   <p className="text-xs text-gray-400 mt-1">Leave as-is to keep the same batch, or select a different one.</p>
+                   <p className="text-xs text-gray-400 mt-1">Leave unchanged to keep the current batch, or select a different one.</p>
                   </div>
                   <div className="flex gap-2 justify-end pt-2">
                    <button onClick={closeReassign} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 text-sm">Cancel</button>
@@ -5753,7 +5753,7 @@ import React, { useState, useEffect } from 'react';
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Notes (optional)</label>
                    <input type="text" value={addShipForm.notes}
                   onChange={function(e){setAddShipForm(Object.assign({}, addShipForm, {notes: e.target.value}));}}
-                  placeholder="Any additional info"
+                  placeholder="Any additional information"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
 
@@ -7810,7 +7810,7 @@ import React, { useState, useEffect } from 'react';
                   const desc = descriptionRef.current ? descriptionRef.current.value : '';
                   const amt = amountRef.current ? amountRef.current.value : '';
                   const rNote = receiptNoteRef.current ? receiptNoteRef.current.value : '';
-                  if (!form.category || !amt) { alert('Category and amount are required'); return; }
+                  if (!form.category || !amt) { alert('Category and amount are required fields.'); return; }
                   const isDuplicate = items.some(i => i.category === form.category && i.date === form.date && parseFloat(i.amount) === parseFloat(amt) && i.description === desc);
                   if (isDuplicate) { alert('An identical item is already in your list.'); return; }
                   setItems([...items, { date: form.date, category: form.category, description: desc, amount: parseFloat(amt), currency: form.currency || myDefaultCur, receiptNote: rNote, receiptImage: form.receiptImage, id: Date.now() }]);
@@ -7828,7 +7828,7 @@ import React, { useState, useEffect } from 'react';
                 const _submitGuard = React.useRef(false);
                 const submitAll = async () => {
                   if (_submitGuard.current || saving) return;
-                  if (items.length === 0) { alert('Add at least one expense item'); return; }
+                  if (items.length === 0) { alert('Please add at least one expense item.'); return; }
                   _submitGuard.current = true;
                   setSaving(true);
                   const countToSubmit = items.length;
@@ -7847,7 +7847,7 @@ import React, { useState, useEffect } from 'react';
                    localStorage.removeItem('bpost_pending_form');
                    alert(`✓ ${countToSubmit} expense${countToSubmit > 1 ? 's' : ''} submitted for approval`);
                    onClose();
-                  } catch(e) { alert('Failed to submit: ' + e.message); }
+                  } catch(e) { alert('Unable to submit the expenses: ' + e.message); }
                   setSaving(false);
                   _submitGuard.current = false;
                 };
@@ -7879,7 +7879,7 @@ import React, { useState, useEffect } from 'react';
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Category *</label>
                   <select value={form.category} onChange={e=>setForm({...form,category:e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-400 focus:outline-none bg-white">
-                   <option value="">Select...</option>
+                   <option value="">Select Category</option>
                    {EXPENSE_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                   </select>
                    </div>
@@ -8697,7 +8697,7 @@ import React, { useState, useEffect } from 'react';
 
                 const handleSubmit = async function() {
                   const collected = amountCollectedRef.current ? amountCollectedRef.current.value : '';
-                  if (!agentId || !collected) { alert('Agent and amount collected are required'); return; }
+                  if (!agentId || !collected) { alert('Agent and amount collected are required fields.'); return; }
                   setSaving(true);
                   try {
                    const fromSuffix = fromSuffixRef.current ? fromSuffixRef.current.value : '';
@@ -8727,18 +8727,18 @@ import React, { useState, useEffect } from 'react';
                   if (amountPaidRef.current) amountPaidRef.current.value = '';
                   if (bankAmountRef.current) bankAmountRef.current.value = '';
                   if (notesRef.current) notesRef.current.value = '';
-                  alert('Collection record saved');
-                   } else alert('Error: ' + data.error);
-                  } catch(e) { alert('Failed: ' + e.message); }
+                  alert('The collection record has been saved.');
+                   } else alert('Unable to save the collection record: ' + data.error);
+                  } catch(e) { alert('Unable to save the collection record: ' + e.message); }
                   setSaving(false);
                 };
 
                 const handleDelete = async function(id) {
-                  if (!window.confirm('Delete this record?')) return;
+                  if (!window.confirm('Delete this collection record?')) return;
                   try {
                    await apiCall(API_ENDPOINTS.agentCollections + '/' + id, { method: 'DELETE' });
                    await loadAgentCollectionsFromAPI();
-                  } catch(e) { alert('Failed: ' + e.message); }
+                  } catch(e) { alert('Unable to delete the collection record: ' + e.message); }
                 };
 
                 const fc = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400';
@@ -8811,7 +8811,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
-                   <input ref={notesRef} defaultValue="" className={fc} placeholder="Optional notes..." />
+                   <input ref={notesRef} defaultValue="" className={fc} placeholder="Optional notes" />
                   </div>
                    </div>
                    <button onClick={handleSubmit} disabled={saving} className={'w-full py-3 rounded-xl font-bold transition mb-6 ' + (saving ? 'bg-gray-300 text-gray-500' : 'bg-orange-600 text-white hover:bg-orange-700')}>
@@ -9852,20 +9852,20 @@ import React, { useState, useEffect } from 'react';
 
                 const handleAddCredit = async function() {
                   const amt = parseFloat(creditAmt);
-                  if (!creditEmpId) { alert('Please select an employee'); return; }
-                  if (!amt || amt <= 0) { alert('Please enter a valid amount'); return; }
+                  if (!creditEmpId) { alert('Please select an employee.'); return; }
+                  if (!amt || amt <= 0) { alert('Please enter a valid amount.'); return; }
                   setCreditSaving(true);
                   try {
                    await apiCall(API_ENDPOINTS.adjustments, { method: 'POST', body: JSON.stringify({ employeeId: parseInt(creditEmpId), type: 'account_credit', amount: amt, reason: creditNote || 'Account credit', date: creditDate }) });
                    await loadAdjustmentsFromAPI();
                    setCreditEmpId(''); setCreditAmt(''); setCreditNote(''); setAddingCredit(false);
-                  } catch(e) { alert('Failed: ' + e.message); }
+                  } catch(e) { alert('Unable to save the account credit: ' + e.message); }
                   setCreditSaving(false);
                 };
                 const handleDeleteCredit = async function(a) {
                   if (!window.confirm('Delete credit of ' + sym + parseFloat(a.amount).toFixed(2) + ' for ' + a.employeeName + '?')) return;
                   try { await apiCall(API_ENDPOINTS.adjustments + '/' + a.id, { method: 'DELETE' }); await loadAdjustmentsFromAPI(); }
-                  catch(e) { alert('Failed: ' + e.message); }
+                  catch(e) { alert('Unable to delete the account credit: ' + e.message); }
                 };
 
                 const filteredEmp = visEmp.filter(function(e) {
@@ -10003,7 +10003,7 @@ import React, { useState, useEffect } from 'react';
                 const handleBranchSettle = async function() {
                   if (!report) return;
                   const amount = parseFloat(coSettleAmount);
-                  if (!amount || amount <= 0) { alert('Please enter a valid amount'); return; }
+                  if (!amount || amount <= 0) { alert('Please enter a valid amount.'); return; }
                   if (amount > Math.abs(report.branchCashDue) + 0.005) { alert('Amount cannot exceed the outstanding cash of ' + sym + Math.abs(report.branchCashDue).toFixed(2)); return; }
                   const effDate = coSettleDate || toDate;
                   if (effDate < fromDate || effDate > toDate) {
@@ -10024,8 +10024,8 @@ import React, { useState, useEffect } from 'react';
                   alert('\u2705 Branch settlement of ' + sym + amount.toFixed(2) + ' recorded for ' + report.branchName + ' on ' + effDate + '.');
                   setCoSettleNote('');
                   generateReport();
-                   } else alert('Error: ' + (data.error || 'failed'));
-                  } catch(e) { alert('Failed: ' + e.message); }
+                   } else alert('Unable to record the settlement: ' + (data.error || 'Unknown error'));
+                  } catch(e) { alert('Unable to record the settlement: ' + e.message); }
                   setCoSettling(false);
                 };
 
@@ -10035,7 +10035,7 @@ import React, { useState, useEffect } from 'react';
                    await apiCall(API_ENDPOINTS.adjustments + '/' + s.id, { method: 'DELETE' });
                    await loadAdjustmentsFromAPI();
                    generateReport();
-                  } catch(e) { alert('Failed to delete: ' + e.message); }
+                  } catch(e) { alert('Unable to delete the settlement: ' + e.message); }
                 };
 
                 const exportCSV = function() {
@@ -10158,7 +10158,7 @@ import React, { useState, useEffect } from 'react';
                   {!report ? (
                   <div className="text-center py-16 text-gray-400">
                     <BarChart3 className="w-16 h-16 mx-auto mb-4 opacity-30" />
-                    <p>Select a date range and click Generate Report</p>
+                    <p>Select a date range and choose Generate Report</p>
                   </div>
                   ) : (
                   <div className="p-6 space-y-6">
