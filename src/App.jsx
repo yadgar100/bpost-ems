@@ -6166,7 +6166,7 @@ import React, { useState, useEffect } from 'react';
                 });
 
                 return (
-                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center p-4 z-50 overflow-y-auto">
                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl my-8">
                   <div className="sticky top-0 z-20 bg-white rounded-t-2xl">
                    <div className="p-6 border-b border-gray-200 flex justify-between items-center">
@@ -6179,10 +6179,10 @@ import React, { useState, useEffect } from 'react';
                   </button>
                    </div>
 
-                   <div className="flex border-b border-gray-200">
+                   <div className="flex border-b border-gray-200 overflow-x-auto">
                   <button
                    onClick={() => setActiveTab('add')}
-                   className={`flex-1 px-6 py-3 font-semibold transition ${
+                   className={`flex-1 px-6 py-3 font-semibold transition whitespace-nowrap ${
                   activeTab === 'add'
                    ? 'bg-indigo-50 text-indigo-600 border-b-2 border-indigo-600'
                    : 'text-gray-600 hover:bg-gray-50'
@@ -6192,7 +6192,7 @@ import React, { useState, useEffect } from 'react';
                   </button>
                   <button
                   onClick={() => setActiveTab('history')}
-                  className={`flex-1 px-6 py-3 font-semibold transition ${
+                  className={`flex-1 px-6 py-3 font-semibold transition whitespace-nowrap ${
                    activeTab === 'history'
                   ? 'bg-indigo-50 text-indigo-600 border-b-2 border-indigo-600'
                   : 'text-gray-600 hover:bg-gray-50'
@@ -6202,7 +6202,7 @@ import React, { useState, useEffect } from 'react';
                    </button>
                    <button
                   onClick={() => setActiveTab('credits')}
-                  className={`flex-1 px-6 py-3 font-semibold transition relative ${
+                  className={`flex-1 px-6 py-3 font-semibold transition relative whitespace-nowrap ${
                    activeTab === 'credits'
                   ? 'bg-indigo-50 text-indigo-600 border-b-2 border-indigo-600'
                   : 'text-gray-600 hover:bg-gray-50'
@@ -6213,7 +6213,7 @@ import React, { useState, useEffect } from 'react';
                    </button>
                    <button
                   onClick={() => setActiveTab('summary')}
-                  className={`flex-1 px-6 py-3 font-semibold transition ${
+                  className={`flex-1 px-6 py-3 font-semibold transition whitespace-nowrap ${
                    activeTab === 'summary'
                   ? 'bg-indigo-50 text-indigo-600 border-b-2 border-indigo-600'
                   : 'text-gray-600 hover:bg-gray-50'
