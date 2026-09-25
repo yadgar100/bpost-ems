@@ -6806,7 +6806,7 @@ import React, { useState, useEffect } from 'react';
                 }, []);
 
                 return (
-                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center p-4 z-50 overflow-y-auto">
                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl my-8">
                   <div className="sticky top-0 z-10 bg-white p-6 border-b border-gray-200 flex justify-between items-center rounded-t-2xl">
                    <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
@@ -6929,7 +6929,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                    </div>
 
-                   <div className="overflow-x-auto max-h-screen overflow-y-auto">
+                   <div className="overflow-x-auto">
                   <table className="w-full">
                    <thead className="bg-gray-50 sticky top-0">
                   <tr>
