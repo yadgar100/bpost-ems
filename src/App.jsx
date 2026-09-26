@@ -1672,6 +1672,17 @@ import React, { useState, useEffect } from 'react';
             const [financialMgrState, setFinancialMgrState] = useState({ activeTab: 'add', adjustmentType: 'bonus', adjustmentData: { employeeId:'', type:'bonus', amount:'', reason:'', date: new Date().toISOString().split('T')[0], hours:'', paymentMethod:'cash' } });
             const [showEmployeeAccounting, setShowEmployeeAccounting] = useState(false);
             const [empAccountingState, setEmpAccountingState] = useState({ empId: '', fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], report: null, autoAdvancedFor: null });
+            const [expenseMgrState, setExpenseMgrState] = useState((() => {
+              const today = new Date().toISOString().split('T')[0];
+              const dt = new Date(today);
+              const day = dt.getDay();
+              const diff = day === 0 ? -6 : 1 - day;
+              dt.setDate(dt.getDate() + diff);
+              const monday = dt.toISOString().split('T')[0];
+              const sun = new Date(monday);
+              sun.setDate(sun.getDate() + 6);
+              return { activeTab: 'all', expBranchFilter: '', expEmpFilter: '', expDateFrom: monday, expDateTo: sun.toISOString().split('T')[0] };
+            })());
             // Lives at the root (never remounts) so the Timesheet Queue's date range, tab, and
             // branch filter survive approve/reject actions and background refreshes — both
             // recreate the queue component, which was wiping these back to defaults every time.
@@ -7977,10 +7988,15 @@ import React, { useState, useEffect } from 'react';
                 );
             };
 
-            const ExpenseManager = ({ onClose, visibleEmployees: visEmp }) => {
-                const [activeTab, setActiveTab] = useState('all');
-                const [expBranchFilter, setExpBranchFilter] = useState('');
-                const [expEmpFilter, setExpEmpFilter] = useState('');
+            const ExpenseManager = ({ onClose, visibleEmployees: visEmp, persistedState, onStateChange }) => {
+                // Filters (tab, branch, employee, date range) are kept in the parent's
+                // persisted state — same pattern as the Payroll Report and Financial
+                // Adjustments screens — so a periodic background refresh doesn't wipe
+                // them out. They only reset when the admin actually closes this manager.
+                const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
+                const activeTab = persistedState ? persistedState.activeTab : 'all'; const setActiveTab = mk('activeTab');
+                const expBranchFilter = persistedState ? persistedState.expBranchFilter : ''; const setExpBranchFilter = mk('expBranchFilter');
+                const expEmpFilter = persistedState ? persistedState.expEmpFilter : ''; const setExpEmpFilter = mk('expEmpFilter');
                 const [showAddForm, setShowAddForm] = useState(false);
                 const [lightboxImage, setLightboxImage] = useState(null);
                 const today = new Date().toISOString().split('T')[0];
@@ -8000,8 +8016,8 @@ import React, { useState, useEffect } from 'react';
                 };
                 const defaultWeekStart = getMonday(today);
                 const defaultWeekEnd = getSunday(defaultWeekStart);
-                const [expDateFrom, setExpDateFrom] = useState(defaultWeekStart);
-                const [expDateTo, setExpDateTo] = useState(defaultWeekEnd);
+                const expDateFrom = persistedState ? persistedState.expDateFrom : defaultWeekStart; const setExpDateFrom = mk('expDateFrom');
+                const expDateTo = persistedState ? persistedState.expDateTo : defaultWeekEnd; const setExpDateTo = mk('expDateTo');
                 const [addForm, setAddForm] = useState({ employeeId: '', date: today, category: '', description: '', amount: '', receiptNote: '', status: 'approved' });
                 const [addSaving, setAddSaving] = useState(false);
 
@@ -12533,7 +12549,7 @@ import React, { useState, useEffect } from 'react';
                    )}
 
                    {showExpenseManager && (
-                  <ExpenseManager onClose={() => setShowExpenseManager(false)} visibleEmployees={visibleEmployees} />
+                  <ExpenseManager onClose={() => setShowExpenseManager(false)} visibleEmployees={visibleEmployees} persistedState={expenseMgrState} onStateChange={setExpenseMgrState} />
                    )}
 
                    {showExpenseReport && (
