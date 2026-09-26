@@ -8955,6 +8955,17 @@ import React, { useState, useEffect } from 'react';
 
                 const emp = visEmp.find(function(e) { return e.id === parseInt(empId); });
                 const sym = emp ? getCurrencySymbol(resolveEmployeeCurrency(emp)) : getCurrencySymbol('GBP');
+                // Groups a set of records by their own currency and returns a joined
+                // string like "$49091.00 + IQD358000.00" — used wherever this screen would
+                // otherwise wrongly add different currencies' raw numbers together.
+                const groupByCur = function(items, field) {
+                  const byCur = {};
+                  (items || []).forEach(function(it) {
+                   const cur = recordCurrency(it, emp);
+                   byCur[cur] = (byCur[cur] || 0) + (parseFloat(it[field]) || 0);
+                  });
+                  return Object.keys(byCur).map(function(cur) { return getCurrencySymbol(cur) + byCur[cur].toFixed(2); }).join(' + ');
+                };
 
                 const generateReport = function() {
                   if (!empId) { alert('Please select an employee'); return; }
@@ -9694,7 +9705,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   )}
 
-                  <div className={'rounded-2xl border-2 p-6 mb-6 ' + (report.balance > 0 ? 'bg-red-50 border-red-300' : report.balance < 0 ? 'bg-green-50 border-green-300' : 'bg-gray-50 border-gray-300')}>
+                  <div className={'rounded-2xl border-2 p-6 mb-6 ' + (report.empIsMulti ? 'bg-gray-50 border-gray-200' : report.balance > 0 ? 'bg-red-50 border-red-300' : report.balance < 0 ? 'bg-green-50 border-green-300' : 'bg-gray-50 border-gray-300')}>
                   <p className="text-sm font-bold text-gray-600 uppercase tracking-wider mb-4">
                     {report.empIsMulti ? 'Combined Summary (all currencies — reference only)' : 'Final Balance Summary'}
                   </p>
@@ -9709,18 +9720,18 @@ import React, { useState, useEffect } from 'react';
                   )}
                   <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Agent Collections Received</span>
-                  <span className="font-semibold text-green-700">+{sym}{report.totalCollected.toFixed(2)}</span>
+                  <span className="font-semibold text-green-700">+{groupByCur(report.empCollections,'amountCollected')}</span>
                   </div>
                   {report.totalPaidToAgents > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Paid to Agents</span>
-                    <span className="font-semibold text-red-600">-{sym}{report.totalPaidToAgents.toFixed(2)}</span>
+                    <span className="font-semibold text-red-600">-{groupByCur(report.empCollections,'amountPaid')}</span>
                   </div>
                   )}
                   {(report.totalAccountCredits||0) > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Account Credits (Cash to Accountant)</span>
-                    <span className="font-semibold text-indigo-600">-{sym}{(report.totalAccountCredits||0).toFixed(2)}</span>
+                    <span className="font-semibold text-indigo-600">-{groupByCur(report.accountCredits,'amount')}</span>
                   </div>
                   )}
                   <div className="flex justify-between text-sm">
@@ -9729,7 +9740,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Approved Expenses</span>
-                  <span className="font-semibold text-red-600">-{sym}{report.totalExpenses.toFixed(2)}</span>
+                  <span className="font-semibold text-red-600">-{groupByCur(report.empExpenses,'amount')}</span>
                   </div>
                   {report.settlementRecords && report.settlementRecords.length > 0 && (
                   <div className="border-t border-dashed border-gray-300 pt-2">
@@ -9764,6 +9775,11 @@ import React, { useState, useEffect } from 'react';
                     <span className="font-semibold text-green-600">+{sym}{report.previousPenalties.toFixed(2)}</span>
                   </div>
                   )}
+                  {report.empIsMulti ? (
+                  <p className="text-xs text-gray-400 text-center border-t border-dashed border-gray-300 pt-3 mt-2">
+                    This combined figure adds different currencies together and is not a real amount — see the Currency Accounts above for the actual balance owed in each currency.
+                  </p>
+                  ) : (
                   <div className="flex justify-between font-bold text-lg border-t-2 border-gray-300 pt-3 mt-2">
                   <span className="text-gray-800">
                     {report.balance > 0 ? 'Employee Owes Company' : report.balance < 0 ? 'Company Owes Employee' : 'Balance Clear'}
@@ -9772,6 +9788,7 @@ import React, { useState, useEffect } from 'react';
                     {report.balance > 0 ? '+' : ''}{sym}{Math.abs(report.balance).toFixed(2)}
                   </span>
                   </div>
+                  )}
                   </div>
 
                   {report.balance !== 0 && report.empIsMulti && (
