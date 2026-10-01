@@ -537,6 +537,11 @@ import React, { useState, useEffect } from 'react';
                 // Persisted via a [BANK_OK] marker in the record's notes so it survives without any
                 // DB schema change, and is intentionally NOT factored into any accounting totals.
                 const BANK_OK_TAG = '[BANK_OK]';
+                // AgentReport is declared outside EmployeeTimesheetApp's scope, so it has
+                // no closure access to the app's MULTI_CURRENCIES constant (that's also why
+                // getCurrencySymbol/resolveEmployeeCurrency above are passed in as props).
+                // Local copy, same 4 currencies, for the collection-currency dropdown below.
+                const COLLECTION_CURRENCIES = ['IQD', 'USD', 'GBP', 'EUR'];
                 const isBankApproved = function(col) { return (col.notes || '').indexOf(BANK_OK_TAG) !== -1; };
                 const cleanNote = function(notes) { return (notes || '').replace(BANK_OK_TAG, '').trim(); };
 
@@ -1014,7 +1019,7 @@ import React, { useState, useEffect } from 'react';
                   {isEditing ? (
                    <div className="flex items-center gap-1">
                   <select value={editVals.currency} onChange={function(e){setEditVals(Object.assign({},editVals,{currency:e.target.value}));}} className="px-1 py-1 border border-orange-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-orange-400">
-                   {MULTI_CURRENCIES.map(function(c){ return <option key={c} value={c}>{c}</option>; })}
+                   {COLLECTION_CURRENCIES.map(function(c){ return <option key={c} value={c}>{c}</option>; })}
                   </select>
                   <input type="number" value={editVals.amountCollected} onChange={function(e){setEditVals(Object.assign({},editVals,{amountCollected:e.target.value}));}} className={ic} />
                    </div>
