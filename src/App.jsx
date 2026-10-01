@@ -571,6 +571,11 @@ import React, { useState, useEffect } from 'react';
                   amountPaid: parseFloat(addPaidRef.current ? addPaidRef.current.value : '') || 0,
                   bankAmount: parseFloat(addBankRef.current ? addBankRef.current.value : '') || 0,
                   boxesQty: 0,
+                  // Always the SELECTED EMPLOYEE's own currency (e.g. EUR for a Netherlands
+                  // driver) — never the admin's own account currency. Previously this field
+                  // was omitted entirely, so the backend silently defaulted it to GBP no
+                  // matter who the admin was recording the collection for.
+                  currency: resolveEmployeeCurrency(visEmp.find(function(e) { return e.id === parseInt(addEmpId); })),
                   notes: addNotesRef.current ? addNotesRef.current.value : ''
                    };
                    console.log('[AddCollection] POST payload:', payload);
@@ -634,7 +639,8 @@ import React, { useState, useEffect } from 'react';
 
                 const startEdit = function(col) {
                   setEditingId(col.id);
-                  setEditVals({ date: col.date, fromCode: col.fromCode, toCode: col.toCode, amountCollected: col.amountCollected, amountPaid: col.amountPaid, bankAmount: col.bankAmount || 0, boxesQty: col.boxesQty });
+                  const _colEmpForEdit = visEmp.find(function(e){ return e.id === col.employeeId; });
+                  setEditVals({ date: col.date, fromCode: col.fromCode, toCode: col.toCode, amountCollected: col.amountCollected, amountPaid: col.amountPaid, bankAmount: col.bankAmount || 0, boxesQty: col.boxesQty, currency: col.currency || (_colEmpForEdit ? resolveEmployeeCurrency(_colEmpForEdit) : 'GBP') });
                 };
 
                 const saveEdit = async function(col) {
@@ -650,6 +656,7 @@ import React, { useState, useEffect } from 'react';
                    amountPaid: parseFloat(editVals.amountPaid) || 0,
                    bankAmount: parseFloat(editVals.bankAmount) || 0,
                    boxesQty: parseInt(editVals.boxesQty) || 0,
+                   currency: editVals.currency,
                    notes: col.notes
                   })
                    });
@@ -1004,7 +1011,14 @@ import React, { useState, useEffect } from 'react';
                   {isEditing ? <input value={editVals.toCode} onChange={function(e){setEditVals(Object.assign({},editVals,{toCode:e.target.value}));}} className={ic} /> : (col.toCode||'—')}
                    </td>
                    <td className="px-4 py-3 font-bold text-green-700">
-                  {isEditing ? <input type="number" value={editVals.amountCollected} onChange={function(e){setEditVals(Object.assign({},editVals,{amountCollected:e.target.value}));}} className={ic} /> : sym+col.amountCollected.toFixed(2)}
+                  {isEditing ? (
+                   <div className="flex items-center gap-1">
+                  <select value={editVals.currency} onChange={function(e){setEditVals(Object.assign({},editVals,{currency:e.target.value}));}} className="px-1 py-1 border border-orange-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-orange-400">
+                   {MULTI_CURRENCIES.map(function(c){ return <option key={c} value={c}>{c}</option>; })}
+                  </select>
+                  <input type="number" value={editVals.amountCollected} onChange={function(e){setEditVals(Object.assign({},editVals,{amountCollected:e.target.value}));}} className={ic} />
+                   </div>
+                  ) : sym+col.amountCollected.toFixed(2)}
                    </td>
                    <td className="px-4 py-3 font-bold text-red-600">
                   {isEditing ? <input type="number" value={editVals.amountPaid} onChange={function(e){setEditVals(Object.assign({},editVals,{amountPaid:e.target.value}));}} className={ic} /> : (col.amountPaid > 0 ? sym+col.amountPaid.toFixed(2) : '—')}
