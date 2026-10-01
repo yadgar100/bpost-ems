@@ -4705,6 +4705,7 @@ import React, { useState, useEffect } from 'react';
                 const [batchName, setBatchName] = useState('');
                 const [empId, setEmpId] = useState('');
                 const [previewRows, setPreviewRows] = useState([]);
+                const [skippedRows, setSkippedRows] = useState([]);
                 const [uploading, setUploading] = useState(false);
                 const [editingId, setEditingId] = useState(null);
                 const [editVals, setEditVals] = useState({});
@@ -4760,7 +4761,7 @@ import React, { useState, useEffect } from 'react';
                   const officeIdx = getColIdx('tooffice', 'office', 'destination', 'city');
                   const noteIdx   = getColIdx('note', 'status', 'desc');
                   const pn = function(v){ return parseFloat(String(v||'').replace(/,/g,'').replace(/[^0-9.]/g,'')) || 0; };
-                  const mapped = raw.slice(headerRowIdx + 1).map(function(row) {
+                  const mappedAll = raw.slice(headerRowIdx + 1).map(function(row) {
                    const code     = String(row[shipIdx >= 0 ? shipIdx : 0]||'').trim();
                    const toOffice = officeIdx >= 0 ? String(row[officeIdx]||'').trim() : '';
                    const receiver = recvIdx   >= 0 ? String(row[recvIdx]||'').trim()   : '';
@@ -4781,11 +4782,19 @@ import React, { useState, useEffect } from 'react';
                     amountEUR: eurIdx    >= 0 ? pn(row[eurIdx])    : 0,
                     notes: combinedNotes,
                    };
-                  }).filter(function(r){
-                   // Only keep rows where shipment code matches pattern: 1-5 letters followed by 2+ digits
-                   // e.g. B230, GM207, JF376, LM159, BK1234 — NOT receiver names like "hsain", "Aran Marewan"
-                   return r.shipmentCode && /^[A-Za-z]{1,5}[0-9]{2,}/.test(r.shipmentCode.trim());
                   });
+                  // Only keep rows whose shipment code looks like a code: 1-5 letters followed by at
+                  // least one digit (B230, GM207, PA9, PA10 …) — NOT receiver names like "hsain" or
+                  // "Aran Marewan". (This used to demand 2+ digits, which silently dropped single-digit
+                  // codes such as PA9.)
+                  const looksLikeCode = function(c){ return /^[A-Za-z]{1,5}[0-9]+/.test(String(c||'').trim()); };
+                  const mapped = mappedAll.filter(function(r){ return r.shipmentCode && looksLikeCode(r.shipmentCode); });
+                  // Anything that has a code cell and an amount but still wasn't imported is reported,
+                  // so a row can never disappear silently again.
+                  const skipped = mappedAll.filter(function(r){
+                   return r.shipmentCode && !looksLikeCode(r.shipmentCode) && (r.amountIQD || r.amountUSD || r.amountGBP || r.amountEUR);
+                  }).map(function(r){ return r.shipmentCode; });
+                  setSkippedRows(skipped);
                   setPreviewRows(mapped);
                    } catch(err) { alert('Unable to read the file: ' + err.message); }
                   };
@@ -4800,7 +4809,7 @@ import React, { useState, useEffect } from 'react';
                   try {
                    await apiCall(API_ENDPOINTS.iraqPay + '/batch', { method:'POST', body: JSON.stringify({ batchName: batchName.trim(), employeeId: parseInt(empId), records: previewRows }) });
                    await loadIraqPaymentsFromAPI();
-                   setBatchName(''); setEmpId(''); setPreviewRows([]);
+                   setBatchName(''); setEmpId(''); setPreviewRows([]); setSkippedRows([]);
                    setActiveTab('view');
                    alert('The batch has been uploaded successfully.');
                   } catch(e) { alert('Unable to upload the batch: ' + e.message); }
@@ -5831,6 +5840,12 @@ import React, { useState, useEffect } from 'react';
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Upload Excel / CSV File</label>
                    <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
+                  {skippedRows.length > 0 && (
+                   <div className="bg-amber-50 border border-amber-300 rounded-lg px-4 py-3 text-xs text-amber-800">
+                  <p className="font-semibold mb-1">{skippedRows.length} row{skippedRows.length !== 1 ? 's' : ''} in the file {skippedRows.length !== 1 ? 'were' : 'was'} not imported</p>
+                  <p>The shipment code doesn't look like a normal code (letters followed by a number): <b>{skippedRows.join(', ')}</b>. If any of these are real shipments, fix the code in the file and upload again, or add them with "Add Shipment".</p>
+                   </div>
+                  )}
                   {previewRows.length > 0 && (
                    <div>
                   <p className="text-sm font-semibold text-gray-700 mb-2">Preview — {previewRows.length} records</p>
