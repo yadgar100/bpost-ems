@@ -1767,7 +1767,7 @@ import React, { useState, useEffect } from 'react';
                   category: e.Category || e.category || '',
                   description: e.Description || e.description || '',
                   amount: parseFloat(e.Amount || e.amount || 0),
-                  currency: e.Currency || e.currency || 'GBP',
+                  currency: e.Currency || e.currency || '',
                   receiptNote: e.ReceiptNote || e.receiptNote || '',
                   receiptImage: e.ReceiptImage || e.receiptImage || null,
                   status: (e.Status || e.status || 'pending').toLowerCase(),
@@ -8192,8 +8192,33 @@ import React, { useState, useEffect } from 'react';
                 const defaultWeekEnd = getSunday(defaultWeekStart);
                 const expDateFrom = persistedState ? persistedState.expDateFrom : defaultWeekStart; const setExpDateFrom = mk('expDateFrom');
                 const expDateTo = persistedState ? persistedState.expDateTo : defaultWeekEnd; const setExpDateTo = mk('expDateTo');
-                const [addForm, setAddForm] = useState({ employeeId: '', date: today, category: '', description: '', amount: '', receiptNote: '', status: 'approved' });
+                const [addForm, setAddForm] = useState({ employeeId: '', date: today, category: '', description: '', amount: '', currency: '', receiptNote: '', status: 'approved' });
                 const [addSaving, setAddSaving] = useState(false);
+
+                // Each expense carries its own currency (an admin can record e.g. a USD expense for a
+                // GBP employee). Use the stored currency when valid; otherwise the employee's usual one.
+                const expCurOf = function(exp) {
+                  if (MULTI_CURRENCIES.indexOf(exp.currency) !== -1) return exp.currency;
+                  const em = visEmp.find(function(e){ return e.id === exp.employeeId; });
+                  return em ? resolveEmployeeCurrency(em) : 'GBP';
+                };
+                const sumByCur = function(list) {
+                  const t = {};
+                  list.forEach(function(e){ const c = expCurOf(e); t[c] = (t[c] || 0) + (e.amount || 0); });
+                  return t;
+                };
+                const fmtByCur = function(t) {
+                  const k = Object.keys(t);
+                  return k.length ? k.map(function(c){ return getCurrencySymbol(c) + t[c].toFixed(2); }).join(' + ') : '0.00';
+                };
+                const renderCurLines = function(t) {
+                  const k = Object.keys(t);
+                  if (!k.length) return '0.00';
+                  return k.map(function(c){ return <div key={c}>{getCurrencySymbol(c)}{t[c].toFixed(2)}</div>; });
+                };
+                const addDefaultCur = addForm.employeeId
+                  ? resolveEmployeeCurrency(visEmp.find(function(e){ return e.id === parseInt(addForm.employeeId); }))
+                  : 'GBP';
 
                 const handleAdminAdd = async () => {
                   if (!addForm.employeeId || !addForm.category || !addForm.amount) {
@@ -8210,7 +8235,7 @@ import React, { useState, useEffect } from 'react';
                    category: addForm.category,
                    description: addForm.description,
                    amount: parseFloat(addForm.amount),
-                   currency: resolveEmployeeCurrency(visEmp.find(function(e) { return e.id === parseInt(addForm.employeeId); })),
+                   currency: MULTI_CURRENCIES.indexOf(addForm.currency) !== -1 ? addForm.currency : addDefaultCur,
                    receiptNote: addForm.receiptNote,
                   })
                    });
@@ -8222,7 +8247,7 @@ import React, { useState, useEffect } from 'react';
                    });
                   }
                   await loadExpensesFromAPI();
-                  setAddForm({ employeeId: '', date: today, category: '', description: '', amount: '', receiptNote: '', status: 'approved' });
+                  setAddForm({ employeeId: '', date: today, category: '', description: '', amount: '', currency: '', receiptNote: '', status: 'approved' });
                   setShowAddForm(false);
                   setActiveTab(addForm.status);
                   alert('The expense has been added successfully.');
@@ -8260,27 +8285,12 @@ import React, { useState, useEffect } from 'react';
                   return activeTab === 'all' ? true : exp.status === activeTab;
                 });
 
-                const totalBalance = expenses.filter(function(exp) {
-                  return visEmp.some(function(e) { return e.id === exp.employeeId; }) && exp.status === 'approved';
-                }).reduce(function(s,e) { return s+e.amount; }, 0);
-
-                const totalPaid = expenses.filter(function(exp) {
-                  return visEmp.some(function(e) { return e.id === exp.employeeId; }) && exp.status === 'paid';
-                }).reduce(function(s,e) { return s+e.amount; }, 0);
-
-                const totalPending = expenses.filter(function(exp) {
-                  return visEmp.some(function(e) { return e.id === exp.employeeId; }) && exp.status === 'pending';
-                }).reduce(function(s,e) { return s+e.amount; }, 0);
-
-                // Currency for the summary cards: derive from the active employee/branch filter, or
-                // from the filtered set if it's all one currency; otherwise show no symbol (mixed).
-                const summaryCurrency = (function() {
-                  if (activeEmpFilter) { return resolveEmployeeCurrency(visEmp.find(function(e){return e.id===parseInt(activeEmpFilter);})); }
-                  const setCur = new Set(allFiltered.map(function(exp){ const em = visEmp.find(function(e){return e.id===exp.employeeId;}); return em ? resolveEmployeeCurrency(em) : (exp.currency || 'GBP'); }));
-                  if (setCur.size === 1) return Array.from(setCur)[0];
-                  return null; // mixed currencies — don't imply a single symbol
-                })();
-                const summarySym = summaryCurrency ? getCurrencySymbol(summaryCurrency) : '';
+                // Summary cards: totals kept separately per currency so e.g. £, € and IQD amounts are
+                // never added together into one meaningless number.
+                const inScope = function(exp) { return visEmp.some(function(e) { return e.id === exp.employeeId; }); };
+                const totalBalanceByCur = sumByCur(expenses.filter(function(exp) { return inScope(exp) && exp.status === 'approved'; }));
+                const totalPaidByCur = sumByCur(expenses.filter(function(exp) { return inScope(exp) && exp.status === 'paid'; }));
+                const totalPendingByCur = sumByCur(expenses.filter(function(exp) { return inScope(exp) && exp.status === 'pending'; }));
 
                 const [bulkPaying, setBulkPaying] = useState(false);
                 // Bulk approve/reject: tick rows, then act on all of them in one go. Avoids the
@@ -8303,7 +8313,7 @@ import React, { useState, useEffect } from 'react';
                   if (!targets.length) { alert('No pending expenses have been selected.'); return; }
                   const total = targets.reduce(function(s,e){ return s + (e.amount||0); }, 0);
                   const verb = status === 'approved' ? 'APPROVE' : 'REJECT';
-                  if (!window.confirm(verb + ' ' + targets.length + ' selected expense claim(s)?\n\nTotal: ' + total.toFixed(2))) return;
+                  if (!window.confirm(verb + ' ' + targets.length + ' selected expense claim(s)?\n\nTotal: ' + fmtByCur(sumByCur(targets)))) return;
                   setBulkActing(true);
                   let ok = 0;
                   const failedIds = [];
@@ -8337,7 +8347,7 @@ import React, { useState, useEffect } from 'react';
                   if (!toPay.length) { alert('There are no approved expenses to pay under the current filters.'); return; }
                   const total = toPay.reduce(function(s,e){ return s + (e.amount||0); }, 0);
                   const who = activeEmpFilter ? ((visEmp.find(function(e){return e.id===parseInt(activeEmpFilter);})||{}).firstName + "'s") : "all employees'";
-                  if (!window.confirm('Mark ' + toPay.length + ' approved expense(s) for ' + who + ' as PAID?\n\nTotal: ' + getCurrencySymbol(resolveEmployeeCurrency(visEmp.find(function(e){return toPay[0] && e.id===toPay[0].employeeId;})) || (toPay[0]&&toPay[0].currency) || 'GBP') + total.toFixed(2))) return;
+                  if (!window.confirm('Mark ' + toPay.length + ' approved expense(s) for ' + who + ' as PAID?\n\nTotal: ' + fmtByCur(sumByCur(toPay)))) return;
                   setBulkPaying(true);
                   const paidBy = currentUser.firstName + ' ' + currentUser.lastName;
                   let ok = 0;
@@ -8424,7 +8434,7 @@ import React, { useState, useEffect } from 'react';
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Employee *</label>
-                  <select value={addForm.employeeId} onChange={e => setAddForm(Object.assign({}, addForm, {employeeId: e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-400">
+                  <select value={addForm.employeeId} onChange={e => setAddForm(Object.assign({}, addForm, {employeeId: e.target.value, currency: ''}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-400">
                    <option value="">Select Employee</option>
                    {visEmp.filter(function(e) { return !e.isAdmin; }).map(function(e) { return <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>; })}
                   </select>
@@ -8443,6 +8453,17 @@ import React, { useState, useEffect } from 'react';
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Amount *</label>
                   <input type="number" min="0.01" step="0.01" value={addForm.amount} onChange={e => setAddForm(Object.assign({}, addForm, {amount: e.target.value}))} placeholder="0.00" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                   </div>
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Currency</label>
+                  <select value={addForm.currency || addDefaultCur} onChange={e => setAddForm(Object.assign({}, addForm, {currency: e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400">
+                   {MULTI_CURRENCIES.map(function(c){ return <option key={c} value={c}>{c} ({getCurrencySymbol(c).trim()})</option>; })}
+                  </select>
+                  {addForm.employeeId && addForm.currency && addForm.currency !== addDefaultCur && (
+                   isMultiCurrencyEmployee(visEmp.find(function(e){ return e.id === parseInt(addForm.employeeId); }))
+                    ? <p className="text-xs text-amber-600 mt-1">This employee's usual currency is {addDefaultCur}; this expense will be kept in its own currency account.</p>
+                    : <p className="text-xs text-amber-600 mt-1">This employee isn't set up for multiple currencies (usual currency {addDefaultCur}), so their accounting balance will add this amount to their {addDefaultCur} total. Enable multi-currency for them to keep it separate.</p>
+                  )}
                    </div>
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Description</label>
@@ -8473,15 +8494,15 @@ import React, { useState, useEffect } from 'react';
                   <div className="grid grid-cols-3 gap-4 p-6 border-b border-gray-200">
                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
                   <p className="text-xs text-amber-600 font-semibold uppercase tracking-wide">Awaiting Approval</p>
-                  <p className="text-2xl font-bold text-amber-700 mt-1">{summarySym}{totalPending.toFixed(2)}</p>
+                  <div className="text-2xl font-bold text-amber-700 mt-1">{renderCurLines(totalPendingByCur)}</div>
                    </div>
                    <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
                   <p className="text-xs text-green-600 font-semibold uppercase tracking-wide">Approved - Unpaid Balance</p>
-                  <p className="text-2xl font-bold text-green-700 mt-1">{summarySym}{totalBalance.toFixed(2)}</p>
+                  <div className="text-2xl font-bold text-green-700 mt-1">{renderCurLines(totalBalanceByCur)}</div>
                    </div>
                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
                   <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide">Total Paid Out</p>
-                  <p className="text-2xl font-bold text-blue-700 mt-1">{summarySym}{totalPaid.toFixed(2)}</p>
+                  <div className="text-2xl font-bold text-blue-700 mt-1">{renderCurLines(totalPaidByCur)}</div>
                    </div>
                   </div>
 
@@ -8577,8 +8598,7 @@ import React, { useState, useEffect } from 'react';
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                    {allFiltered.map(function(exp) {
-                  const _expEmp = visEmp.find(function(e){ return e.id === exp.employeeId; });
-                  const expCur = _expEmp ? resolveEmployeeCurrency(_expEmp) : (exp.currency || 'GBP');
+                  const expCur = expCurOf(exp);
                   return (
                    <tr key={exp.id} className={'hover:bg-gray-50 ' + (selectedIds.includes(exp.id) ? 'bg-teal-50' : '')}>
                   <td className="px-3 py-3">
@@ -8632,8 +8652,7 @@ import React, { useState, useEffect } from 'react';
                    // employees' countries) — show each on its own line rather than mixing symbols.
                    const totals = {};
                    allFiltered.forEach(function(exp) {
-                  const em = visEmp.find(function(e){return e.id===exp.employeeId;});
-                  const cur = em ? resolveEmployeeCurrency(em) : (exp.currency || 'GBP');
+                  const cur = expCurOf(exp);
                   totals[cur] = (totals[cur] || 0) + (exp.amount || 0);
                    });
                    const keys = Object.keys(totals);
