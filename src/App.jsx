@@ -5205,15 +5205,15 @@ import React, { useState, useEffect } from 'react';
                   const fmt = function(v, sym){ return v > 0 ? sym + (sym==='IQD ' ? v.toLocaleString() : v.toFixed(2)) : '—'; };
                   const rows = filtered.map(function(p){
                    const off = (p.notes||'').replace('Office:','').trim().split('|')[0].trim();
+                   const collectedParts = [fmt(p.collectedIQD,'IQD '),fmt(p.collectedUSD,'$'),fmt(p.collectedGBP,'£'),fmt(p.collectedEUR,'€')].filter(function(x){return x!=='—';});
                    return '<tr style="border-bottom:1px solid #e5e7eb">'
                     +'<td style="padding:4px 8px;font-size:11px">'+p.shipmentCode+'</td>'
                     +'<td style="padding:4px 8px;font-size:11px;color:#6b7280">'+off+'</td>'
                     +'<td style="padding:4px 8px;font-size:11px;text-align:right">'+fmt(p.amountIQD,'IQD ')+'</td>'
                     +'<td style="padding:4px 8px;font-size:11px;text-align:right">'+fmt(p.amountUSD,'$')+'</td>'
                     +'<td style="padding:4px 8px;font-size:11px;text-align:right">'+fmt(p.amountGBP,'£')+'</td>'
-                    +'<td style="padding:4px 8px;font-size:11px;text-align:right;color:'+(p.collectedIQD||p.collectedUSD||p.collectedGBP||p.collectedEUR?'#16a34a':'#d1d5db')+'">'+
-                    [fmt(p.collectedIQD,'IQD '),fmt(p.collectedUSD,'$'),fmt(p.collectedGBP,'£')].filter(function(x){return x!=='—';}).join(' / ')||'—'
-                    +'</td>'
+                    +'<td style="padding:4px 8px;font-size:11px;text-align:right">'+fmt(p.amountEUR,'€')+'</td>'
+                    +'<td style="padding:4px 8px;font-size:11px;text-align:right;color:'+(collectedParts.length?'#16a34a':'#d1d5db')+'">'+(collectedParts.join(' / ')||'—')+'</td>'
                     +'<td style="padding:4px 8px;font-size:11px;text-align:center"><span style="padding:2px 8px;border-radius:9999px;font-size:10px;background:'+(p.status==='collected'?'#dcfce7':'#fef9c3')+';color:'+(p.status==='collected'?'#16a34a':'#854d0e')+'">'+p.status+'</span></td>'
                     +'</tr>';
                   }).join('');
@@ -5238,6 +5238,7 @@ import React, { useState, useEffect } from 'react';
                    +'<th style="padding:6px 8px;text-align:right;font-size:11px">IQD</th>'
                    +'<th style="padding:6px 8px;text-align:right;font-size:11px">USD</th>'
                    +'<th style="padding:6px 8px;text-align:right;font-size:11px">GBP</th>'
+                   +'<th style="padding:6px 8px;text-align:right;font-size:11px">EUR</th>'
                    +'<th style="padding:6px 8px;text-align:right;font-size:11px">Collected</th>'
                    +'<th style="padding:6px 8px;text-align:center;font-size:11px">Status</th>'
                    +'</tr></thead><tbody>'+rows+'</tbody></table>'
@@ -6582,6 +6583,105 @@ import React, { useState, useEffect } from 'react';
                 const selectedCountry = persistedState ? persistedState.selectedCountry : 'all'; const setSelectedCountry = mk('selectedCountry');
                 const generatedReport = persistedState ? persistedState.generatedReport : null; const setGeneratedReport = mk('generatedReport');
 
+                // ---- Single source of truth for one employee's report row -------------------
+                // Used by generateReport AND by the in-report approve / fix-clock-out handlers,
+                // so the numbers can never drift apart. Rules mirror the dashboard's
+                // calculatePayroll: only APPROVED shifts are paid, the minimum-hours guarantee
+                // is applied per shift, and payments made are tracked so a balance can be shown.
+                // Pending/rejected/clocked-in shifts stay in `timesheets` so they remain visible
+                // (and approvable) in the detail rows, but they are not counted in any total.
+                const buildRow = (employee, empTimesheets, rangeStart, rangeEnd) => {
+                  const approved = empTimesheets.filter(ts => ts.status === 'approved');
+                  const totalRegular = approved.reduce((sum, ts) => sum + (ts.regularHours || 0), 0);
+                  const totalOvertime = approved.reduce((sum, ts) => sum + (ts.overtimeHours || 0), 0);
+                  const totalHours = totalRegular + totalOvertime;
+
+                  const empOtMult = (employee.overtimeRate != null && employee.overtimeRate !== '') ? parseFloat(employee.overtimeRate) : (payrollSettings.overtimeMultiplier || 1.5);
+                  let minimumHoursBonus = 0;
+                  let minimumHoursPay = 0;
+                  let basePay = 0;
+                  approved.forEach(function(ts) {
+                   const reg = ts.regularHours || 0;
+                   const ot = ts.overtimeHours || 0;
+                   // Pay locked to the rate each shift was stamped with when worked.
+                   const shiftRate = (ts.hourlyRate != null && ts.hourlyRate !== '') ? parseFloat(ts.hourlyRate) : (employee.hourlyRate || 0);
+                   const shiftOtMult = (ts.overtimeRate != null && ts.overtimeRate !== '') ? parseFloat(ts.overtimeRate) : empOtMult;
+                   let shiftRegular = reg;
+                   if (employee.minimumHours) {
+                  const minH = parseFloat(employee.minimumHours);
+                  const dayTotal = reg + ot;
+                  if (dayTotal > 0 && dayTotal < minH) {
+                   const bonus = minH - dayTotal;
+                   minimumHoursBonus += bonus;
+                   minimumHoursPay += bonus * shiftRate;
+                   shiftRegular += bonus;
+                  }
+                   }
+                   basePay += (shiftRegular * shiftRate) + (ot * shiftRate * shiftOtMult);
+                  });
+                  const regularPay = totalRegular * employee.hourlyRate; // display-only aggregate at current rate
+                  const overtimePay = totalOvertime * employee.hourlyRate * empOtMult; // display-only aggregate at current rate
+
+                  // Break minutes are shown for transparency only (hours are already net of break).
+                  const totalBreakMinutes = approved.reduce((sum, ts) => sum + (ts.breakMinutes || 0), 0);
+                  const breakDeduction = 0;
+
+                  const rs = new Date(rangeStart);
+                  const re = new Date(rangeEnd);
+                  const empAdjustments = financialAdjustments.filter(adj => {
+                   const adjDate = new Date(adj.date);
+                   return adj.employeeId === employee.id && adjDate >= rs && adjDate <= re;
+                  });
+                  const sumType = function(types) { return empAdjustments.filter(a => types.indexOf(a.type) !== -1).reduce((sum, a) => sum + a.amount, 0); };
+                  const bonuses = sumType(['bonus', 'annual_leave']);
+                  const penalties = sumType(['penalty']);
+                  const advances = sumType(['advance']);
+                  const sickPay = sumType(['sick_pay']);
+                  const payments = sumType(['payment']);
+                  const totalAdjustments = bonuses - penalties - advances + sickPay;
+
+                  const totalPay = basePay - breakDeduction + totalAdjustments;
+                  // Period balance = what was earned in this period minus what was paid in it.
+                  const balanceOwed = totalPay - payments;
+                  // The dashboard's running all-time balance, shown for easy reconciliation.
+                  let allTimeBalance = 0;
+                  try { allTimeBalance = calculatePayroll(employee.id).balance || 0; } catch (e) { allTimeBalance = 0; }
+
+                  return {
+                   employee,
+                   timesheets: empTimesheets,
+                   totalRegular, totalOvertime, totalHours,
+                   regularPay, overtimePay, basePay, breakDeduction, totalBreakMinutes,
+                   minimumHoursBonus, minimumHoursPay,
+                   bonuses, penalties, advances, sickPay, totalAdjustments,
+                   payments, balanceOwed, allTimeBalance,
+                   totalPay,
+                   approvedShifts: empTimesheets.filter(ts => ts.status === 'approved').length,
+                   pendingShifts: empTimesheets.filter(ts => ts.status === 'pending' || ts.status === 'checkedout').length,
+                   rejectedShifts: empTimesheets.filter(ts => ts.status === 'rejected').length,
+                   checkedInShifts: empTimesheets.filter(ts => ts.status === 'checkedin').length,
+                   shiftsCount: empTimesheets.length
+                  };
+                };
+
+                const summarize = (data) => {
+                  const byCur = function(field) {
+                   return data.reduce(function(acc, d) {
+                  const sym = getCurrencySymbol(d.employee.currency || 'GBP');
+                  acc[sym] = (acc[sym] || 0) + d[field];
+                  return acc;
+                   }, {});
+                  };
+                  return {
+                   totalEmployees: data.length,
+                   grandTotalHours: data.reduce((sum, d) => sum + d.totalHours, 0),
+                   grandTotalPay: data.reduce((sum, d) => sum + d.totalPay, 0),
+                   payByCurrency: byCur('totalPay'),
+                   paidByCurrency: byCur('payments'),
+                   balanceByCurrency: byCur('balanceOwed')
+                  };
+                };
+
                 // Admin manually clocks out a shift that's stuck 'checkedin' (employee couldn't
                 // check out themselves). Computes hours the same way the normal checkout flow
                 // does, saves it as approved in one step, and patches the report snapshot.
@@ -6607,28 +6707,13 @@ import React, { useState, useEffect } from 'react';
                    await loadTimesheetsFromAPI();
                    setGeneratedReport(function(prev) {
                   if (!prev || !prev.data) return prev;
-                  return Object.assign({}, prev, {
-                   data: prev.data.map(function(r) {
-                  const updatedTs = (r.timesheets || []).map(function(t) {
-                   return t.id === ts.id ? Object.assign({}, t, { finishTime: fixFinishTime, regularHours: regular, overtimeHours: overtime, status: 'approved' }) : t;
+                  const data = prev.data.map(function(r) {
+                   const updatedTs = (r.timesheets || []).map(function(t) {
+                  return t.id === ts.id ? Object.assign({}, t, { finishTime: fixFinishTime, regularHours: regular, overtimeHours: overtime, status: 'approved' }) : t;
+                   });
+                   return buildRow(r.employee, updatedTs, prev.startDate, prev.endDate);
                   });
-                  const newTotalHours = updatedTs.reduce(function(s,t){ return s + (t.regularHours||0) + (t.overtimeHours||0); }, 0);
-                  const newTotalPay = updatedTs.reduce(function(s,t){
-                   const shiftRate = (t.hourlyRate != null && t.hourlyRate !== '') ? parseFloat(t.hourlyRate) : (r.employee.hourlyRate||0);
-                   const shiftOtMult = (t.overtimeRate != null && t.overtimeRate !== '') ? parseFloat(t.overtimeRate) : (r.employee.overtimeRate!=null?r.employee.overtimeRate:1.5);
-                   return s + ((t.regularHours||0)*shiftRate) + ((t.overtimeHours||0)*shiftRate*shiftOtMult);
-                  }, 0);
-                  return Object.assign({}, r, {
-                   timesheets: updatedTs,
-                   totalHours: newTotalHours,
-                   totalPay: newTotalPay,
-                   approvedShifts: updatedTs.filter(function(t){ return t.status === 'approved'; }).length,
-                   pendingShifts: updatedTs.filter(function(t){ return t.status === 'pending' || t.status === 'checkedout'; }).length,
-                   rejectedShifts: updatedTs.filter(function(t){ return t.status === 'rejected'; }).length,
-                   checkedInShifts: updatedTs.filter(function(t){ return t.status === 'checkedin'; }).length
-                  });
-                   })
-                  });
+                  return Object.assign({}, prev, { data: data }, summarize(data));
                    });
                    setFixingTsId(null);
                    setFixFinishTime('');
@@ -6638,27 +6723,19 @@ import React, { useState, useEffect } from 'react';
                 // Approve/reject directly from the payroll report. The report is a snapshot taken
                 // when "Generate Report" was clicked, so after updating the timesheet we patch the
                 // snapshot's status in place — otherwise the badge would stay "pending" until the
-                // report is regenerated. Hours/pay totals are unchanged by approval, so only the
-                // status label needs updating.
+                // report is regenerated. Approving/rejecting changes what is counted as pay, so the
+                // whole row (and the report totals) are recomputed from the updated shifts.
                 const approveFromReport = async (timesheetId, status) => {
                   await handleTimesheetStatus(timesheetId, status);
                   setGeneratedReport(function(prev) {
                    if (!prev || !prev.data) return prev;
-                   return Object.assign({}, prev, {
-                  data: prev.data.map(function(r) {
-                   const updatedTs = (r.timesheets || []).map(function(t) {
-                  return t.id === timesheetId ? Object.assign({}, t, { status: status }) : t;
+                   const data = prev.data.map(function(r) {
+                  const updatedTs = (r.timesheets || []).map(function(t) {
+                   return t.id === timesheetId ? Object.assign({}, t, { status: status }) : t;
+                  });
+                  return buildRow(r.employee, updatedTs, prev.startDate, prev.endDate);
                    });
-                   // Recompute the approved/pending/rejected counters shown in the Shifts column,
-                   // otherwise they'd still reflect the pre-approval snapshot.
-                   return Object.assign({}, r, {
-                  timesheets: updatedTs,
-                  approvedShifts: updatedTs.filter(function(t){ return t.status === 'approved'; }).length,
-                  pendingShifts: updatedTs.filter(function(t){ return t.status === 'pending' || t.status === 'checkedout'; }).length,
-                  rejectedShifts: updatedTs.filter(function(t){ return t.status === 'rejected'; }).length
-                   });
-                  })
-                   });
+                   return Object.assign({}, prev, { data: data }, summarize(data));
                   });
                 };
 
@@ -6701,93 +6778,24 @@ import React, { useState, useEffect } from 'react';
 
                   const reportData = relevantEmployees.map(employee => {
                    const empTimesheets = filteredTimesheets.filter(ts => ts.employeeId === employee.id);
-
-                   const totalRegular = empTimesheets.reduce((sum, ts) => sum + (ts.regularHours || 0), 0);
-                   const totalOvertime = empTimesheets.reduce((sum, ts) => sum + (ts.overtimeHours || 0), 0);
-                   const totalHours = totalRegular + totalOvertime;
-
-                   const empOtMult = (employee.overtimeRate != null && employee.overtimeRate !== '') ? parseFloat(employee.overtimeRate) : (payrollSettings.overtimeMultiplier || 1.5);
-                   // Pay locked to the rate each shift was actually stamped with when worked —
-                   // changing the employee's rate today must not retroactively re-price past shifts.
-                   const basePay = empTimesheets.reduce(function(sum, ts) {
-                  const shiftRate = (ts.hourlyRate != null && ts.hourlyRate !== '') ? parseFloat(ts.hourlyRate) : employee.hourlyRate;
-                  const shiftOtMult = (ts.overtimeRate != null && ts.overtimeRate !== '') ? parseFloat(ts.overtimeRate) : empOtMult;
-                  return sum + ((ts.regularHours||0) * shiftRate) + ((ts.overtimeHours||0) * shiftRate * shiftOtMult);
-                   }, 0);
-                   const regularPay = totalRegular * employee.hourlyRate; // display-only aggregate at current rate
-                   const overtimePay = totalOvertime * employee.hourlyRate * empOtMult; // display-only aggregate at current rate
-
-                   // Break minutes are shown for transparency only. The stored regular/overtime hours
-                   // are ALREADY net of the break that was entered at submission (calculateHours
-                   // subtracts it before saving), so we must NOT deduct it again here.
-                   const totalBreakMinutes = empTimesheets.reduce((sum, ts) => {
-                  return sum + (ts.breakMinutes || 0);
-                   }, 0);
-                   const breakDeduction = 0; // not re-deducted; hours are already net of break
-
-                   const empAdjustments = financialAdjustments.filter(adj => {
-                  const adjDate = new Date(adj.date);
-                  const start = new Date(startDate);
-                  const end = new Date(endDate);
-                  return adj.employeeId === employee.id && adjDate >= start && adjDate <= end;
-                   });
-                   const bonuses = empAdjustments.filter(a => a.type === 'bonus' || a.type === 'annual_leave').reduce((sum, a) => sum + a.amount, 0);
-                   const penalties = empAdjustments.filter(a => a.type === 'penalty').reduce((sum, a) => sum + a.amount, 0);
-                   const advances = empAdjustments.filter(a => a.type === 'advance').reduce((sum, a) => sum + a.amount, 0);
-                   const sickPay = empAdjustments.filter(a => a.type === 'sick_pay').reduce((sum, a) => sum + a.amount, 0);
-                   const totalAdjustments = bonuses - penalties - advances + sickPay;
-
-                   const totalPay = basePay - breakDeduction + totalAdjustments;
-
-                   const approvedShifts = empTimesheets.filter(ts => ts.status === 'approved').length;
-                   const pendingShifts = empTimesheets.filter(ts => ts.status === 'pending').length;
-                   const rejectedShifts = empTimesheets.filter(ts => ts.status === 'rejected').length;
-
-                   return {
-                  employee,
-                  timesheets: empTimesheets,
-                  totalRegular,
-                  totalOvertime,
-                  totalHours,
-                  regularPay,
-                  overtimePay,
-                  basePay,
-                  breakDeduction,
-                  totalBreakMinutes,
-                  bonuses,
-                  penalties,
-                  advances,
-                  sickPay,
-                  totalAdjustments,
-                  totalPay,
-                  approvedShifts,
-                  pendingShifts,
-                  rejectedShifts,
-                  shiftsCount: empTimesheets.length
-                   };
+                   return buildRow(employee, empTimesheets, startDate, endDate);
                   }).filter(data => data.shiftsCount > 0);
 
-                  setGeneratedReport({
+                  setGeneratedReport(Object.assign({
                    startDate,
                    endDate,
                    department: selectedDepartment,
+                   branch: selectedBranch,
+                   country: selectedCountry,
                    employeeId: selectedEmployee,
-                   data: reportData,
-                   totalEmployees: reportData.length,
-                   grandTotalHours: reportData.reduce((sum, d) => sum + d.totalHours, 0),
-                   grandTotalPay: reportData.reduce((sum, d) => sum + d.totalPay, 0),
-                   payByCurrency: reportData.reduce((acc, d) => {
-                   const sym = getCurrencySymbol(d.employee.currency || 'GBP');
-                   acc[sym] = (acc[sym] || 0) + d.totalPay;
-                   return acc;
-                   }, {})
-                  });
+                   data: reportData
+                  }, summarize(reportData)));
                 };
 
                 const exportToCSV = () => {
                   if (!generatedReport) return;
 
-                  let csv = 'Employee ID,Name,Department,Position,Total Hours,Regular Hours,Overtime Hours,Break Minutes,Hourly Rate,Regular Pay,Overtime Pay,Break Deduction,Bonus,Sick Pay,Penalty,Advance,Total Pay,Approved Shifts,Pending Shifts,Rejected Shifts\n';
+                  let csv = 'Employee ID,Name,Department,Position,Total Hours,Regular Hours,Overtime Hours,Break Minutes,Hourly Rate,Regular Pay,Overtime Pay,Break Deduction,Bonus,Sick Pay,Penalty,Advance,Total Pay,Payments Made,Balance Owed (Period),Dashboard Balance (All Time),Approved Shifts,Pending Shifts,Rejected Shifts\n';
 
                   generatedReport.data.forEach(row => {
                    csv += `${row.employee.employeeId},`;
@@ -6807,6 +6815,9 @@ import React, { useState, useEffect } from 'react';
                    csv += `${(row.penalties||0).toFixed(2)},`;
                    csv += `${(row.advances||0).toFixed(2)},`;
                    csv += `${row.totalPay.toFixed(2)},`;
+                   csv += `${(row.payments||0).toFixed(2)},`;
+                   csv += `${(row.balanceOwed||0).toFixed(2)},`;
+                   csv += `${(row.allTimeBalance||0).toFixed(2)},`;
                    csv += `${row.approvedShifts},`;
                    csv += `${row.pendingShifts},`;
                    csv += `${row.rejectedShifts}\n`;
@@ -6823,8 +6834,112 @@ import React, { useState, useEffect } from 'react';
                   window.URL.revokeObjectURL(url);
                 };
 
+                // Opens a dedicated print layout in its own window (instead of printing the live
+                // pop-up, which repeated the same screen on every page with the filters blanked).
                 const printReport = () => {
-                  window.print();
+                  if (!generatedReport) return;
+                  const gr = generatedReport;
+                  const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                  const fmtDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                  const symOf = (emp) => getCurrencySymbol(emp.currency || 'GBP');
+                  const curLines = (obj) => { const k = Object.keys(obj); return k.length ? k.map(function(c) { return c + obj[c].toFixed(2); }).join(' + ') : '—'; };
+                  const signedMoney = (sym, v) => (v < 0 ? '-' : '') + sym + Math.abs(v).toFixed(2);
+                  const shiftPayFor = function(emp, ts) {
+                   const rate = (ts.hourlyRate != null && ts.hourlyRate !== '') ? parseFloat(ts.hourlyRate) : emp.hourlyRate;
+                   const empMult = (emp.overtimeRate != null && emp.overtimeRate !== '') ? parseFloat(emp.overtimeRate) : (payrollSettings.overtimeMultiplier || 1.5);
+                   const mult = (ts.overtimeRate != null && ts.overtimeRate !== '') ? parseFloat(ts.overtimeRate) : empMult;
+                   return ((ts.regularHours || 0) * rate) + ((ts.overtimeHours || 0) * rate * mult);
+                  };
+
+                  const filters = [];
+                  if (gr.department && gr.department !== 'all') filters.push('Department: ' + gr.department);
+                  if (gr.branch && gr.branch !== 'all') filters.push('Branch: ' + gr.branch);
+                  if (gr.country && gr.country !== 'all') filters.push('Country: ' + gr.country);
+                  if (gr.employeeId && gr.employeeId !== 'all' && gr.data[0]) filters.push('Employee: ' + gr.data[0].employee.firstName + ' ' + gr.data[0].employee.lastName);
+
+                  const summaryRows = gr.data.map(function(r) {
+                   const sy = symOf(r.employee);
+                   const notes = [];
+                   if (r.minimumHoursBonus > 0) notes.push('incl. minimum-hours guarantee +' + r.minimumHoursBonus.toFixed(1) + 'h');
+                   if (r.bonuses > 0) notes.push('bonus +' + sy + r.bonuses.toFixed(2));
+                   if (r.sickPay > 0) notes.push('sick pay +' + sy + r.sickPay.toFixed(2));
+                   if (r.penalties > 0) notes.push('penalty -' + sy + r.penalties.toFixed(2));
+                   if (r.advances > 0) notes.push('advance -' + sy + r.advances.toFixed(2));
+                   const shifts = r.approvedShifts + ' approved' + (r.pendingShifts > 0 ? ', ' + r.pendingShifts + ' pending' : '') + (r.rejectedShifts > 0 ? ', ' + r.rejectedShifts + ' rejected' : '');
+                   const showDash = Math.abs(r.allTimeBalance - Math.max(r.balanceOwed, 0)) > 0.005;
+                   return '<tr>'
+                    + '<td><b>' + esc(r.employee.firstName + ' ' + r.employee.lastName) + '</b><div class="sm">' + esc(r.employee.employeeId) + '</div></td>'
+                    + '<td>' + esc(r.employee.department) + '</td>'
+                    + '<td class="sm">' + esc(shifts) + '</td>'
+                    + '<td class="n">' + r.totalRegular.toFixed(1) + '</td>'
+                    + '<td class="n">' + r.totalOvertime.toFixed(1) + '</td>'
+                    + '<td class="n"><b>' + r.totalHours.toFixed(1) + '</b></td>'
+                    + '<td class="n">' + sy + r.employee.hourlyRate.toFixed(2) + '</td>'
+                    + '<td class="n"><b>' + sy + r.totalPay.toFixed(2) + '</b>' + (notes.length ? '<div class="sm">' + esc(notes.join('; ')) + '</div>' : '') + '</td>'
+                    + '<td class="n">' + sy + r.payments.toFixed(2) + '</td>'
+                    + '<td class="n"><b>' + signedMoney(sy, r.balanceOwed) + '</b>' + (showDash ? '<div class="sm">Dashboard balance: ' + sy + r.allTimeBalance.toFixed(2) + '</div>' : '') + '</td>'
+                    + '</tr>';
+                  }).join('');
+
+                  // Shift-level detail: always for a single-employee report, otherwise only for
+                  // the employee currently expanded on screen (keeps all-staff prints compact).
+                  const detailRows = gr.data.length === 1 ? gr.data : gr.data.filter(function(r) { return r.employee.id === expandedEmp; });
+                  const detailHtml = detailRows.map(function(r) {
+                   const sy = symOf(r.employee);
+                   const sorted = r.timesheets.slice().sort(function(a, b) { return new Date(a.date) - new Date(b.date); });
+                   const trs = sorted.map(function(ts) {
+                  const tHrs = (ts.regularHours || 0) + (ts.overtimeHours || 0);
+                  const brk = (ts.breakMinutes || 0) > 0 ? ts.breakMinutes + 'm' : '—';
+                  const counted = ts.status === 'approved';
+                  return '<tr' + (counted ? '' : ' class="muted"') + '>'
+                   + '<td>' + fmtDate(ts.date) + '</td>'
+                   + '<td>' + esc(ts.startTime || '') + '</td>'
+                   + '<td>' + esc(ts.finishTime || '') + '</td>'
+                   + '<td class="n">' + (ts.regularHours || 0).toFixed(1) + 'h</td>'
+                   + '<td class="n">' + (ts.overtimeHours || 0).toFixed(1) + 'h</td>'
+                   + '<td class="n">' + brk + '</td>'
+                   + '<td class="n">' + tHrs.toFixed(1) + 'h</td>'
+                   + '<td class="n">' + sy + shiftPayFor(r.employee, ts).toFixed(2) + '</td>'
+                   + '<td>' + esc(ts.status) + (counted ? '' : ' (not counted)') + '</td>'
+                   + '</tr>';
+                   }).join('');
+                   const extra = []
+                   if (r.minimumHoursBonus > 0) extra.push('Minimum-hours guarantee: +' + r.minimumHoursBonus.toFixed(1) + 'h (+' + sy + r.minimumHoursPay.toFixed(2) + ')');
+                   if (r.bonuses > 0) extra.push('Bonus: +' + sy + r.bonuses.toFixed(2));
+                   if (r.sickPay > 0) extra.push('Sick pay: +' + sy + r.sickPay.toFixed(2));
+                   if (r.penalties > 0) extra.push('Penalty: -' + sy + r.penalties.toFixed(2));
+                   if (r.advances > 0) extra.push('Advance: -' + sy + r.advances.toFixed(2));
+                   if (r.payments > 0) extra.push('Payments made: ' + sy + r.payments.toFixed(2));
+                   return '<div class="sec"><div class="sec-title"><span>Shift details — ' + esc(r.employee.firstName + ' ' + r.employee.lastName) + '</span><span>' + esc(r.employee.employeeId) + '</span></div>'
+                    + '<table><thead><tr><th>Date</th><th>Start</th><th>Finish</th><th class="n">Regular</th><th class="n">Overtime</th><th class="n">Break</th><th class="n">Total</th><th class="n">Pay</th><th>Status</th></tr></thead><tbody>' + trs + '</tbody></table>'
+                    + (extra.length ? '<div class="extra">' + esc(extra.join('   ·   ')) + '</div>' : '')
+                    + '</div>';
+                  }).join('');
+
+                  const css = '<style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:Arial,sans-serif;font-size:10px;color:#1f2937;padding:16px;}h1{font-size:17px;color:#4338ca;margin-bottom:2px;}.sub{color:#6b7280;font-size:10px;margin-bottom:10px;}.meta{display:flex;justify-content:space-between;padding:8px 12px;background:#f3f4f6;border-radius:6px;margin:6px 0 10px;}.meta b{font-size:12px;}.cards{display:flex;gap:8px;margin-bottom:12px;}.card{flex:1;border:1px solid #e5e7eb;border-radius:6px;padding:7px 10px;}.card .l{font-size:8px;text-transform:uppercase;color:#6b7280;letter-spacing:.04em;}.card .v{font-size:14px;font-weight:bold;margin-top:2px;}.sec{margin-bottom:12px;page-break-inside:auto;}.sec-title{font-size:9px;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;color:#374151;margin-bottom:4px;padding-bottom:3px;border-bottom:2px solid #e5e7eb;display:flex;justify-content:space-between;}table{width:100%;border-collapse:collapse;font-size:9px;}th{background:#f9fafb;text-align:left;padding:4px 6px;font-size:8px;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb;}td{padding:4px 6px;border-bottom:1px solid #f3f4f6;vertical-align:top;}tr{page-break-inside:avoid;}.n{text-align:right;}th.n{text-align:right;}.sm{font-size:8px;color:#6b7280;font-weight:normal;}.muted td{color:#9ca3af;}.tot td{background:#f3f4f6;font-weight:bold;border-top:2px solid #e5e7eb;}.extra{margin-top:5px;font-size:9px;color:#374151;}.note{margin:8px 0 12px;font-size:8px;color:#6b7280;}.footer{margin-top:14px;text-align:center;font-size:8px;color:#9ca3af;}@page{size:A4 landscape;margin:10mm;}@media print{body{padding:6px;}}</style>';
+                  const body = '<h1>Payroll &amp; Hours Report</h1>'
+                   + '<div class="sub">Generated ' + new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) + '</div>'
+                   + '<div class="meta"><div><b>' + (filters.length ? esc(filters.join('  ·  ')) : 'All employees') + '</b></div><div style="text-align:right;"><div class="sm">PERIOD</div><b>' + fmtDate(gr.startDate) + ' — ' + fmtDate(gr.endDate) + '</b></div></div>'
+                   + '<div class="cards">'
+                   + '<div class="card"><div class="l">Employees</div><div class="v">' + gr.totalEmployees + '</div></div>'
+                   + '<div class="card"><div class="l">Total payroll</div><div class="v">' + curLines(gr.payByCurrency) + '</div></div>'
+                   + '<div class="card"><div class="l">Payments made</div><div class="v">' + curLines(gr.paidByCurrency || {}) + '</div></div>'
+                   + '<div class="card"><div class="l">Balance owed</div><div class="v">' + curLines(gr.balanceByCurrency || {}) + '</div></div>'
+                   + '</div>'
+                   + '<div class="sec"><div class="sec-title"><span>Summary by employee</span><span>' + gr.totalEmployees + ' employee(s)</span></div>'
+                   + '<table><thead><tr><th>Employee</th><th>Department</th><th>Shifts</th><th class="n">Regular Hrs</th><th class="n">Overtime Hrs</th><th class="n">Total Hrs</th><th class="n">Rate</th><th class="n">Total Pay</th><th class="n">Payments Made</th><th class="n">Balance Owed</th></tr></thead><tbody>'
+                   + summaryRows
+                   + '<tr class="tot"><td colspan="5">TOTAL</td><td class="n">' + gr.grandTotalHours.toFixed(1) + '</td><td></td><td class="n">' + curLines(gr.payByCurrency) + '</td><td class="n">' + curLines(gr.paidByCurrency || {}) + '</td><td class="n">' + curLines(gr.balanceByCurrency || {}) + '</td></tr>'
+                   + '</tbody></table>'
+                   + '<div class="note">Totals include approved shifts only (plus any minimum-hours guarantee and adjustments in the period). Pending and rejected shifts are not paid. Balance Owed = Total Pay minus Payments Made within this period; "Dashboard balance" is the all-time running balance shown on the dashboard.</div></div>'
+                   + detailHtml
+                   + '<div class="footer">B-Post Employee Management System &nbsp;·&nbsp; Printed ' + new Date().toLocaleString('en-GB') + '</div>';
+                  const w = window.open('', '_blank', 'width=1100,height=800');
+                  if (!w) { alert('Please allow pop-ups for this site to use the print feature.'); return; }
+                  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Payroll Report ' + gr.startDate + ' to ' + gr.endDate + '</title>' + css + '</head><body>' + body + '</body></html>');
+                  w.document.close();
+                  w.focus();
+                  setTimeout(function() { w.print(); }, 500);
                 };
 
                 const departments = [...new Set(filteredByCountry.filter(e => !e.isAdmin).map(e => e.department))];
@@ -6940,7 +7055,7 @@ import React, { useState, useEffect } from 'react';
 
                    {generatedReport && (
                   <div className="border-t border-gray-200 pt-6">
-                   <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                   <div className="mb-6 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                   <div className="bg-indigo-50 p-4 rounded-lg">
                    <p className="text-sm text-indigo-600 font-semibold">Report Period</p>
                    <p className="text-lg font-bold text-indigo-900">
@@ -6957,8 +7072,21 @@ import React, { useState, useEffect } from 'react';
                    return <p key={entry[0]} className="text-lg font-bold text-green-900">{entry[0]}{entry[1].toFixed(2)}</p>;
                    })}
                   </div>
+                   <div className="bg-emerald-50 p-4 rounded-lg">
+                   <p className="text-sm text-emerald-600 font-semibold">Payments Made</p>
+                   {Object.entries(generatedReport.paidByCurrency || {}).map(function(entry) {
+                   return <p key={entry[0]} className="text-lg font-bold text-emerald-900">{entry[0]}{entry[1].toFixed(2)}</p>;
+                   })}
+                  </div>
+                  <div className="bg-amber-50 p-4 rounded-lg">
+                   <p className="text-sm text-amber-600 font-semibold">Balance Owed</p>
+                   {Object.entries(generatedReport.balanceByCurrency || {}).map(function(entry) {
+                   return <p key={entry[0]} className="text-lg font-bold text-amber-900">{entry[1] < 0 ? '-' : ''}{entry[0]}{Math.abs(entry[1]).toFixed(2)}</p>;
+                   })}
+                  </div>
                    </div>
 
+                   <p className="text-xs text-gray-500 mb-3">Totals count <strong>approved shifts only</strong> (plus any minimum-hours guarantee and adjustments in the period). Pending and rejected shifts are listed in the details but not paid. Balance Owed = Total Pay − Payments Made in this period; the dashboard shows the all-time balance.</p>
                    <div className="overflow-x-auto">
                   <table className="w-full">
                    <thead className="bg-gray-50 sticky top-0">
@@ -6971,6 +7099,8 @@ import React, { useState, useEffect } from 'react';
                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Total Hrs</th>
                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Rate</th>
                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Total Pay</th>
+                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Payments Made</th>
+                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Balance Owed</th>
                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Details</th>
                   </tr>
                    </thead>
@@ -7001,16 +7131,22 @@ import React, { useState, useEffect } from 'react';
                   <td className="px-4 py-3 text-sm">{getCurrencySymbol(row.employee.currency || "GBP")}{row.employee.hourlyRate.toFixed(2)}</td>
                   <td className="px-4 py-3 text-sm font-bold text-green-700">{getCurrencySymbol(row.employee.currency || "GBP")}{row.totalPay.toFixed(2)}
                    {row.totalBreakMinutes > 0 && <div className="text-xs font-normal text-gray-400">{row.totalBreakMinutes}m break (already excluded from hours)</div>}
+                   {row.minimumHoursBonus > 0 && <div className="text-xs font-normal text-amber-600">incl. minimum-hours guarantee +{row.minimumHoursBonus.toFixed(1)}h</div>}
                    {row.bonuses > 0 && <div className="text-xs font-normal text-emerald-600">incl. bonus +{getCurrencySymbol(row.employee.currency || "GBP")}{row.bonuses.toFixed(2)}</div>}
                    {row.sickPay > 0 && <div className="text-xs font-normal text-emerald-600">incl. sick pay +{getCurrencySymbol(row.employee.currency || "GBP")}{row.sickPay.toFixed(2)}</div>}
                    {row.penalties > 0 && <div className="text-xs font-normal text-red-500">less penalty -{getCurrencySymbol(row.employee.currency || "GBP")}{row.penalties.toFixed(2)}</div>}
                    {row.advances > 0 && <div className="text-xs font-normal text-red-500">less advance -{getCurrencySymbol(row.employee.currency || "GBP")}{row.advances.toFixed(2)}</div>}
                   </td>
+                  <td className="px-4 py-3 text-sm font-medium">{getCurrencySymbol(row.employee.currency || "GBP")}{row.payments.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-sm">
+                   <div className={'font-bold ' + (row.balanceOwed > 0.005 ? 'text-green-700' : 'text-gray-500')}>{row.balanceOwed < 0 ? '-' : ''}{getCurrencySymbol(row.employee.currency || "GBP")}{Math.abs(row.balanceOwed).toFixed(2)}</div>
+                   {Math.abs(row.allTimeBalance - Math.max(row.balanceOwed, 0)) > 0.005 && <div className="text-xs font-normal text-gray-400">Dashboard balance: {getCurrencySymbol(row.employee.currency || "GBP")}{row.allTimeBalance.toFixed(2)}</div>}
+                  </td>
                   <td className="px-4 py-3 text-xs text-indigo-600 font-medium">{expandedEmp === row.employee.id ? 'Hide ▲' : 'Show ▼'}</td>
                    </tr>
                    {expandedEmp === row.employee.id && (
                   <tr>
-                   <td colSpan="9" className="bg-indigo-50 px-6 py-3">
+                   <td colSpan="11" className="bg-indigo-50 px-6 py-3">
                   <table className="w-full text-sm">
                    <thead>
                   <tr className="text-indigo-700 text-xs font-semibold border-b border-indigo-200">
@@ -7056,7 +7192,7 @@ import React, { useState, useEffect } from 'react';
                   <td className="py-1.5 text-amber-600">{(ts.overtimeHours||0).toFixed(1)}h</td>
                   <td className="py-1.5 text-gray-500">{shiftBreakMin > 0 ? shiftBreakMin + 'm' : '—'}</td>
                   <td className="py-1.5 font-semibold">{tHrs.toFixed(1)}h</td>
-                  <td className="py-1.5 text-green-700 font-semibold">{sym}{shiftPay.toFixed(2)}</td>
+                  <td className={'py-1.5 font-semibold ' + (ts.status === 'approved' ? 'text-green-700' : 'text-gray-400')} title={ts.status === 'approved' ? '' : 'Not included in totals — only approved shifts are paid'}>{sym}{shiftPay.toFixed(2)}</td>
                   <td className="py-1.5">
                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${ts.status==='approved'?'bg-green-100 text-green-700':ts.status==='rejected'?'bg-red-100 text-red-700':'bg-yellow-100 text-yellow-700'}`}>
                   {ts.status}
@@ -7092,7 +7228,7 @@ import React, { useState, useEffect } from 'react';
                    </tr>
                    );
                   })}
-                  {(row.bonuses > 0 || row.sickPay > 0 || row.penalties > 0 || row.advances > 0) && (
+                  {(row.bonuses > 0 || row.sickPay > 0 || row.penalties > 0 || row.advances > 0 || row.minimumHoursBonus > 0 || row.payments > 0) && (
                    <tr className="border-t-2 border-indigo-200 bg-indigo-50/50">
                   <td className="py-1.5 font-semibold text-gray-600" colSpan="6">Adjustments</td>
                   <td className="py-1.5 font-semibold" colSpan={hasPermission('canApproveTimesheets') ? "4" : "3"}>
@@ -7100,6 +7236,8 @@ import React, { useState, useEffect } from 'react';
                    {row.sickPay > 0 && <span className="text-emerald-600 mr-3">Sick Pay +{getCurrencySymbol(row.employee.currency||'GBP')}{row.sickPay.toFixed(2)}</span>}
                    {row.penalties > 0 && <span className="text-red-500 mr-3">Penalty -{getCurrencySymbol(row.employee.currency||'GBP')}{row.penalties.toFixed(2)}</span>}
                    {row.advances > 0 && <span className="text-red-500 mr-3">Advance -{getCurrencySymbol(row.employee.currency||'GBP')}{row.advances.toFixed(2)}</span>}
+                   {row.minimumHoursBonus > 0 && <span className="text-amber-600 mr-3">Guarantee +{row.minimumHoursBonus.toFixed(1)}h (+{getCurrencySymbol(row.employee.currency||'GBP')}{row.minimumHoursPay.toFixed(2)})</span>}
+                   {row.payments > 0 && <span className="text-blue-600 mr-3">Payments made {getCurrencySymbol(row.employee.currency||'GBP')}{row.payments.toFixed(2)}</span>}
                   </td>
                    </tr>
                   )}
@@ -7117,6 +7255,16 @@ import React, { useState, useEffect } from 'react';
                    <td className="px-4 py-3 text-sm text-green-700">
                    {Object.entries(generatedReport.payByCurrency).map(function(entry) {
                    return <div key={entry[0]}>{entry[0]}{entry[1].toFixed(2)}</div>;
+                   })}
+                   </td>
+                   <td className="px-4 py-3 text-sm">
+                   {Object.entries(generatedReport.paidByCurrency || {}).map(function(entry) {
+                   return <div key={entry[0]}>{entry[0]}{entry[1].toFixed(2)}</div>;
+                   })}
+                   </td>
+                   <td className="px-4 py-3 text-sm text-green-700">
+                   {Object.entries(generatedReport.balanceByCurrency || {}).map(function(entry) {
+                   return <div key={entry[0]}>{entry[1] < 0 ? '-' : ''}{entry[0]}{Math.abs(entry[1]).toFixed(2)}</div>;
                    })}
                    </td>
                    <td className="px-4 py-3"></td>
