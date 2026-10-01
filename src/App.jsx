@@ -5186,29 +5186,33 @@ import React, { useState, useEffect } from 'react';
                    meta.colGBP>0 ? ['Total GBP Collected:', '£'+meta.colGBP.toFixed(2)] : [],
                    meta.colEUR>0 ? ['Total EUR Collected:', '€'+meta.colEUR.toFixed(2)] : [],
                    [],
-                   ['Employee','Batch','Shipment Code','To Office','IQD Due','USD Due','GBP Due','EUR Due','Collected IQD','Collected USD','Collected GBP','Collected EUR','Status'],
+                   ['Employee','Batch','Original Batch','Shipment Code','Receiver','Receiver Mobile','To Office','IQD Due','USD Due','GBP Due','EUR Due','Collected IQD','Collected USD','Collected GBP','Collected EUR','Status'],
                   ];
                   const dataRows = filtered.map(function(p){
-                   return [p.employeeName||'', p.batchName||'', p.shipmentCode||'', (p.notes||'').replace('Office:','').trim().split('|')[0].trim(),
+                   return [p.employeeName||'', p.batchName||'', (p.oldBatchName || p.batchName || ''), p.shipmentCode||'', p.receiver||'', p.receiverMobile||'', (p.notes||'').replace('Office:','').trim().split('|')[0].trim(),
                    p.amountIQD||0, p.amountUSD||0, p.amountGBP||0, p.amountEUR||0,
                    p.collectedIQD||0, p.collectedUSD||0, p.collectedGBP||0, p.collectedEUR||0, p.status||''];
                   });
                   const ws = window.XLSX.utils.aoa_to_sheet([...headerRows, ...dataRows]);
                   // Style header cols width
-                  ws['!cols'] = [{wch:20},{wch:20},{wch:15},{wch:25},{wch:12},{wch:12},{wch:12},{wch:12},{wch:14},{wch:14},{wch:14},{wch:14},{wch:12}];
+                  ws['!cols'] = [{wch:20},{wch:20},{wch:18},{wch:15},{wch:22},{wch:16},{wch:25},{wch:12},{wch:12},{wch:12},{wch:12},{wch:14},{wch:14},{wch:14},{wch:14},{wch:12}];
                   window.XLSX.utils.book_append_sheet(wb, ws, 'Pay in Iraq');
                   window.XLSX.writeFile(wb, 'PayInIraq_Report_' + new Date().toISOString().slice(0,10) + '.xlsx');
                 };
 
                 const exportPDF = function() {
                   const meta = getReportMeta();
+                  const esc = function(v){ return String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
                   const fmt = function(v, sym){ return v > 0 ? sym + (sym==='IQD ' ? v.toLocaleString() : v.toFixed(2)) : '—'; };
                   const rows = filtered.map(function(p){
                    const off = (p.notes||'').replace('Office:','').trim().split('|')[0].trim();
                    const collectedParts = [fmt(p.collectedIQD,'IQD '),fmt(p.collectedUSD,'$'),fmt(p.collectedGBP,'£'),fmt(p.collectedEUR,'€')].filter(function(x){return x!=='—';});
                    return '<tr style="border-bottom:1px solid #e5e7eb">'
-                    +'<td style="padding:4px 8px;font-size:11px">'+p.shipmentCode+'</td>'
-                    +'<td style="padding:4px 8px;font-size:11px;color:#6b7280">'+off+'</td>'
+                    +'<td style="padding:4px 8px;font-size:11px">'+esc(p.shipmentCode)+'</td>'
+                    +'<td style="padding:4px 8px;font-size:11px">'+(esc(p.oldBatchName || p.batchName)||'—')+'</td>'
+                    +'<td style="padding:4px 8px;font-size:11px">'+(esc(p.receiver)||'—')+'</td>'
+                    +'<td style="padding:4px 8px;font-size:11px;white-space:nowrap">'+(esc(p.receiverMobile)||'—')+'</td>'
+                    +'<td style="padding:4px 8px;font-size:11px;color:#6b7280">'+esc(off)+'</td>'
                     +'<td style="padding:4px 8px;font-size:11px;text-align:right">'+fmt(p.amountIQD,'IQD ')+'</td>'
                     +'<td style="padding:4px 8px;font-size:11px;text-align:right">'+fmt(p.amountUSD,'$')+'</td>'
                     +'<td style="padding:4px 8px;font-size:11px;text-align:right">'+fmt(p.amountGBP,'£')+'</td>'
@@ -5217,7 +5221,7 @@ import React, { useState, useEffect } from 'react';
                     +'<td style="padding:4px 8px;font-size:11px;text-align:center"><span style="padding:2px 8px;border-radius:9999px;font-size:10px;background:'+(p.status==='collected'?'#dcfce7':'#fef9c3')+';color:'+(p.status==='collected'?'#16a34a':'#854d0e')+'">'+p.status+'</span></td>'
                     +'</tr>';
                   }).join('');
-                  const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pay in Iraq Report</title></head><body style="font-family:Arial,sans-serif;padding:24px;color:#1f2937">'
+                  const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pay in Iraq Report</title><style>@page{size:A4 landscape;margin:10mm}</style></head><body style="font-family:Arial,sans-serif;padding:24px;color:#1f2937">'
                    +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">'
                    +'<span style="font-size:28px">🇮🇶</span>'
                    +'<h1 style="margin:0;font-size:20px;color:#1e3a8a">Pay in Iraq — Collection Report</h1></div>'
@@ -5234,6 +5238,9 @@ import React, { useState, useEffect } from 'react';
                    +'<table style="width:100%;border-collapse:collapse">'
                    +'<thead><tr style="background:#1e3a8a;color:white">'
                    +'<th style="padding:6px 8px;text-align:left;font-size:11px">Shipment Code</th>'
+                   +'<th style="padding:6px 8px;text-align:left;font-size:11px">Original Batch</th>'
+                   +'<th style="padding:6px 8px;text-align:left;font-size:11px">Receiver</th>'
+                   +'<th style="padding:6px 8px;text-align:left;font-size:11px">Mobile</th>'
                    +'<th style="padding:6px 8px;text-align:left;font-size:11px">To Office</th>'
                    +'<th style="padding:6px 8px;text-align:right;font-size:11px">IQD</th>'
                    +'<th style="padding:6px 8px;text-align:right;font-size:11px">USD</th>'
