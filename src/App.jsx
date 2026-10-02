@@ -1622,6 +1622,9 @@ import React, { useState, useEffect } from 'react';
             const [showIraqPay, setShowIraqPay] = useState(false);
             const [iraqPayments, setIraqPayments] = useState([]);
             const [iraqPayState, setIraqPayState] = useState({ activeTab:'view', batchName:'', empId:'', filterEmp:'', filterStatus:'all', filterBatch:'', filterFrom:'', filterTo:'', previewRows:[] });
+            // Held outside the Pay in Iraq screen (a ref, so updating it never re-renders anything) so a file you
+            // are midway through reviewing survives the periodic background refresh.
+            const iraqUploadStoreRef = React.useRef({ batchName: '', empId: '', previewRows: [], skippedRows: [], dupDecisions: {} });
             const [agentReportState, setAgentReportState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], empFilter:'', branchFilter:'', countryFilter:'', reportData:null, showAddForm:false, addDraft: { empId:'', agentId:'', date:new Date().toISOString().split('T')[0], fromCode:'', toCode:'', collected:'', paid:'', bank:'', notes:'' } });
             // Lives at the root (never remounts) so in-progress work in the Agent Management
             // modal — bulk selections, an assign-in-progress, the edit form — survives even if
@@ -4696,21 +4699,73 @@ import React, { useState, useEffect } from 'react';
             /* ── End IraqPayCard ──────────────────────────────────────────────────────── */
 
             /* ── IraqPay Admin Manager ─────────────────────────────────────────────── */
-            const IraqPayManager = ({ onClose, visibleEmployees: visEmp, iraqPayments, loadIraqPaymentsFromAPI, apiCall, API_ENDPOINTS, persistedState, onStateChange }) => {
+            const IraqPayManager = ({ onClose, visibleEmployees: visEmp, iraqPayments, loadIraqPaymentsFromAPI, apiCall, API_ENDPOINTS, persistedState, onStateChange, uploadStore }) => {
                 const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
                 const activeTab = persistedState ? persistedState.activeTab : 'view'; const setActiveTab = mk('activeTab');
                 const filterEmp = persistedState ? persistedState.filterEmp : ''; const setFilterEmp = mk('filterEmp');
                 const filterStatus = persistedState ? persistedState.filterStatus : 'all'; const setFilterStatus = mk('filterStatus');
 
-                const [batchName, setBatchName] = useState('');
-                const [empId, setEmpId] = useState('');
-                const [previewRows, setPreviewRows] = useState([]);
-                const [skippedRows, setSkippedRows] = useState([]);
+                // Upload-in-progress state is mirrored into a store held at the app root, so a background
+                // data refresh (which re-creates this screen) doesn't wipe a file you're midway through
+                // reviewing. Writing to the store never triggers a re-render, so typing stays smooth.
+                const store = uploadStore || {};
+                const [batchName, setBatchNameLocal] = useState(store.batchName || '');
+                const setBatchName = function(v) { store.batchName = v; setBatchNameLocal(v); };
+                const [empId, setEmpIdLocal] = useState(store.empId || '');
+                const setEmpId = function(v) { store.empId = v; setEmpIdLocal(v); };
+                const [previewRows, setPreviewRowsLocal] = useState(store.previewRows || []);
+                const setPreviewRows = function(v) { store.previewRows = v; setPreviewRowsLocal(v); };
+                const [skippedRows, setSkippedRowsLocal] = useState(store.skippedRows || []);
+                const setSkippedRows = function(v) { store.skippedRows = v; setSkippedRowsLocal(v); };
+                // Manual decision for each possible duplicate in the file being uploaded: row index -> 'keep' | 'skip'
+                const [dupDecisions, setDupDecisionsLocal] = useState(store.dupDecisions || {});
+                const setDupDecisions = function(v) { store.dupDecisions = v; setDupDecisionsLocal(v); };
+                // "Duplicates only" view filter (a filter, so it lives with the other persisted filters)
+                const showDupOnly = !!(persistedState && persistedState.showDupOnly); const setShowDupOnly = mk('showDupOnly');
                 const [uploading, setUploading] = useState(false);
                 const [editingId, setEditingId] = useState(null);
                 const [editVals, setEditVals] = useState({});
 
                 const currencies = ['IQD','USD','GBP','EUR'];
+
+                // ---- Duplicate detection ----------------------------------------------------
+                // A shipment is a possible duplicate when another record has the same shipment code AND the
+                // same original amounts (IQD / USD / GBP / EUR). On upload, the receiver's phone number is
+                // used as a third, confirming signal.
+                const normCode = function(c) { return String(c || '').trim().toUpperCase().replace(/\s+/g, ''); };
+                const normPhone = function(v) { const d = String(v || '').replace(/\D/g, ''); return d.length > 10 ? d.slice(-10) : d; };
+                const amtSig = function(r) {
+                  return [r.amountIQD, r.amountUSD, r.amountGBP, r.amountEUR].map(function(x) { return (Math.round((parseFloat(x) || 0) * 100) / 100).toFixed(2); }).join('|');
+                };
+                const dupKey = function(r) { return normCode(r.shipmentCode) + '#' + amtSig(r); };
+                const phoneOf = function(r) {
+                  if (r.receiverMobile) return normPhone(r.receiverMobile);
+                  const parts = String(r.receiverContact || '').split('|');
+                  return parts.length > 1 ? normPhone(parts[1]) : '';
+                };
+                const twinLabel = function(o) { return o.batchName + ' · ' + o.status + (o.employeeName ? ' · ' + o.employeeName : ''); };
+
+                // Check the rows of a file that is about to be uploaded against everything already stored
+                // (and against each other). Returns { rowIndex: { level, matches, firstRow } } for flagged rows.
+                const reviewPreview = function(rows) {
+                  const byKey = {};
+                  iraqPayments.forEach(function(p) { if (!p.shipmentCode) return; const k = dupKey(p); (byKey[k] = byKey[k] || []).push(p); });
+                  const info = {};
+                  const seenInFile = {};
+                  rows.forEach(function(r, i) {
+                   const k = dupKey(r);
+                   const existing = byKey[k] || [];
+                   const myPhone = phoneOf(r);
+                   const phoneMatch = existing.filter(function(o) { const op = phoneOf(o); return myPhone && op && op === myPhone; });
+                   if (existing.length) {
+                  info[i] = { level: phoneMatch.length ? 'exact' : 'partial', matches: phoneMatch.length ? phoneMatch : existing };
+                   } else if (seenInFile[k] !== undefined) {
+                  info[i] = { level: 'file', matches: [], firstRow: seenInFile[k] };
+                   }
+                   if (seenInFile[k] === undefined) seenInFile[k] = i;
+                  });
+                  return info;
+                };
 
                 const handleFile = function(e) {
                   const file = e.target.files[0];
@@ -4796,6 +4851,7 @@ import React, { useState, useEffect } from 'react';
                   }).map(function(r){ return r.shipmentCode; });
                   setSkippedRows(skipped);
                   setPreviewRows(mapped);
+                  setDupDecisions({});
                    } catch(err) { alert('Unable to read the file: ' + err.message); }
                   };
                   reader.readAsBinaryString(file);
@@ -4805,13 +4861,23 @@ import React, { useState, useEffect } from 'react';
                   if (!batchName.trim()) { alert('Please enter a batch name.'); return; }
                   if (!empId) { alert('Please select an employee.'); return; }
                   if (!previewRows.length) { alert('There are no records to upload.'); return; }
+                  // Every possible duplicate needs a manual decision (Keep = approve, Skip = reject).
+                  const review = reviewPreview(previewRows);
+                  const unresolved = Object.keys(review).filter(function(i) { return !dupDecisions[i]; });
+                  if (unresolved.length) {
+                   alert('Please approve (Keep) or reject (Skip) each possible duplicate before uploading. ' + unresolved.length + ' still need a decision.');
+                   return;
+                  }
+                  const toSend = previewRows.filter(function(r, i) { return !review[i] || dupDecisions[i] === 'keep'; });
+                  const skippedCount = previewRows.length - toSend.length;
+                  if (!toSend.length) { alert('There are no records to upload.'); return; }
                   setUploading(true);
                   try {
-                   await apiCall(API_ENDPOINTS.iraqPay + '/batch', { method:'POST', body: JSON.stringify({ batchName: batchName.trim(), employeeId: parseInt(empId), records: previewRows }) });
+                   await apiCall(API_ENDPOINTS.iraqPay + '/batch', { method:'POST', body: JSON.stringify({ batchName: batchName.trim(), employeeId: parseInt(empId), records: toSend }) });
                    await loadIraqPaymentsFromAPI();
-                   setBatchName(''); setEmpId(''); setPreviewRows([]); setSkippedRows([]);
+                   setBatchName(''); setEmpId(''); setPreviewRows([]); setSkippedRows([]); setDupDecisions({});
                    setActiveTab('view');
-                   alert('The batch has been uploaded successfully.');
+                   alert('The batch has been uploaded successfully.' + (skippedCount ? ' ' + skippedCount + ' duplicate record' + (skippedCount !== 1 ? 's were' : ' was') + ' skipped.' : ''));
                   } catch(e) { alert('Unable to upload the batch: ' + e.message); }
                   setUploading(false);
                 };
@@ -5152,7 +5218,52 @@ import React, { useState, useEffect } from 'react';
                   setDeletingBatch(false);
                 };
 
+                // ---- Reconcile: records sharing a shipment code AND original amounts ----
+                const dupGroups = {};
+                iraqPayments.forEach(function(p) { if (!p.shipmentCode) return; const k = dupKey(p); (dupGroups[k] = dupGroups[k] || []).push(p); });
+                const dupMap = {}; // record id -> { twins, hasCollected, cross, crossCollected }
+                Object.keys(dupGroups).forEach(function(k) {
+                  const g = dupGroups[k];
+                  if (g.length < 2) return;
+                  g.forEach(function(p) {
+                   // already-collected / part-collected twins first: they are the serious ones
+                   const twins = g.filter(function(o) { return o.id !== p.id; }).sort(function(a, b) { return (a.status === 'pending' ? 1 : 0) - (b.status === 'pending' ? 1 : 0); });
+                   const crossTwins = twins.filter(function(o) { return o.batchName !== p.batchName; });
+                   dupMap[p.id] = {
+                  twins: twins,
+                  hasCollected: twins.some(function(o) { return o.status !== 'pending'; }),
+                  cross: crossTwins.length > 0,
+                  crossCollected: crossTwins.some(function(o) { return o.status !== 'pending'; })
+                   };
+                  });
+                });
+                const totalDupRows = Object.keys(dupMap).length;
+                // "Latest batch" = the batch uploaded most recently (for the selected employee, if any).
+                const latestBatch = (function() {
+                  const pool = filterEmp ? iraqPayments.filter(function(p) { return p.employeeId === parseInt(filterEmp); }) : iraqPayments;
+                  const stamp = {};
+                  pool.forEach(function(p) {
+                   const t = String(p.createdAt || '');
+                   const c = stamp[p.batchName];
+                   if (!c || t > c.t || (t === c.t && p.id > c.id)) stamp[p.batchName] = { t: t, id: p.id };
+                  });
+                  return Object.keys(stamp).sort(function(a, b) { return stamp[b].t < stamp[a].t ? -1 : stamp[b].t > stamp[a].t ? 1 : stamp[b].id - stamp[a].id; })[0] || '';
+                })();
+                const focusBatch = filterBatch || latestBatch;
+                const focusDups = iraqPayments.filter(function(p) {
+                  return p.batchName === focusBatch && (!filterEmp || p.employeeId === parseInt(filterEmp)) && dupMap[p.id] && dupMap[p.id].cross;
+                });
+                const focusDupCollected = focusDups.filter(function(p) { return dupMap[p.id].crossCollected; }).length;
+
+                // Review of the file currently in the Upload tab
+                const previewReview = previewRows.length ? reviewPreview(previewRows) : {};
+                const previewFlaggedIdx = Object.keys(previewReview);
+                const previewUnresolved = previewFlaggedIdx.filter(function(i) { return !dupDecisions[i]; }).length;
+                const previewSkipped = previewFlaggedIdx.filter(function(i) { return dupDecisions[i] === 'skip'; }).length;
+                const previewSendCount = previewRows.length - previewSkipped;
+
                 const filtered = iraqPayments.filter(function(p){
+                  if (showDupOnly && !dupMap[p.id]) return false;
                   if (filterEmp && p.employeeId !== parseInt(filterEmp)) return false;
                   if (filterStatus !== 'all' && p.status !== filterStatus) return false;
                   if (filterBatch && p.batchName !== filterBatch) return false;
@@ -5385,6 +5496,36 @@ import React, { useState, useEffect } from 'react';
                    )}
                   </div>
 
+                  {focusBatch && (
+                   <div className={'mb-3 rounded-lg border px-4 py-3 text-xs ' + (focusDups.length ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-green-50 border-green-200 text-green-800')}>
+                  <div className="flex flex-wrap items-center gap-3">
+                   <div className="flex-1" style={{minWidth:'14rem'}}>
+                  <p className="font-semibold text-sm">🔍 Duplicate check — {focusBatch}{!filterBatch ? ' (latest batch)' : ''}</p>
+                  {focusDups.length > 0 ? (
+                   <p className="mt-0.5">
+                  {focusDups.length} shipment{focusDups.length !== 1 ? 's' : ''} in this batch {focusDups.length !== 1 ? 'have' : 'has'} the same code and original amount as shipments in earlier batches:
+                  {' '}<b className="text-red-700">{focusDupCollected} already collected / part-collected</b>,
+                  {' '}<b className="text-amber-700">{focusDups.length - focusDupCollected} still pending</b>. Please double-check each highlighted row.
+                   </p>
+                  ) : (
+                   <p className="mt-0.5">No shipment in this batch has the same code and original amount as a shipment in an earlier batch.</p>
+                  )}
+                   </div>
+                   {totalDupRows > 0 && (
+                  <button onClick={function(){ setShowDupOnly(!showDupOnly); }} className={'px-3 py-1.5 rounded-lg text-xs font-semibold border ' + (showDupOnly ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-amber-800 border-amber-400 hover:bg-amber-100')}>
+                   {showDupOnly ? 'Show all rows' : '⚠ Show possible duplicates only (' + totalDupRows + ' rows)'}
+                  </button>
+                   )}
+                  </div>
+                  {totalDupRows > 0 && (
+                   <p className="mt-2 text-gray-600">
+                  <span className="inline-block w-3 h-3 align-middle rounded-sm bg-red-200 border border-red-400"></span> matching shipment already collected / part-collected
+                  {'   '}
+                  <span className="inline-block w-3 h-3 align-middle rounded-sm bg-amber-200 border border-amber-400"></span> matching shipment still pending
+                   </p>
+                  )}
+                   </div>
+                  )}
                   <div className="overflow-x-auto">
                    <table className="w-full text-sm border-collapse">
                   <thead><tr className="bg-blue-50">
@@ -5398,15 +5539,29 @@ import React, { useState, useEffect } from 'react';
                   return <input type="number" min="0" step="0.01" defaultValue={val} onChange={function(e){setEditVals(Object.assign({},editVals,{[field]:parseFloat(e.target.value)||0}));}} className="w-20 border border-gray-300 rounded px-1 py-0.5 text-xs" />;
                    };
                    return (
-                  <tr key={p.id} className={'hover:bg-gray-50 ' + (p.status==='collected'?'opacity-70':'')}>
-                   <td className="px-3 py-2 font-semibold text-gray-800 text-xs">{p.employeeName}<br/><span className="text-gray-400 font-normal">{p.employeeCode}</span></td>
+                  <tr key={p.id} className={(dupMap[p.id] ? (dupMap[p.id].hasCollected ? 'bg-red-50 hover:bg-red-100 ' : 'bg-amber-50 hover:bg-amber-100 ') : 'hover:bg-gray-50 ') + (p.status==='collected'?'opacity-70':'')}>
+                   <td className={'px-3 py-2 font-semibold text-gray-800 text-xs ' + (dupMap[p.id] ? (dupMap[p.id].hasCollected ? 'border-l-4 border-red-400' : 'border-l-4 border-amber-400') : '')}>{p.employeeName}<br/><span className="text-gray-400 font-normal">{p.employeeCode}</span></td>
                    <td className="px-3 py-2 text-xs text-gray-500">
                   {p.batchName}
                   {p.oldBatchName && p.oldBatchName !== p.batchName && (
                    <div className="text-gray-400 mt-0.5" title="Transferred from this batch">↩ {p.oldBatchName}</div>
                   )}
                    </td>
-                   <td className="px-3 py-2 font-bold text-gray-900">{p.shipmentCode}</td>
+                   <td className="px-3 py-2 font-bold text-gray-900">{p.shipmentCode}
+                  {dupMap[p.id] && (function() {
+                   const d = dupMap[p.id];
+                   const t0 = d.twins[0];
+                   return (
+                  <div className={'mt-1 inline-block px-1.5 py-0.5 rounded text-xs font-semibold ' + (d.hasCollected ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800')}
+                   title={'Same shipment code and original amount also found in:\n' + d.twins.map(function(o) {
+                  const pa = phoneOf(p), pb = phoneOf(o);
+                  return '• ' + twinLabel(o) + (pa && pb ? (pa === pb ? ' (same phone)' : ' (different phone)') : '');
+                   }).join('\n')}>
+                   ⚠ Also in {t0.batchName === p.batchName ? 'this batch' : t0.batchName} · {t0.status}{d.twins.length > 1 ? ' +' + (d.twins.length - 1) + ' more' : ''}
+                  </div>
+                   );
+                  })()}
+                   </td>
                    <td className="px-3 py-2 text-xs text-gray-500">{p.notes && p.notes.startsWith('Office:') ? p.notes.replace('Office:','').trim() : (p.notes||'—')}</td>
                    <td className="px-3 py-2 text-xs">{isEditing ? inp('amountIQD',p.amountIQD) : (p.amountIQD>0?<span className="font-semibold">{p.amountIQD.toLocaleString()}</span>:'—')}</td>
                    <td className="px-3 py-2 text-xs">{isEditing ? inp('amountUSD',p.amountUSD) : (p.amountUSD>0?<span className="font-semibold">${p.amountUSD.toFixed(2)}</span>:'—')}</td>
@@ -5849,29 +6004,60 @@ import React, { useState, useEffect } from 'react';
                   {previewRows.length > 0 && (
                    <div>
                   <p className="text-sm font-semibold text-gray-700 mb-2">Preview — {previewRows.length} records</p>
-                  <div className="overflow-x-auto max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
+                  {previewFlaggedIdx.length === 0 ? (
+                   <div className="mb-2 text-xs bg-green-50 border border-green-200 text-green-800 rounded-lg px-3 py-2">✓ Duplicate check: none of these {previewRows.length} shipments match an existing record (shipment code, receiver phone and amount).</div>
+                  ) : (
+                   <div className="mb-2 text-xs bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-3 py-2">
+                  <p className="font-semibold text-sm">⚠ {previewFlaggedIdx.length} possible duplicate{previewFlaggedIdx.length !== 1 ? 's' : ''} found — manual review required</p>
+                  <p className="mt-0.5">These rows have the same shipment code and amount as a shipment that already exists (or appears twice in this file). A red row also has the same receiver phone number. For each one choose <b>Keep</b> to approve it as a new shipment, or <b>Skip</b> to reject it as a duplicate. The upload stays blocked until every flagged row has a decision.</p>
+                  <div className="flex flex-wrap gap-2 mt-2 items-center">
+                   <button onClick={function(){ const d = {}; previewFlaggedIdx.forEach(function(i){ d[i] = 'skip'; }); setDupDecisions(d); }} className="px-3 py-1 bg-red-600 text-white rounded font-semibold">Skip all duplicates</button>
+                   <button onClick={function(){ const d = {}; previewFlaggedIdx.forEach(function(i){ d[i] = 'keep'; }); setDupDecisions(d); }} className="px-3 py-1 bg-green-600 text-white rounded font-semibold">Keep all</button>
+                   <span className="font-semibold">{previewUnresolved} awaiting a decision · {previewSkipped} skipped</span>
+                  </div>
+                   </div>
+                  )}
+                  <div className="overflow-x-auto max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
                    <table className="w-full text-xs">
                   <thead className="bg-gray-50 sticky top-0"><tr>
-                   {['Shipment Code','Receiver','To Office','IQD','USD','GBP','EUR','Notes'].map(function(h){return <th key={h} className="px-3 py-2 text-left font-semibold text-gray-600">{h}</th>;})}
+                   {['Shipment Code','Receiver','Mobile','To Office','IQD','USD','GBP','EUR','Notes','Duplicate check'].map(function(h){return <th key={h} className="px-3 py-2 text-left font-semibold text-gray-600">{h}</th>;})}
                   </tr></thead>
                   <tbody className="divide-y divide-gray-100">
-                  {previewRows.map(function(r,i){return(
-                   <tr key={i} className="hover:bg-gray-50">
+                  {previewRows.map(function(r,i){
+                   const rv = previewReview[i];
+                   const dec = dupDecisions[i];
+                   return(
+                   <tr key={i} className={rv ? ((rv.level === 'exact' ? 'bg-red-50' : 'bg-amber-50') + (dec === 'skip' ? ' opacity-50' : '')) : 'hover:bg-gray-50'}>
                   <td className="px-3 py-1.5 font-semibold">{r.shipmentCode}</td>
                   <td className="px-3 py-1.5 text-gray-500">{r.receiver||'—'}</td>
+                  <td className="px-3 py-1.5 text-gray-500 whitespace-nowrap">{(String(r.receiverContact||'').split('|')[1]||'').trim()||'—'}</td>
                   <td className="px-3 py-1.5 text-gray-500">{r.toOffice||'—'}</td>
                   <td className="px-3 py-1.5">{r.amountIQD>0?r.amountIQD.toLocaleString():'—'}</td>
                   <td className="px-3 py-1.5">{r.amountUSD>0?'$'+r.amountUSD.toFixed(2):'—'}</td>
                   <td className="px-3 py-1.5">{r.amountGBP>0?'£'+r.amountGBP.toFixed(2):'—'}</td>
                   <td className="px-3 py-1.5">{r.amountEUR>0?'€'+r.amountEUR.toFixed(2):'—'}</td>
                   <td className="px-3 py-1.5 text-gray-400">{r.notes||'—'}</td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">
+                   {rv ? (
+                  <div>
+                   <div className={'font-semibold ' + (rv.level === 'exact' ? 'text-red-700' : 'text-amber-800')}>
+                  {rv.level === 'exact' ? '⚠ Code, phone & amount match' : rv.level === 'partial' ? '⚠ Code & amount match (phone differs or missing)' : '⚠ Repeated in this file (preview row ' + (rv.firstRow + 1) + ')'}
+                   </div>
+                   {rv.matches.length > 0 && <div className="text-gray-500" title={rv.matches.map(twinLabel).join('\n')}>{twinLabel(rv.matches[0])}{rv.matches.length > 1 ? ' +' + (rv.matches.length - 1) + ' more' : ''}</div>}
+                   <div className="flex gap-1 mt-1">
+                  <button onClick={function(){ setDupDecisions(Object.assign({}, dupDecisions, {[i]: 'keep'})); }} className={'px-2 py-0.5 rounded font-semibold ' + (dec === 'keep' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700')}>Keep</button>
+                  <button onClick={function(){ setDupDecisions(Object.assign({}, dupDecisions, {[i]: 'skip'})); }} className={'px-2 py-0.5 rounded font-semibold ' + (dec === 'skip' ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700')}>Skip</button>
+                   </div>
+                  </div>
+                   ) : <span className="text-green-600">✓ New</span>}
+                  </td>
                    </tr>
                   );})}
                   </tbody>
                    </table>
                   </div>
-                  <button onClick={handleUpload} disabled={uploading} className="mt-3 px-6 py-2.5 bg-blue-700 text-white rounded-lg font-semibold hover:bg-blue-800 disabled:opacity-50">
-                   {uploading ? 'Uploading...' : 'Upload ' + previewRows.length + ' Records'}
+                  <button onClick={handleUpload} disabled={uploading || previewUnresolved > 0} className="mt-3 px-6 py-2.5 bg-blue-700 text-white rounded-lg font-semibold hover:bg-blue-800 disabled:opacity-50">
+                   {uploading ? 'Uploading...' : (previewUnresolved > 0 ? 'Review ' + previewUnresolved + ' possible duplicate' + (previewUnresolved !== 1 ? 's' : '') + ' to continue' : 'Upload ' + previewSendCount + ' Records' + (previewSkipped ? ' (' + previewSkipped + ' skipped)' : ''))}
                   </button>
                    </div>
                   )}
@@ -12838,6 +13024,7 @@ import React, { useState, useEffect } from 'react';
                    API_ENDPOINTS={API_ENDPOINTS}
                    persistedState={iraqPayState}
                    onStateChange={setIraqPayState}
+                   uploadStore={iraqUploadStoreRef.current}
                   />
                    )}
 
