@@ -2418,6 +2418,60 @@ import React, { useState, useEffect } from 'react';
                 return MULTI_CURRENCIES.indexOf(c) !== -1 ? c : resolveEmployeeCurrency(emp);
             };
 
+            // ---- Possible duplicate expenses ----------------------------------------------------------
+            // Two expenses are linked when they belong to the same employee, are in the same currency and
+            // have exactly the same amount, AND either
+            //   • are on the same date, or carry the same receipt reference  -> 'high'  (likely duplicate)
+            //   • are within EXPENSE_DUP_WINDOW_DAYS days of each other AND share a category or description -> 'possible'
+            // Rejected expenses are ignored (a rejected claim is already a decision), so rejecting the
+            // duplicate automatically clears the flag on the original.
+            const EXPENSE_DUP_WINDOW_DAYS = 3;
+            const expenseDayNumber = (d) => Math.round(new Date(String(d || '').slice(0, 10) + 'T12:00:00').getTime() / 86400000);
+            const findDuplicateExpenses = (list, curOf) => {
+                const groups = {};
+                list.forEach(function(e) {
+                  if (!e || e.status === 'rejected') return;
+                  const key = e.employeeId + '|' + curOf(e) + '|' + Math.round((parseFloat(e.amount) || 0) * 100);
+                  (groups[key] = groups[key] || []).push(e);
+                });
+                const norm = function(v) { return String(v || '').trim().toLowerCase(); };
+                const result = {};
+                Object.keys(groups).forEach(function(k) {
+                  const g = groups[k];
+                  if (g.length < 2) return;
+                  for (let i = 0; i < g.length; i++) {
+                   for (let j = i + 1; j < g.length; j++) {
+                  const a = g[i], b = g[j];
+                  const sameDate = String(a.date).slice(0, 10) === String(b.date).slice(0, 10);
+                  const sameReceipt = !!norm(a.receiptNote) && norm(a.receiptNote) === norm(b.receiptNote);
+                  const dayDiff = Math.abs(expenseDayNumber(a.date) - expenseDayNumber(b.date));
+                  const sameCategory = norm(a.category) === norm(b.category);
+                  const sameDesc = !!norm(a.description) && norm(a.description) === norm(b.description);
+                  let level = null;
+                  if (sameDate || sameReceipt) level = 'high';
+                  else if (dayDiff <= EXPENSE_DUP_WINDOW_DAYS && (sameCategory || sameDesc)) level = 'possible';
+                  if (!level) continue;
+                  const reasons = ['same amount'];
+                  reasons.push(sameDate ? 'same date' : dayDiff + ' day' + (dayDiff !== 1 ? 's' : '') + ' apart');
+                  if (sameCategory) reasons.push('same category');
+                  if (sameDesc) reasons.push('same description');
+                  if (sameReceipt) reasons.push('same receipt ref');
+                  [[a, b], [b, a]].forEach(function(pair) {
+                   const me = pair[0], other = pair[1];
+                   const r = result[me.id] = result[me.id] || { level: 'possible', twins: [] };
+                   r.twins.push({ exp: other, level: level, reasons: reasons });
+                   if (level === 'high') r.level = 'high';
+                  });
+                   }
+                  }
+                });
+                return result;
+            };
+            const describeExpenseTwin = (t, curSym) => {
+                const e = t.exp;
+                return '• ' + new Date(e.date).toLocaleDateString('en-GB') + ' · ' + e.category + ' · ' + curSym + (parseFloat(e.amount) || 0).toFixed(2) + ' · ' + e.status + (e.description ? ' · "' + e.description + '"' : '') + '  (' + t.reasons.join(', ') + ')';
+            };
+
             const extractTime = (val) => {
                 if (!val) return '';
                 if (val.includes('T')) return val.split('T')[1].substring(0, 5);
@@ -8236,6 +8290,24 @@ import React, { useState, useEffect } from 'react';
                   reader.readAsDataURL(file);
                 };
 
+                // ---- Duplicate warning ------------------------------------------------------------------
+                // Compares an expense against what this employee has ALREADY submitted (any status except
+                // rejected) and against the other items waiting in the list below. Same amount and currency,
+                // plus same date / same receipt ref, or a close date in the same category.
+                const myCurOf = (e) => MULTI_CURRENCIES.indexOf(e.currency) !== -1 ? e.currency : myDefaultCur;
+                const similarFor = (candidate, otherItems) => {
+                  const submitted = expenses.filter(e => e.employeeId === currentUser.id);
+                  const inList = otherItems.map(i => ({ id: 'item-' + i.id, employeeId: currentUser.id, date: i.date, category: i.category, description: i.description, amount: i.amount, currency: i.currency, receiptNote: i.receiptNote, status: 'pending', _inList: true }));
+                  const probe = { id: '__probe__', employeeId: currentUser.id, date: candidate.date, category: candidate.category, description: candidate.description, amount: parseFloat(candidate.amount), currency: candidate.currency, receiptNote: candidate.receiptNote, status: 'pending' };
+                  const found = findDuplicateExpenses(submitted.concat(inList, [probe]), myCurOf);
+                  return found['__probe__'] ? found['__probe__'].twins : [];
+                };
+                const describeTwins = (twins) => twins.map(t => {
+                  const e = t.exp;
+                  return '• ' + new Date(e.date).toLocaleDateString('en-GB') + ' · ' + e.category + ' · ' + getCurrencySymbol(myCurOf(e)) + (parseFloat(e.amount) || 0).toFixed(2)
+                    + (e.description ? ' · "' + e.description + '"' : '') + ' — ' + (e._inList ? 'already in your list below' : 'already submitted (' + e.status + ')');
+                }).join('\n');
+
                 const addItem = () => {
                   const desc = descriptionRef.current ? descriptionRef.current.value : '';
                   const amt = amountRef.current ? amountRef.current.value : '';
@@ -8243,7 +8315,13 @@ import React, { useState, useEffect } from 'react';
                   if (!form.category || !amt) { alert('Category and amount are required fields.'); return; }
                   const isDuplicate = items.some(i => i.category === form.category && i.date === form.date && parseFloat(i.amount) === parseFloat(amt) && i.description === desc);
                   if (isDuplicate) { alert('An identical item is already in your list.'); return; }
-                  setItems([...items, { date: form.date, category: form.category, description: desc, amount: parseFloat(amt), currency: form.currency || myDefaultCur, receiptNote: rNote, receiptImage: form.receiptImage, id: Date.now() }]);
+                  let dupAck = false;
+                  const twins = similarFor({ date: form.date, category: form.category, description: desc, amount: amt, currency: form.currency || myDefaultCur, receiptNote: rNote }, items);
+                  if (twins.length) {
+                   if (!window.confirm('⚠ This looks like an expense you may have already entered:\n\n' + describeTwins(twins) + '\n\nOnly add it if it is a genuinely separate expense.\n\nAdd it anyway?')) return;
+                   dupAck = true;
+                  }
+                  setItems([...items, { date: form.date, category: form.category, description: desc, amount: parseFloat(amt), currency: form.currency || myDefaultCur, receiptNote: rNote, receiptImage: form.receiptImage, dupAck: dupAck, id: Date.now() }]);
                   // Clear refs and reset category/image
                   if (descriptionRef.current) descriptionRef.current.value = '';
                   if (amountRef.current) amountRef.current.value = '';
@@ -8259,6 +8337,16 @@ import React, { useState, useEffect } from 'react';
                 const submitAll = async () => {
                   if (_submitGuard.current || saving) return;
                   if (items.length === 0) { alert('Please add at least one expense item.'); return; }
+                  // Final safety net: items you haven't already been warned about that now match an expense
+                  // you've submitted (e.g. a submission that timed out part-way and is being retried).
+                  const flaggedItems = [];
+                  items.filter(i => !i.dupAck).forEach(function(item) {
+                   const prior = similarFor(item, items.filter(o => o.id !== item.id)).filter(t => !t.exp._inList);
+                   if (prior.length) flaggedItems.push({ item: item, twins: prior });
+                  });
+                  if (flaggedItems.length && !window.confirm('⚠ ' + flaggedItems.length + ' of your items look like expenses you have already submitted:\n\n'
+                    + flaggedItems.map(f => '— ' + f.item.category + ' ' + getCurrencySymbol(myCurOf(f.item)) + f.item.amount.toFixed(2) + ' (' + new Date(f.item.date).toLocaleDateString('en-GB') + ')\n' + describeTwins(f.twins)).join('\n\n')
+                    + '\n\nPress OK to submit anyway, or Cancel to go back and remove them.')) return;
                   _submitGuard.current = true;
                   setSaving(true);
                   const countToSubmit = items.length;
@@ -8380,6 +8468,7 @@ import React, { useState, useEffect } from 'react';
                   <span className="text-sm font-semibold text-teal-800">{item.category}</span>
                   {item.description && <span className="text-xs text-gray-500 ml-2">— {item.description}</span>}
                   <div className="text-xs text-gray-500">{item.date}</div>
+                  {item.dupAck && <div className="text-xs text-amber-700 font-semibold">⚠ Similar to an expense already entered — added anyway</div>}
                    </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -8437,6 +8526,7 @@ import React, { useState, useEffect } from 'react';
                 const defaultWeekEnd = getSunday(defaultWeekStart);
                 const expDateFrom = persistedState ? persistedState.expDateFrom : defaultWeekStart; const setExpDateFrom = mk('expDateFrom');
                 const expDateTo = persistedState ? persistedState.expDateTo : defaultWeekEnd; const setExpDateTo = mk('expDateTo');
+                const showDupOnly = !!(persistedState && persistedState.showDupOnly); const setShowDupOnly = mk('showDupOnly');
                 const [addForm, setAddForm] = useState({ employeeId: '', date: today, category: '', description: '', amount: '', currency: '', receiptNote: '', status: 'approved' });
                 const [addSaving, setAddSaving] = useState(false);
 
@@ -8465,10 +8555,29 @@ import React, { useState, useEffect } from 'react';
                   ? resolveEmployeeCurrency(visEmp.find(function(e){ return e.id === parseInt(addForm.employeeId); }))
                   : 'GBP';
 
+                // Possible duplicates across ALL expenses (not just the filtered view), so a twin dated
+                // outside the current date range is still caught.
+                const expDupMap = findDuplicateExpenses(expenses.filter(function(e){ return visEmp.some(function(v){ return v.id === e.employeeId; }); }), expCurOf);
+                const dupMessage = function(exp, action) {
+                  const d = expDupMap[exp.id];
+                  const sym0 = getCurrencySymbol(expCurOf(exp));
+                  return '⚠ POSSIBLE DUPLICATE\n\n' + exp.employeeName + ' · ' + new Date(exp.date).toLocaleDateString('en-GB') + ' · ' + exp.category + ' · ' + sym0 + exp.amount.toFixed(2)
+                    + '\n\nSimilar expense(s):\n' + d.twins.map(function(t){ return describeExpenseTwin(t, getCurrencySymbol(expCurOf(t.exp))); }).join('\n')
+                    + '\n\n' + action + ' this expense anyway?';
+                };
+
                 const handleAdminAdd = async () => {
                   if (!addForm.employeeId || !addForm.category || !addForm.amount) {
                    alert('Employee, category and amount are required fields.');
                    return;
+                  }
+                  // Warn if a similar expense already exists for this employee (same amount/currency and
+                  // same date, same receipt, or a close date in the same category).
+                  {
+                   const probeCur = MULTI_CURRENCIES.indexOf(addForm.currency) !== -1 ? addForm.currency : addDefaultCur;
+                   const probe = { id: -1, employeeId: parseInt(addForm.employeeId), date: addForm.date, category: addForm.category, description: addForm.description, amount: parseFloat(addForm.amount), currency: probeCur, receiptNote: addForm.receiptNote, status: 'pending' };
+                   const probeMap = findDuplicateExpenses(expenses.filter(function(e){ return e.employeeId === probe.employeeId; }).concat([probe]), function(e){ return e.id === -1 ? probeCur : expCurOf(e); });
+                   if (probeMap[-1] && !window.confirm('⚠ A similar expense already exists for this employee:\n\n' + probeMap[-1].twins.map(function(t){ return describeExpenseTwin(t, getCurrencySymbol(expCurOf(t.exp))); }).join('\n') + '\n\nAdd this expense anyway?')) return;
                   }
                   setAddSaving(true);
                   try {
@@ -8527,8 +8636,13 @@ import React, { useState, useEffect } from 'react';
                   return true;
                 });
                 const allFiltered = baseFiltered.filter(function(exp) {
+                  if (showDupOnly && !expDupMap[exp.id]) return false;
                   return activeTab === 'all' ? true : exp.status === activeTab;
                 });
+                // Duplicate review summary for what's currently in scope (branch / employee / dates)
+                const dupInView = baseFiltered.filter(function(e){ return expDupMap[e.id]; });
+                const dupPendingInView = dupInView.filter(function(e){ return e.status === 'pending'; });
+                const dupHighInView = dupInView.filter(function(e){ return expDupMap[e.id].level === 'high'; });
 
                 // Summary cards: totals kept separately per currency so e.g. £, € and IQD amounts are
                 // never added together into one meaningless number.
@@ -8558,7 +8672,9 @@ import React, { useState, useEffect } from 'react';
                   if (!targets.length) { alert('No pending expenses have been selected.'); return; }
                   const total = targets.reduce(function(s,e){ return s + (e.amount||0); }, 0);
                   const verb = status === 'approved' ? 'APPROVE' : 'REJECT';
-                  if (!window.confirm(verb + ' ' + targets.length + ' selected expense claim(s)?\n\nTotal: ' + fmtByCur(sumByCur(targets)))) return;
+                  const flaggedTargets = targets.filter(function(e){ return expDupMap[e.id]; });
+                  if (!window.confirm(verb + ' ' + targets.length + ' selected expense claim(s)?\n\nTotal: ' + fmtByCur(sumByCur(targets))
+                    + (status === 'approved' && flaggedTargets.length ? '\n\n⚠ ' + flaggedTargets.length + ' of these ' + (flaggedTargets.length !== 1 ? 'are' : 'is') + ' flagged as possible duplicates (highlighted in the list). Approving them confirms you have checked them.' : ''))) return;
                   setBulkActing(true);
                   let ok = 0;
                   const failedIds = [];
@@ -8592,7 +8708,9 @@ import React, { useState, useEffect } from 'react';
                   if (!toPay.length) { alert('There are no approved expenses to pay under the current filters.'); return; }
                   const total = toPay.reduce(function(s,e){ return s + (e.amount||0); }, 0);
                   const who = activeEmpFilter ? ((visEmp.find(function(e){return e.id===parseInt(activeEmpFilter);})||{}).firstName + "'s") : "all employees'";
-                  if (!window.confirm('Mark ' + toPay.length + ' approved expense(s) for ' + who + ' as PAID?\n\nTotal: ' + fmtByCur(sumByCur(toPay)))) return;
+                  const flaggedPay = toPay.filter(function(e){ return expDupMap[e.id]; });
+                  if (!window.confirm('Mark ' + toPay.length + ' approved expense(s) for ' + who + ' as PAID?\n\nTotal: ' + fmtByCur(sumByCur(toPay))
+                    + (flaggedPay.length ? '\n\n⚠ ' + flaggedPay.length + ' of these ' + (flaggedPay.length !== 1 ? 'are' : 'is') + ' flagged as possible duplicates. Check the highlighted rows first.' : ''))) return;
                   setBulkPaying(true);
                   const paidBy = currentUser.firstName + ' ' + currentUser.lastName;
                   let ok = 0;
@@ -8618,6 +8736,11 @@ import React, { useState, useEffect } from 'react';
                 };
 
                 const handleAction = async (id, status, extra) => {
+                  // Approving or paying something flagged as a possible duplicate needs an explicit decision.
+                  if ((status === 'approved' || status === 'paid') && expDupMap[id]) {
+                   const ex = expenses.find(function(e){ return e.id === id; });
+                   if (ex && !window.confirm(dupMessage(ex, status === 'approved' ? 'Approve' : 'Mark as paid'))) return;
+                  }
                   const payload = Object.assign({ status: status }, extra || {});
                   try {
                    const data = await apiCall(API_ENDPOINTS.expenses + '/' + id, { method: 'PUT', body: JSON.stringify(payload) });
@@ -8818,6 +8941,30 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   )}
 
+                  {dupInView.length > 0 && (
+                   <div className={'mx-6 mt-4 rounded-lg border px-4 py-3 text-xs ' + (dupPendingInView.length ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-gray-50 border-gray-200 text-gray-700')}>
+                  <div className="flex flex-wrap items-center gap-3">
+                   <div className="flex-1" style={{minWidth:'14rem'}}>
+                  <p className="font-semibold text-sm">🔍 Duplicate check</p>
+                  <p className="mt-0.5">
+                   {dupInView.length} expense{dupInView.length !== 1 ? 's' : ''} in this view {dupInView.length !== 1 ? 'look' : 'looks'} like {dupInView.length !== 1 ? 'duplicates' : 'a duplicate'} of another expense from the same employee (same amount and currency).
+                   {' '}<b className="text-red-700">{dupHighInView.length} likely (same date or receipt ref)</b>,
+                   {' '}<b className="text-amber-700">{dupInView.length - dupHighInView.length} possible (within {EXPENSE_DUP_WINDOW_DAYS} days, same category)</b>.
+                   {dupPendingInView.length > 0 ? ' ' + dupPendingInView.length + ' still pending — please check each one, then Approve or Reject.' : ' All of them have already been approved or paid.'}
+                  </p>
+                   </div>
+                   <button onClick={function(){ setShowDupOnly(!showDupOnly); }} className={'px-3 py-1.5 rounded-lg text-xs font-semibold border ' + (showDupOnly ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-amber-800 border-amber-400 hover:bg-amber-100')}>
+                  {showDupOnly ? 'Show all rows' : '⚠ Show possible duplicates only'}
+                   </button>
+                  </div>
+                  <p className="mt-2 text-gray-600">
+                   <span className="inline-block w-3 h-3 align-middle rounded-sm bg-red-200 border border-red-400"></span> likely duplicate
+                   {'   '}
+                   <span className="inline-block w-3 h-3 align-middle rounded-sm bg-amber-200 border border-amber-400"></span> possible duplicate
+                   {'   ·   '}Rejecting the duplicate clears the flag on the original.
+                  </p>
+                   </div>
+                  )}
                   <div className="p-6">
                    {allFiltered.length === 0 ? (
                   <div className="text-center py-12 text-gray-400">
@@ -8845,8 +8992,8 @@ import React, { useState, useEffect } from 'react';
                    {allFiltered.map(function(exp) {
                   const expCur = expCurOf(exp);
                   return (
-                   <tr key={exp.id} className={'hover:bg-gray-50 ' + (selectedIds.includes(exp.id) ? 'bg-teal-50' : '')}>
-                  <td className="px-3 py-3">
+                   <tr key={exp.id} className={(expDupMap[exp.id] && exp.status === 'pending' ? (expDupMap[exp.id].level === 'high' ? 'bg-red-50 hover:bg-red-100 ' : 'bg-amber-50 hover:bg-amber-100 ') : 'hover:bg-gray-50 ') + (selectedIds.includes(exp.id) ? 'bg-teal-50' : '')}>
+                  <td className={'px-3 py-3 ' + (expDupMap[exp.id] ? (expDupMap[exp.id].level === 'high' ? 'border-l-4 border-red-400' : 'border-l-4 border-amber-400') : '')}>
                    {exp.status === 'pending' && <input type="checkbox" checked={selectedIds.includes(exp.id)} onChange={function(){ toggleSelectExp(exp.id); }} className="w-4 h-4" />}
                   </td>
                   <td className="px-3 py-3">
@@ -8857,7 +9004,19 @@ import React, { useState, useEffect } from 'react';
                   <td className="px-3 py-3">
                    <span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-semibold">{exp.category}</span>
                   </td>
-                  <td className="px-3 py-3 text-gray-600 max-w-xs truncate">{exp.description || ''}</td>
+                  <td className="px-3 py-3 text-gray-600 max-w-xs">
+                   <div className="truncate">{exp.description || ''}</div>
+                   {expDupMap[exp.id] && (function() {
+                  const d = expDupMap[exp.id];
+                  const t0 = d.twins[0];
+                  return (
+                   <div className={'mt-1 inline-block px-1.5 py-0.5 rounded text-xs font-semibold whitespace-normal ' + (d.level === 'high' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800')}
+                    title={'Similar expense(s):\n' + d.twins.map(function(t){ return describeExpenseTwin(t, getCurrencySymbol(expCurOf(t.exp))); }).join('\n')}>
+                  ⚠ {d.level === 'high' ? 'Likely duplicate' : 'Possible duplicate'} · {t0.reasons.slice(1).join(', ')} · {new Date(t0.exp.date).toLocaleDateString('en-GB')} {t0.exp.status}{d.twins.length > 1 ? ' +' + (d.twins.length - 1) + ' more' : ''}
+                   </div>
+                  );
+                   })()}
+                  </td>
                   <td className="px-3 py-3 font-bold text-gray-800 whitespace-nowrap">{getCurrencySymbol(expCur)}{exp.amount.toFixed(2)}</td>
                   <td className="px-3 py-3">
                    {exp.receiptImage ? (
@@ -8992,6 +9151,14 @@ import React, { useState, useEffect } from 'react';
                   return 'bg-red-100 text-red-700';
                 };
 
+                // Possible duplicates (same employee, amount and currency; same date/receipt, or close date + category)
+                const reportCurOf = function(e) {
+                  const em = visEmp.find(function(v){ return v.id === e.employeeId; });
+                  return MULTI_CURRENCIES.indexOf(e.currency) !== -1 ? e.currency : (em ? resolveEmployeeCurrency(em) : 'GBP');
+                };
+                const reportDupMap = findDuplicateExpenses(expenses.filter(function(e){ return visEmp.some(function(v){ return v.id === e.employeeId; }); }), reportCurOf);
+                const reportDupCount = reportData ? reportData.reduce(function(n, r){ return n + r.items.filter(function(e){ return reportDupMap[e.id]; }).length; }, 0) : 0;
+
                 const grandTotal = reportData ? reportData.reduce(function(s,r) {
                   return s + r.items.filter(function(e) { return e.status !== 'rejected'; }).reduce(function(ss,e) { return ss+e.amount; }, 0);
                 }, 0) : 0;
@@ -9063,6 +9230,12 @@ import React, { useState, useEffect } from 'react';
                   <p className="text-xs text-teal-600 font-semibold uppercase">Total Expenses ({fromDate} to {toDate})</p>
                   <p className="text-3xl font-bold text-teal-700 mt-1">{grandSym}{grandTotal.toFixed(2)}</p>
                    </div>
+                   {reportDupCount > 0 && (
+                  <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-4 py-3 text-xs">
+                   <p className="font-semibold text-sm">🔍 {reportDupCount} expense{reportDupCount !== 1 ? 's' : ''} in this report may be duplicate{reportDupCount !== 1 ? 's' : ''}</p>
+                   <p className="mt-0.5">Same employee, amount and currency, and either the same date / receipt ref (red) or within {EXPENSE_DUP_WINDOW_DAYS} days in the same category (amber). Review and approve or reject them in the Expense Claims Manager.</p>
+                  </div>
+                   )}
                    {reportData.map(function(row, idx) {
                   const rowTotal = row.items.filter(function(e) { return e.status !== 'rejected'; }).reduce(function(s,e) { return s+e.amount; }, 0);
                   const _rowEmp = visEmp.find(function(e){ return e.id === row.employeeId || e.employeeId === row.employeeCode; });
@@ -9094,12 +9267,24 @@ import React, { useState, useEffect } from 'react';
                    <tbody className="divide-y divide-gray-100">
                   {row.items.map(function(exp) {
                    return (
-                  <tr key={exp.id} className="hover:bg-gray-50">
-                   <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{new Date(exp.date).toLocaleDateString('en-GB')}</td>
+                  <tr key={exp.id} className={reportDupMap[exp.id] ? (reportDupMap[exp.id].level === 'high' ? 'bg-red-50' : 'bg-amber-50') : 'hover:bg-gray-50'}>
+                   <td className={'px-4 py-2 text-gray-600 whitespace-nowrap ' + (reportDupMap[exp.id] ? (reportDupMap[exp.id].level === 'high' ? 'border-l-4 border-red-400' : 'border-l-4 border-amber-400') : '')}>{new Date(exp.date).toLocaleDateString('en-GB')}</td>
                    <td className="px-4 py-2">
                   <span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-semibold">{exp.category}</span>
                    </td>
-                   <td className="px-4 py-2 text-gray-600">{exp.description || ''}</td>
+                   <td className="px-4 py-2 text-gray-600">
+                  {exp.description || ''}
+                  {reportDupMap[exp.id] && (function() {
+                   const d = reportDupMap[exp.id];
+                   const t0 = d.twins[0];
+                   return (
+                  <div className={'mt-1 inline-block px-1.5 py-0.5 rounded text-xs font-semibold ' + (d.level === 'high' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800')}
+                   title={'Similar expense(s):\n' + d.twins.map(function(t){ return describeExpenseTwin(t, getCurrencySymbol(reportCurOf(t.exp))); }).join('\n')}>
+                   ⚠ {d.level === 'high' ? 'Likely duplicate' : 'Possible duplicate'} · {t0.reasons.slice(1).join(', ')} · {new Date(t0.exp.date).toLocaleDateString('en-GB')} {t0.exp.status}{d.twins.length > 1 ? ' +' + (d.twins.length - 1) + ' more' : ''}
+                  </div>
+                   );
+                  })()}
+                   </td>
                    <td className="px-4 py-2 font-bold text-gray-800">{rowSym}{exp.amount.toFixed(2)}</td>
                    <td className="px-4 py-2">
                   <span className={'px-2 py-0.5 rounded-full text-xs font-semibold capitalize ' + getStatusBadgeClass(exp.status)}>{exp.status}</span>
