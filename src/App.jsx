@@ -6612,20 +6612,16 @@ import React, { useState, useEffect } from 'react';
                 // is applied per shift, and payments made are tracked so a balance can be shown.
                 // Pending/rejected/clocked-in shifts stay in `timesheets` so they remain visible
                 // (and approvable) in the detail rows, but they are not counted in any total.
-                const buildRow = (employee, empTimesheets, rangeStart, rangeEnd) => {
-                  const approved = empTimesheets.filter(ts => ts.status === 'approved');
-                  const totalRegular = approved.reduce((sum, ts) => sum + (ts.regularHours || 0), 0);
-                  const totalOvertime = approved.reduce((sum, ts) => sum + (ts.overtimeHours || 0), 0);
-                  const totalHours = totalRegular + totalOvertime;
-
+                // Pay for a list of APPROVED shifts, using the rate each shift was stamped with and the
+                // per-shift minimum-hours guarantee (same rules as the dashboard's calculatePayroll).
+                const approvedPay = (employee, list) => {
                   const empOtMult = (employee.overtimeRate != null && employee.overtimeRate !== '') ? parseFloat(employee.overtimeRate) : (payrollSettings.overtimeMultiplier || 1.5);
                   let minimumHoursBonus = 0;
                   let minimumHoursPay = 0;
                   let basePay = 0;
-                  approved.forEach(function(ts) {
+                  list.forEach(function(ts) {
                    const reg = ts.regularHours || 0;
                    const ot = ts.overtimeHours || 0;
-                   // Pay locked to the rate each shift was stamped with when worked.
                    const shiftRate = (ts.hourlyRate != null && ts.hourlyRate !== '') ? parseFloat(ts.hourlyRate) : (employee.hourlyRate || 0);
                    const shiftOtMult = (ts.overtimeRate != null && ts.overtimeRate !== '') ? parseFloat(ts.overtimeRate) : empOtMult;
                    let shiftRegular = reg;
@@ -6641,6 +6637,27 @@ import React, { useState, useEffect } from 'react';
                    }
                    basePay += (shiftRegular * shiftRate) + (ot * shiftRate * shiftOtMult);
                   });
+                  return { basePay, minimumHoursBonus, minimumHoursPay, empOtMult };
+                };
+                const adjSums = (adjs) => {
+                  const sumType = function(types) { return adjs.filter(a => types.indexOf(a.type) !== -1).reduce((sum, a) => sum + a.amount, 0); };
+                  const bonuses = sumType(['bonus', 'annual_leave']);
+                  const penalties = sumType(['penalty']);
+                  const advances = sumType(['advance']);
+                  const sickPay = sumType(['sick_pay']);
+                  const payments = sumType(['payment']);
+                  return { bonuses, penalties, advances, sickPay, payments, net: bonuses - penalties - advances + sickPay };
+                };
+
+                const buildRow = (employee, empTimesheets, rangeStart, rangeEnd) => {
+                  const approved = empTimesheets.filter(ts => ts.status === 'approved');
+                  const totalRegular = approved.reduce((sum, ts) => sum + (ts.regularHours || 0), 0);
+                  const totalOvertime = approved.reduce((sum, ts) => sum + (ts.overtimeHours || 0), 0);
+                  const totalHours = totalRegular + totalOvertime;
+
+                  const pay = approvedPay(employee, approved);
+                  const empOtMult = pay.empOtMult;
+                  const basePay = pay.basePay;
                   const regularPay = totalRegular * employee.hourlyRate; // display-only aggregate at current rate
                   const overtimePay = totalOvertime * employee.hourlyRate * empOtMult; // display-only aggregate at current rate
 
@@ -6650,22 +6667,27 @@ import React, { useState, useEffect } from 'react';
 
                   const rs = new Date(rangeStart);
                   const re = new Date(rangeEnd);
-                  const empAdjustments = financialAdjustments.filter(adj => {
-                   const adjDate = new Date(adj.date);
-                   return adj.employeeId === employee.id && adjDate >= rs && adjDate <= re;
-                  });
-                  const sumType = function(types) { return empAdjustments.filter(a => types.indexOf(a.type) !== -1).reduce((sum, a) => sum + a.amount, 0); };
-                  const bonuses = sumType(['bonus', 'annual_leave']);
-                  const penalties = sumType(['penalty']);
-                  const advances = sumType(['advance']);
-                  const sickPay = sumType(['sick_pay']);
-                  const payments = sumType(['payment']);
-                  const totalAdjustments = bonuses - penalties - advances + sickPay;
+                  const empAdjAll = financialAdjustments.filter(adj => adj.employeeId === employee.id);
+                  const inRange = adj => { const d = new Date(adj.date); return d >= rs && d <= re; };
+                  const a = adjSums(empAdjAll.filter(inRange));
+                  const bonuses = a.bonuses, penalties = a.penalties, advances = a.advances, sickPay = a.sickPay, payments = a.payments;
+                  const totalAdjustments = a.net;
 
                   const totalPay = basePay - breakDeduction + totalAdjustments;
-                  // Period balance = what was earned in this period minus what was paid in it.
-                  const balanceOwed = totalPay - payments;
-                  // The dashboard's running all-time balance, shown for easy reconciliation.
+                  // This period only: earned minus paid within the dates selected.
+                  const periodBalance = totalPay - payments;
+
+                  // BALANCE BROUGHT FORWARD: everything earned (approved shifts + guarantee + adjustments)
+                  // minus everything paid BEFORE the report's start date. Positive = still owed to the
+                  // employee from earlier; negative = they had already been paid more than they'd earned.
+                  const priorApproved = timesheets.filter(ts => ts.employeeId === employee.id && ts.status === 'approved' && new Date(ts.date) < rs);
+                  const priorAdj = adjSums(empAdjAll.filter(adj => new Date(adj.date) < rs));
+                  const broughtForward = approvedPay(employee, priorApproved).basePay + priorAdj.net - priorAdj.payments;
+
+                  // Balance owed at the END of the report period = brought forward + this period.
+                  const balanceOwed = broughtForward + periodBalance;
+                  // The dashboard's running balance to date, shown when it differs (i.e. something
+                  // happened after the report's end date).
                   let allTimeBalance = 0;
                   try { allTimeBalance = calculatePayroll(employee.id).balance || 0; } catch (e) { allTimeBalance = 0; }
 
@@ -6674,9 +6696,9 @@ import React, { useState, useEffect } from 'react';
                    timesheets: empTimesheets,
                    totalRegular, totalOvertime, totalHours,
                    regularPay, overtimePay, basePay, breakDeduction, totalBreakMinutes,
-                   minimumHoursBonus, minimumHoursPay,
+                   minimumHoursBonus: pay.minimumHoursBonus, minimumHoursPay: pay.minimumHoursPay,
                    bonuses, penalties, advances, sickPay, totalAdjustments,
-                   payments, balanceOwed, allTimeBalance,
+                   payments, periodBalance, broughtForward, balanceOwed, allTimeBalance,
                    totalPay,
                    approvedShifts: empTimesheets.filter(ts => ts.status === 'approved').length,
                    pendingShifts: empTimesheets.filter(ts => ts.status === 'pending' || ts.status === 'checkedout').length,
@@ -6700,6 +6722,7 @@ import React, { useState, useEffect } from 'react';
                    grandTotalPay: data.reduce((sum, d) => sum + d.totalPay, 0),
                    payByCurrency: byCur('totalPay'),
                    paidByCurrency: byCur('payments'),
+                   bfByCurrency: byCur('broughtForward'),
                    balanceByCurrency: byCur('balanceOwed')
                   };
                 };
@@ -6817,7 +6840,7 @@ import React, { useState, useEffect } from 'react';
                 const exportToCSV = () => {
                   if (!generatedReport) return;
 
-                  let csv = 'Employee ID,Name,Department,Position,Total Hours,Regular Hours,Overtime Hours,Break Minutes,Hourly Rate,Regular Pay,Overtime Pay,Break Deduction,Bonus,Sick Pay,Penalty,Advance,Total Pay,Payments Made,Balance Owed (Period),Dashboard Balance (All Time),Approved Shifts,Pending Shifts,Rejected Shifts\n';
+                  let csv = 'Employee ID,Name,Department,Position,Total Hours,Regular Hours,Overtime Hours,Break Minutes,Hourly Rate,Regular Pay,Overtime Pay,Break Deduction,Bonus,Sick Pay,Penalty,Advance,Total Pay,Payments Made,Brought Forward,Balance Owed,Dashboard Balance (To Date),Approved Shifts,Pending Shifts,Rejected Shifts\n';
 
                   generatedReport.data.forEach(row => {
                    csv += `${row.employee.employeeId},`;
@@ -6838,6 +6861,7 @@ import React, { useState, useEffect } from 'react';
                    csv += `${(row.advances||0).toFixed(2)},`;
                    csv += `${row.totalPay.toFixed(2)},`;
                    csv += `${(row.payments||0).toFixed(2)},`;
+                   csv += `${(row.broughtForward||0).toFixed(2)},`;
                    csv += `${(row.balanceOwed||0).toFixed(2)},`;
                    csv += `${(row.allTimeBalance||0).toFixed(2)},`;
                    csv += `${row.approvedShifts},`;
@@ -6899,6 +6923,7 @@ import React, { useState, useEffect } from 'react';
                     + '<td class="n">' + sy + r.employee.hourlyRate.toFixed(2) + '</td>'
                     + '<td class="n"><b>' + sy + r.totalPay.toFixed(2) + '</b>' + (notes.length ? '<div class="sm">' + esc(notes.join('; ')) + '</div>' : '') + '</td>'
                     + '<td class="n">' + sy + r.payments.toFixed(2) + '</td>'
+                    + '<td class="n">' + signedMoney(sy, r.broughtForward) + (r.broughtForward < -0.005 ? '<div class="sm">paid ahead</div>' : '') + '</td>'
                     + '<td class="n"><b>' + signedMoney(sy, r.balanceOwed) + '</b>' + (showDash ? '<div class="sm">Dashboard balance: ' + sy + r.allTimeBalance.toFixed(2) + '</div>' : '') + '</td>'
                     + '</tr>';
                   }).join('');
@@ -6932,6 +6957,7 @@ import React, { useState, useEffect } from 'react';
                    if (r.penalties > 0) extra.push('Penalty: -' + sy + r.penalties.toFixed(2));
                    if (r.advances > 0) extra.push('Advance: -' + sy + r.advances.toFixed(2));
                    if (r.payments > 0) extra.push('Payments made: ' + sy + r.payments.toFixed(2));
+                   if (Math.abs(r.broughtForward) > 0.005) extra.push('Brought forward: ' + signedMoney(sy, r.broughtForward));
                    return '<div class="sec"><div class="sec-title"><span>Shift details — ' + esc(r.employee.firstName + ' ' + r.employee.lastName) + '</span><span>' + esc(r.employee.employeeId) + '</span></div>'
                     + '<table><thead><tr><th>Date</th><th>Start</th><th>Finish</th><th class="n">Regular</th><th class="n">Overtime</th><th class="n">Break</th><th class="n">Total</th><th class="n">Pay</th><th>Status</th></tr></thead><tbody>' + trs + '</tbody></table>'
                     + (extra.length ? '<div class="extra">' + esc(extra.join('   ·   ')) + '</div>' : '')
@@ -6946,14 +6972,15 @@ import React, { useState, useEffect } from 'react';
                    + '<div class="card"><div class="l">Employees</div><div class="v">' + gr.totalEmployees + '</div></div>'
                    + '<div class="card"><div class="l">Total payroll</div><div class="v">' + curLines(gr.payByCurrency) + '</div></div>'
                    + '<div class="card"><div class="l">Payments made</div><div class="v">' + curLines(gr.paidByCurrency || {}) + '</div></div>'
+                   + '<div class="card"><div class="l">Brought forward</div><div class="v">' + curLines(gr.bfByCurrency || {}) + '</div></div>'
                    + '<div class="card"><div class="l">Balance owed</div><div class="v">' + curLines(gr.balanceByCurrency || {}) + '</div></div>'
                    + '</div>'
                    + '<div class="sec"><div class="sec-title"><span>Summary by employee</span><span>' + gr.totalEmployees + ' employee(s)</span></div>'
-                   + '<table><thead><tr><th>Employee</th><th>Department</th><th>Shifts</th><th class="n">Regular Hrs</th><th class="n">Overtime Hrs</th><th class="n">Total Hrs</th><th class="n">Rate</th><th class="n">Total Pay</th><th class="n">Payments Made</th><th class="n">Balance Owed</th></tr></thead><tbody>'
+                   + '<table><thead><tr><th>Employee</th><th>Department</th><th>Shifts</th><th class="n">Regular Hrs</th><th class="n">Overtime Hrs</th><th class="n">Total Hrs</th><th class="n">Rate</th><th class="n">Total Pay</th><th class="n">Payments Made</th><th class="n">Brought Forward</th><th class="n">Balance Owed</th></tr></thead><tbody>'
                    + summaryRows
-                   + '<tr class="tot"><td colspan="5">TOTAL</td><td class="n">' + gr.grandTotalHours.toFixed(1) + '</td><td></td><td class="n">' + curLines(gr.payByCurrency) + '</td><td class="n">' + curLines(gr.paidByCurrency || {}) + '</td><td class="n">' + curLines(gr.balanceByCurrency || {}) + '</td></tr>'
+                   + '<tr class="tot"><td colspan="5">TOTAL</td><td class="n">' + gr.grandTotalHours.toFixed(1) + '</td><td></td><td class="n">' + curLines(gr.payByCurrency) + '</td><td class="n">' + curLines(gr.paidByCurrency || {}) + '</td><td class="n">' + curLines(gr.bfByCurrency || {}) + '</td><td class="n">' + curLines(gr.balanceByCurrency || {}) + '</td></tr>'
                    + '</tbody></table>'
-                   + '<div class="note">Totals include approved shifts only (plus any minimum-hours guarantee and adjustments in the period). Pending and rejected shifts are not paid. Balance Owed = Total Pay minus Payments Made within this period; "Dashboard balance" is the all-time running balance shown on the dashboard.</div></div>'
+                   + '<div class="note">Totals include approved shifts only (plus any minimum-hours guarantee and adjustments in the period). Pending and rejected shifts are not paid. Balance Owed = Brought Forward (balance from before the start date; negative means the employee had been paid ahead) + Total Pay − Payments Made in this period. "Dashboard balance" is the running balance to date shown on the dashboard.</div></div>'
                    + detailHtml
                    + '<div class="footer">B-Post Employee Management System &nbsp;·&nbsp; Printed ' + new Date().toLocaleString('en-GB') + '</div>';
                   const w = window.open('', '_blank', 'width=1100,height=800');
@@ -7077,7 +7104,7 @@ import React, { useState, useEffect } from 'react';
 
                    {generatedReport && (
                   <div className="border-t border-gray-200 pt-6">
-                   <div className="mb-6 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                   <div className="mb-6 grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4">
                   <div className="bg-indigo-50 p-4 rounded-lg">
                    <p className="text-sm text-indigo-600 font-semibold">Report Period</p>
                    <p className="text-lg font-bold text-indigo-900">
@@ -7100,6 +7127,12 @@ import React, { useState, useEffect } from 'react';
                    return <p key={entry[0]} className="text-lg font-bold text-emerald-900">{entry[0]}{entry[1].toFixed(2)}</p>;
                    })}
                   </div>
+                  <div className="bg-slate-50 p-4 rounded-lg">
+                   <p className="text-sm text-slate-600 font-semibold">Brought Forward</p>
+                   {Object.entries(generatedReport.bfByCurrency || {}).map(function(entry) {
+                   return <p key={entry[0]} className="text-lg font-bold text-slate-900">{entry[1] < 0 ? '-' : ''}{entry[0]}{Math.abs(entry[1]).toFixed(2)}</p>;
+                   })}
+                  </div>
                   <div className="bg-amber-50 p-4 rounded-lg">
                    <p className="text-sm text-amber-600 font-semibold">Balance Owed</p>
                    {Object.entries(generatedReport.balanceByCurrency || {}).map(function(entry) {
@@ -7108,7 +7141,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                    </div>
 
-                   <p className="text-xs text-gray-500 mb-3">Totals count <strong>approved shifts only</strong> (plus any minimum-hours guarantee and adjustments in the period). Pending and rejected shifts are listed in the details but not paid. Balance Owed = Total Pay − Payments Made in this period; the dashboard shows the all-time balance.</p>
+                   <p className="text-xs text-gray-500 mb-3">Totals count <strong>approved shifts only</strong> (plus any minimum-hours guarantee and adjustments in the period). Pending and rejected shifts are listed in the details but not paid. Balance Owed = Brought Forward (balance from before the start date) + Total Pay − Payments Made in this period. A negative Brought Forward means the employee had been paid more than they had earned before this period.</p>
                    <div className="overflow-x-auto">
                   <table className="w-full">
                    <thead className="bg-gray-50 sticky top-0">
@@ -7122,6 +7155,7 @@ import React, { useState, useEffect } from 'react';
                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Rate</th>
                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Total Pay</th>
                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Payments Made</th>
+                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Brought Forward</th>
                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Balance Owed</th>
                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Details</th>
                   </tr>
@@ -7161,14 +7195,18 @@ import React, { useState, useEffect } from 'react';
                   </td>
                   <td className="px-4 py-3 text-sm font-medium">{getCurrencySymbol(row.employee.currency || "GBP")}{row.payments.toFixed(2)}</td>
                   <td className="px-4 py-3 text-sm">
+                   <div className={'font-medium ' + (row.broughtForward < -0.005 ? 'text-red-600' : 'text-gray-700')}>{row.broughtForward < 0 ? '-' : ''}{getCurrencySymbol(row.employee.currency || "GBP")}{Math.abs(row.broughtForward).toFixed(2)}</div>
+                   {row.broughtForward < -0.005 && <div className="text-xs font-normal text-red-400">paid ahead</div>}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
                    <div className={'font-bold ' + (row.balanceOwed > 0.005 ? 'text-green-700' : 'text-gray-500')}>{row.balanceOwed < 0 ? '-' : ''}{getCurrencySymbol(row.employee.currency || "GBP")}{Math.abs(row.balanceOwed).toFixed(2)}</div>
-                   {Math.abs(row.allTimeBalance - Math.max(row.balanceOwed, 0)) > 0.005 && <div className="text-xs font-normal text-gray-400">Dashboard balance: {getCurrencySymbol(row.employee.currency || "GBP")}{row.allTimeBalance.toFixed(2)}</div>}
+                   {Math.abs(row.allTimeBalance - Math.max(row.balanceOwed, 0)) > 0.005 && <div className="text-xs font-normal text-gray-400">Dashboard balance (to date): {getCurrencySymbol(row.employee.currency || "GBP")}{row.allTimeBalance.toFixed(2)}</div>}
                   </td>
                   <td className="px-4 py-3 text-xs text-indigo-600 font-medium">{expandedEmp === row.employee.id ? 'Hide ▲' : 'Show ▼'}</td>
                    </tr>
                    {expandedEmp === row.employee.id && (
                   <tr>
-                   <td colSpan="11" className="bg-indigo-50 px-6 py-3">
+                   <td colSpan="12" className="bg-indigo-50 px-6 py-3">
                   <table className="w-full text-sm">
                    <thead>
                   <tr className="text-indigo-700 text-xs font-semibold border-b border-indigo-200">
@@ -7250,7 +7288,7 @@ import React, { useState, useEffect } from 'react';
                    </tr>
                    );
                   })}
-                  {(row.bonuses > 0 || row.sickPay > 0 || row.penalties > 0 || row.advances > 0 || row.minimumHoursBonus > 0 || row.payments > 0) && (
+                  {(row.bonuses > 0 || row.sickPay > 0 || row.penalties > 0 || row.advances > 0 || row.minimumHoursBonus > 0 || row.payments > 0 || Math.abs(row.broughtForward) > 0.005) && (
                    <tr className="border-t-2 border-indigo-200 bg-indigo-50/50">
                   <td className="py-1.5 font-semibold text-gray-600" colSpan="6">Adjustments</td>
                   <td className="py-1.5 font-semibold" colSpan={hasPermission('canApproveTimesheets') ? "4" : "3"}>
@@ -7260,6 +7298,7 @@ import React, { useState, useEffect } from 'react';
                    {row.advances > 0 && <span className="text-red-500 mr-3">Advance -{getCurrencySymbol(row.employee.currency||'GBP')}{row.advances.toFixed(2)}</span>}
                    {row.minimumHoursBonus > 0 && <span className="text-amber-600 mr-3">Guarantee +{row.minimumHoursBonus.toFixed(1)}h (+{getCurrencySymbol(row.employee.currency||'GBP')}{row.minimumHoursPay.toFixed(2)})</span>}
                    {row.payments > 0 && <span className="text-blue-600 mr-3">Payments made {getCurrencySymbol(row.employee.currency||'GBP')}{row.payments.toFixed(2)}</span>}
+                   {Math.abs(row.broughtForward) > 0.005 && <span className={(row.broughtForward < 0 ? 'text-red-600' : 'text-gray-700') + ' mr-3'}>Brought forward {row.broughtForward < 0 ? '-' : ''}{getCurrencySymbol(row.employee.currency||'GBP')}{Math.abs(row.broughtForward).toFixed(2)}</span>}
                   </td>
                    </tr>
                   )}
@@ -7282,6 +7321,11 @@ import React, { useState, useEffect } from 'react';
                    <td className="px-4 py-3 text-sm">
                    {Object.entries(generatedReport.paidByCurrency || {}).map(function(entry) {
                    return <div key={entry[0]}>{entry[0]}{entry[1].toFixed(2)}</div>;
+                   })}
+                   </td>
+                   <td className="px-4 py-3 text-sm">
+                   {Object.entries(generatedReport.bfByCurrency || {}).map(function(entry) {
+                   return <div key={entry[0]}>{entry[1] < 0 ? '-' : ''}{entry[0]}{Math.abs(entry[1]).toFixed(2)}</div>;
                    })}
                    </td>
                    <td className="px-4 py-3 text-sm text-green-700">
