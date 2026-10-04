@@ -1625,6 +1625,9 @@ import React, { useState, useEffect } from 'react';
             // Held outside the Pay in Iraq screen (a ref, so updating it never re-renders anything) so a file you
             // are midway through reviewing survives the periodic background refresh.
             const iraqUploadStoreRef = React.useRef({ batchName: '', empId: '', previewRows: [], skippedRows: [], dupDecisions: {} });
+            // Draft of an expense being edited in the Expense Claims Manager, held outside that screen so a
+            // background refresh (which re-creates the screen) doesn't close the dialog or lose typed changes.
+            const expenseEditStoreRef = React.useRef({ id: null, form: {} });
             const [agentReportState, setAgentReportState] = useState({ fromDate: new Date().toISOString().slice(0,8)+'01', toDate: new Date().toISOString().split('T')[0], empFilter:'', branchFilter:'', countryFilter:'', reportData:null, showAddForm:false, addDraft: { empId:'', agentId:'', date:new Date().toISOString().split('T')[0], fromCode:'', toCode:'', collected:'', paid:'', bank:'', notes:'' } });
             // Lives at the root (never remounts) so in-progress work in the Agent Management
             // modal — bulk selections, an assign-in-progress, the edit form — survives even if
@@ -8496,7 +8499,7 @@ import React, { useState, useEffect } from 'react';
                 );
             };
 
-            const ExpenseManager = ({ onClose, visibleEmployees: visEmp, persistedState, onStateChange }) => {
+            const ExpenseManager = ({ onClose, visibleEmployees: visEmp, persistedState, onStateChange, editStore }) => {
                 // Filters (tab, branch, employee, date range) are kept in the parent's
                 // persisted state — same pattern as the Payroll Report and Financial
                 // Adjustments screens — so a periodic background refresh doesn't wipe
@@ -8735,6 +8738,56 @@ import React, { useState, useEffect } from 'react';
                   }
                 };
 
+                // ---- Edit an existing expense (pending or approved) ----------------------------------------
+                const eStore = editStore || {};
+                const [editId, setEditIdLocal] = useState(eStore.id || null);
+                const [editForm, setEditFormLocal] = useState(eStore.form || {});
+                const [editSaving, setEditSaving] = useState(false);
+                const openEdit = function(exp) {
+                  const f = { date: exp.date, category: exp.category, description: exp.description || '', amount: String(exp.amount), currency: expCurOf(exp), receiptNote: exp.receiptNote || '' };
+                  eStore.id = exp.id; eStore.form = f;
+                  setEditIdLocal(exp.id); setEditFormLocal(f);
+                };
+                const updateEdit = function(patch) {
+                  const f = Object.assign({}, editForm, patch);
+                  eStore.form = f; setEditFormLocal(f);
+                };
+                const closeEdit = function() { eStore.id = null; eStore.form = {}; setEditIdLocal(null); setEditFormLocal({}); };
+                const editingExp = editId ? expenses.find(function(e){ return e.id === editId; }) : null;
+
+                const handleSaveEdit = async function() {
+                  const exp = expenses.find(function(e){ return e.id === editId; });
+                  if (!exp) { closeEdit(); return; }
+                  const amt = parseFloat(editForm.amount);
+                  if (!editForm.date || !editForm.category || !(amt > 0)) { alert('Date, category and a valid amount are required fields.'); return; }
+                  const cur = MULTI_CURRENCIES.indexOf(editForm.currency) !== -1 ? editForm.currency : expCurOf(exp);
+                  const edited = Object.assign({}, exp, { date: editForm.date, category: editForm.category, description: editForm.description || '', amount: amt, currency: cur, receiptNote: editForm.receiptNote || '' });
+                  // Would the edited expense now look like a duplicate of another one?
+                  const dupAfter = findDuplicateExpenses(expenses.filter(function(e){ return visEmp.some(function(v){ return v.id === e.employeeId; }); }).map(function(e){ return e.id === exp.id ? edited : e; }), expCurOf);
+                  if (dupAfter[exp.id] && !window.confirm('⚠ After this change the expense would look like a duplicate:\n\n' + dupAfter[exp.id].twins.map(function(t){ return describeExpenseTwin(t, getCurrencySymbol(expCurOf(t.exp))); }).join('\n') + '\n\nSave the changes anyway?')) return;
+                  setEditSaving(true);
+                  try {
+                   const data = await apiCall(API_ENDPOINTS.expenses + '/' + exp.id, {
+                  method: 'PUT',
+                  body: JSON.stringify({ date: edited.date, category: edited.category, description: edited.description, amount: edited.amount, currency: edited.currency, receiptNote: edited.receiptNote })
+                   });
+                   if (!data.success) { alert('Unable to save the changes: ' + (data.error || 'Unknown error')); setEditSaving(false); return; }
+                   // Confirm the server really stored the new values (an API that only understands status
+                   // changes would answer "success" without applying anything).
+                   let applied = true;
+                   try {
+                  const fresh = await apiCall(API_ENDPOINTS.expenses);
+                  const row = fresh && fresh.expenses ? fresh.expenses.find(function(e){ return (e.Id || e.id) === exp.id; }) : null;
+                  if (row) applied = String(row.Date || row.date || '').split('T')[0] === edited.date && Math.abs(parseFloat(row.Amount || row.amount || 0) - edited.amount) < 0.005;
+                   } catch(e2) { /* verification is best-effort */ }
+                   if (applied) closeEdit();
+                   await loadExpensesFromAPI();
+                   if (applied) alert('The expense has been updated.');
+                   else alert('The server accepted the request but did not apply the changes. The expenses update route in the API needs to allow editing date, category, description, amount, currency and receipt reference.');
+                  } catch(e) { alert('Unable to save the changes: ' + e.message); }
+                  setEditSaving(false);
+                };
+
                 const handleAction = async (id, status, extra) => {
                   // Approving or paying something flagged as a possible duplicate needs an explicit decision.
                   if ((status === 'approved' || status === 'paid') && expDupMap[id]) {
@@ -8777,6 +8830,53 @@ import React, { useState, useEffect } from 'react';
                   <img src={lightboxImage} alt="Receipt" className="w-full rounded-xl shadow-2xl" />
                   <button onClick={() => setLightboxImage(null)} className="absolute top-2 right-2 bg-white text-gray-800 rounded-full w-8 h-8 flex items-center justify-center font-bold text-lg hover:bg-gray-100 shadow">✕</button>
                   <p className="text-center text-gray-400 text-xs mt-2">Click anywhere to close</p>
+                   </div>
+                  </div>
+                   )}
+                   {editingExp && (
+                  <div className="fixed inset-0 bg-black bg-opacity-60 flex items-start justify-center z-[65] p-4 overflow-y-auto">
+                   <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg my-8">
+                  <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-t-2xl px-6 py-4 flex items-center justify-between">
+                   <h3 className="text-lg font-bold text-white">Edit Expense</h3>
+                   <button onClick={closeEdit} className="text-white text-xl font-bold leading-none hover:text-indigo-200">✕</button>
+                  </div>
+                  <div className="p-6">
+                   <p className="text-sm text-gray-600 mb-4"><b>{editingExp.employeeName}</b> <span className="text-gray-400">{editingExp.employeeCode}</span> · <span className="capitalize">{editingExp.status}</span> <span className="text-xs text-gray-400">(editing doesn't change the status)</span></p>
+                   <div className="grid grid-cols-2 gap-3">
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Date *</label>
+                   <input type="date" value={editForm.date || ''} onChange={e => updateEdit({date: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Category *</label>
+                   <select value={editForm.category || ''} onChange={e => updateEdit({category: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                  {EXPENSE_CATEGORIES.concat(EXPENSE_CATEGORIES.indexOf(editForm.category) === -1 && editForm.category ? [editForm.category] : []).map(function(cat){ return <option key={cat} value={cat}>{cat}</option>; })}
+                   </select>
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Amount *</label>
+                   <input type="number" min="0.01" step="0.01" value={editForm.amount || ''} onChange={e => updateEdit({amount: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                  </div>
+                  <div>
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Currency</label>
+                   <select value={editForm.currency || ''} onChange={e => updateEdit({currency: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                  {MULTI_CURRENCIES.map(function(c){ return <option key={c} value={c}>{c} ({getCurrencySymbol(c).trim()})</option>; })}
+                   </select>
+                  </div>
+                  <div className="col-span-2">
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Description</label>
+                   <input type="text" value={editForm.description || ''} onChange={e => updateEdit({description: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                  </div>
+                  <div className="col-span-2">
+                   <label className="block text-xs font-semibold text-gray-600 mb-1">Receipt Ref</label>
+                   <input type="text" value={editForm.receiptNote || ''} onChange={e => updateEdit({receiptNote: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                  </div>
+                   </div>
+                   <div className="flex gap-2 mt-5">
+                  <button onClick={handleSaveEdit} disabled={editSaving} className="px-5 py-2 bg-indigo-600 text-white rounded-lg font-semibold text-sm hover:bg-indigo-700 disabled:opacity-50">{editSaving ? 'Saving…' : 'Save Changes'}</button>
+                  <button onClick={closeEdit} className="px-5 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold text-sm hover:bg-gray-300">Cancel</button>
+                   </div>
+                  </div>
                    </div>
                   </div>
                    )}
@@ -9037,6 +9137,9 @@ import React, { useState, useEffect } from 'react';
                   )}
                   {exp.status === 'approved' && (
                    <button onClick={() => handleAction(exp.id, 'paid', { paidBy: currentUser.firstName + ' ' + currentUser.lastName })} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold hover:bg-blue-200">Mark as Paid</button>
+                  )}
+                  {(exp.status === 'pending' || exp.status === 'approved') && (
+                   <button onClick={() => openEdit(exp)} className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs font-semibold hover:bg-indigo-200">Edit</button>
                   )}
                   {hasPermission('canDeleteAgentCollections') && (
                    <button onClick={() => handleDelete(exp.id)} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold hover:bg-red-200">Delete</button>
@@ -13172,7 +13275,7 @@ import React, { useState, useEffect } from 'react';
                    )}
 
                    {showExpenseManager && (
-                  <ExpenseManager onClose={() => setShowExpenseManager(false)} visibleEmployees={visibleEmployees} persistedState={expenseMgrState} onStateChange={setExpenseMgrState} />
+                  <ExpenseManager onClose={() => setShowExpenseManager(false)} visibleEmployees={visibleEmployees} persistedState={expenseMgrState} onStateChange={setExpenseMgrState} editStore={expenseEditStoreRef.current} />
                    )}
 
                    {showExpenseReport && (
