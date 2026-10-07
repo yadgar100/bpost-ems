@@ -425,7 +425,9 @@ import React, { useState, useEffect } from 'react';
                    // The backend requires a non-zero amount; the real sell/buy figures live in the
                    // tag. Every place that sums account_credit amounts now explicitly excludes
                    // FX-tagged records, so this value is never double-counted as a generic credit.
-                   amount: sellRounded,
+                   // The database column holds at most 99,999,999.99, so a larger sell (e.g. hundreds of
+                   // millions of IQD) is sent as a 0.01 placeholder instead of overflowing it.
+                   amount: sellRounded > 99999999.99 ? 0.01 : sellRounded,
                    reason: reason,
                    date: new Date().toISOString().split('T')[0],
                    hours: null
