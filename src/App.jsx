@@ -318,15 +318,62 @@ import React, { useState, useEffect } from 'react';
             // ── Internal currency exchange panel (module scope = stable, never remounts) ──
             // Sells from one currency account and buys into another at a stated rate.
             // Persisted as ONE tagged adjustment so both legs move together atomically.
+            // ---- Currency Exchange form draft ---------------------------------------------------------
+            // The employee portal is rebuilt whenever the app refreshes its data, which used to close the
+            // exchange form and empty it. The draft is kept in memory (survives those refreshes) and in
+            // localStorage (survives a browser reload), per employee, and is dropped after 24 hours.
+            const fxDraftMemory = {};
+            const FX_DRAFT_KEY = 'bpost_fx_draft_';
+            const loadFxDraft = (employeeId) => {
+                if (fxDraftMemory[employeeId]) return fxDraftMemory[employeeId];
+                try {
+                  const raw = localStorage.getItem(FX_DRAFT_KEY + employeeId);
+                  if (raw) {
+                   const d = JSON.parse(raw);
+                   if (d && Date.now() - (d.ts || 0) < 24 * 60 * 60 * 1000) return d;
+                  }
+                } catch (e) { /* storage unavailable: memory only */ }
+                return {};
+            };
+            const saveFxDraft = (employeeId, draft) => {
+                fxDraftMemory[employeeId] = draft;
+                try { localStorage.setItem(FX_DRAFT_KEY + employeeId, JSON.stringify(Object.assign({}, draft, { ts: Date.now() }))); } catch (e) { /* ignore */ }
+            };
+            const clearFxDraft = (employeeId) => {
+                delete fxDraftMemory[employeeId];
+                try { localStorage.removeItem(FX_DRAFT_KEY + employeeId); } catch (e) { /* ignore */ }
+            };
+
             const FxExchangePanel = ({ employeeId, ledgers, apiCall, API_ENDPOINTS, loadAdjustmentsFromAPI, getCurrencySymbol, buildFxTag, parseFxTag, recentFx }) => {
                 const CURS = ['IQD', 'USD', 'GBP', 'EUR'];
-                const [open, setOpen] = useState(false);
-                const [fromCur, setFromCur] = useState('USD');
-                const [toCur, setToCur] = useState('IQD');
-                const [sellAmt, setSellAmt] = useState('');
-                const [rate, setRate] = useState('');
-                const [note, setNote] = useState('');
+                // Everything typed into the form is saved as a draft as it changes (see loadFxDraft above),
+                // so the form stays open, with its values, until the employee records the exchange or
+                // closes it with Cancel.
+                const draftRef = React.useRef(null);
+                if (draftRef.current === null) draftRef.current = Object.assign({}, loadFxDraft(employeeId));
+                const remember = function(patch) {
+                  draftRef.current = Object.assign({}, draftRef.current, patch);
+                  saveFxDraft(employeeId, draftRef.current);
+                };
+                const [open, setOpenState] = useState(!!draftRef.current.open);
+                const setOpen = function(v) { remember({ open: v }); setOpenState(v); };
+                const [fromCur, setFromCurState] = useState(draftRef.current.fromCur || 'USD');
+                const setFromCur = function(v) { remember({ fromCur: v }); setFromCurState(v); };
+                const [toCurRaw, setToCurState] = useState(draftRef.current.toCur || 'IQD');
+                const setToCur = function(v) { remember({ toCur: v }); setToCurState(v); };
+                const [sellAmt, setSellAmtState] = useState(draftRef.current.sellAmt || '');
+                const setSellAmt = function(v) { remember({ sellAmt: v }); setSellAmtState(v); };
+                const [rate, setRateState] = useState(draftRef.current.rate || '');
+                const setRate = function(v) { remember({ rate: v }); setRateState(v); };
+                const [note, setNoteState] = useState(draftRef.current.note || '');
+                const setNote = function(v) { remember({ note: v }); setNoteState(v); };
                 const [saving, setSaving] = useState(false);
+                // The "Buy into" list never contains the sell currency. If the sell currency is changed to
+                // the one that was selected to buy, the stored value would be left pointing at a currency
+                // that isn't in the list: the box then DISPLAYS the first option while the app still used the
+                // old value (hence "Sell and buy currencies must be different" and a wrong symbol in the
+                // preview). Always resolve to a valid, different currency.
+                const toCur = toCurRaw !== fromCur ? toCurRaw : CURS.find(function(c){ return c !== fromCur; });
 
                 const sell = parseFloat(sellAmt) || 0;
                 const rt = parseFloat(rate) || 0;
@@ -334,10 +381,35 @@ import React, { useState, useEffect } from 'react';
                 const available = ledgers && ledgers[fromCur] ? ledgers[fromCur].balance : 0;
                 const insufficient = sell > 0 && sell > available + 0.005;
 
+                // ---- Rate sanity check (catches a rate typed upside-down, e.g. 1570 for "1 IQD = ? USD") ----
+                // Reference = this employee's own recent exchange of the same pair, else (for IQD pairs) a broad
+                // band of 500-5000 IQD per 1 unit of the other currency.
+                const rateCheck = (function() {
+                  if (!(rt > 0) || fromCur === toCur) return null;
+                  let ref = 0;
+                  (recentFx || []).slice().sort(function(a, b){ return a.date > b.date ? -1 : 1; }).some(function(a) {
+                   const fx = parseFxTag(a.reason);
+                   if (!fx || !(parseFloat(fx.rate) > 0)) return false;
+                   if (fx.from === fromCur && fx.to === toCur) { ref = parseFloat(fx.rate); return true; }
+                   if (fx.from === toCur && fx.to === fromCur) { ref = 1 / parseFloat(fx.rate); return true; }
+                   return false;
+                  });
+                  const within = function(r) {
+                   if (ref) return r / ref > 0.5 && r / ref < 2;
+                   const iqd = fromCur === 'IQD' ? 1 / r : (toCur === 'IQD' ? r : null);
+                   return iqd === null ? true : (iqd >= 500 && iqd <= 5000);
+                  };
+                  if (within(rt)) return null;
+                  const flipped = 1 / rt;
+                  return { flipped: within(flipped) ? parseFloat(flipped.toPrecision(6)) : 0, usedHistory: !!ref };
+                })();
+
                 const submit = async function() {
                   if (fromCur === toCur) { alert('Sell and buy currencies must be different.'); return; }
                   if (!(sell > 0)) { alert('Enter an amount to sell.'); return; }
                   if (!(rt > 0)) { alert('Enter an exchange rate.'); return; }
+                  if (rateCheck && rateCheck.flipped) { alert('The rate looks upside-down. The rate means: 1 ' + fromCur + ' = ? ' + toCur + '.\n\nDid you mean ' + rateCheck.flipped + '? Please correct it before recording the exchange.'); return; }
+                  if (rateCheck && !window.confirm('⚠️ The rate you entered looks unusual compared with ' + (rateCheck.usedHistory ? 'your recent exchanges' : 'normal IQD rates') + '.\n\nRecord this exchange anyway?')) return;
                   if (insufficient && !window.confirm('Your ' + fromCur + ' account only holds ' + available.toFixed(2) + '. Record this exchange anyway?')) return;
                   const buyRounded = parseFloat(buy.toFixed(2));
                   const sellRounded = parseFloat(sell.toFixed(2));
@@ -362,8 +434,19 @@ import React, { useState, useEffect } from 'react';
                    if (res && res.success === false) throw new Error(res.error || 'API error');
                    await loadAdjustmentsFromAPI();
                    setSellAmt(''); setRate(''); setNote(''); setOpen(false);
+                   clearFxDraft(employeeId); draftRef.current = {};
                   } catch(e) { alert('Failed to record exchange: ' + e.message); }
                   setSaving(false);
+                };
+
+                // Open / Cancel: the form only closes (and forgets what was typed) when the employee asks it to.
+                const toggleOpen = function() {
+                  if (open) {
+                   setSellAmtState(''); setRateState(''); setNoteState(''); setFromCurState('USD'); setToCurState('IQD'); setOpenState(false);
+                   clearFxDraft(employeeId); draftRef.current = {};
+                  } else {
+                   setOpen(true);
+                  }
                 };
 
                 const fc = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400';
@@ -374,7 +457,7 @@ import React, { useState, useEffect } from 'react';
                   <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                    <DollarSign className="w-5 h-5 text-sky-600" />Currency Exchange
                   </h2>
-                  <button onClick={function(){ setOpen(!open); }} className="bg-sky-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-sky-700">
+                  <button onClick={toggleOpen} className="bg-sky-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-sky-700">
                    {open ? 'Cancel' : 'New Exchange'}
                   </button>
                    </div>
@@ -383,7 +466,7 @@ import React, { useState, useEffect } from 'react';
                    <div className="grid grid-cols-2 gap-3">
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Sell from</label>
-                   <select value={fromCur} onChange={function(e){ setFromCur(e.target.value); }} className={fc}>
+                   <select value={fromCur} onChange={function(e){ const v = e.target.value; if (v === toCur) setToCur(fromCur); setFromCur(v); }} className={fc}>
                   {CURS.map(function(c){ return <option key={c} value={c}>{getCurrencySymbol(c)} {c}</option>; })}
                    </select>
                    <p className="text-[11px] mt-1 text-gray-500">Available: {getCurrencySymbol(fromCur)}{available.toFixed(2)}</p>
@@ -405,6 +488,16 @@ import React, { useState, useEffect } from 'react';
                    <input type="number" min="0" step="any" value={rate} onChange={function(e){ setRate(e.target.value); }} placeholder="0.00" className={fc} />
                   </div>
                    </div>
+                   {fromCur === 'IQD' && (
+                  <p className="text-[11px] text-gray-500">Tip: the rate is how many {toCur} you get for <b>1 IQD</b>. For example, if 1 {toCur} = 1570 IQD, enter 0.000637.</p>
+                   )}
+                   {rateCheck && (
+                  <div className="text-xs bg-red-50 border border-red-300 text-red-700 rounded-lg px-3 py-2">
+                   <p className="font-semibold">⚠️ {rateCheck.flipped ? 'This rate looks upside-down.' : 'This rate looks unusual.'}</p>
+                   <p className="mt-0.5">The rate means 1 {fromCur} = ? {toCur}.{rateCheck.flipped ? ' Did you mean ' + rateCheck.flipped + '?' : ' Please double-check it.'}</p>
+                   {rateCheck.flipped > 0 && <button onClick={function(){ setRate(String(rateCheck.flipped)); }} className="mt-1.5 px-3 py-1 bg-red-600 text-white rounded font-semibold">Use {rateCheck.flipped}</button>}
+                  </div>
+                   )}
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Note (optional)</label>
                   <input type="text" value={note} onChange={function(e){ setNote(e.target.value); }} placeholder="e.g. exchanged at Erbil bazaar" className={fc} />
