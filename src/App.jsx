@@ -344,6 +344,26 @@ import React, { useState, useEffect } from 'react';
                 try { localStorage.removeItem(FX_DRAFT_KEY + employeeId); } catch (e) { /* ignore */ }
             };
 
+            // Returns the free-text part of a note, with internal machine markers removed
+            // (bank approval, FX, period and branch tags), so only what a person wrote is shown.
+            const noteText = function(v) {
+              return String(v == null ? '' : v)
+                .replace(/\[BANK_OK\]/g, '').replace(/\[FX:[^\]]*\]/g, '')
+                .replace(/\[PERIOD:[^\]]*\]/g, '').replace(/\[BRANCH:[^\]]*\]/g, '')
+                .replace(/\[BANK\]/g, '').replace(/\s+/g, ' ').trim();
+            };
+            // Pay in Iraq stores "Office: X | free text"; this returns only the free-text part.
+            const iraqNoteText = function(v) {
+              const raw = String(v == null ? '' : v).trim();
+              if (!raw) return '';
+              if (raw.indexOf('Office:') === 0) return raw.split('|').slice(1).join('|').trim();
+              return raw;
+            };
+            const escHtmlNote = function(v) {
+              return String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            };
+            const csvNote = function(v) { return String(v == null ? '' : v).replace(/"/g,'""'); };
+
             const FxExchangePanel = ({ employeeId, ledgers, apiCall, API_ENDPOINTS, loadAdjustmentsFromAPI, getCurrencySymbol, buildFxTag, parseFxTag, recentFx }) => {
                 const CURS = ['IQD', 'USD', 'GBP', 'EUR'];
                 // Everything typed into the form is saved as a draft as it changes (see loadFxDraft above),
@@ -1089,7 +1109,7 @@ import React, { useState, useEffect } from 'react';
                    <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                    <thead className="bg-orange-50">
-                  <tr>{['Employee','Date','Agent','From','To','Cash Collected','Paid to Agent','Bank Transfer', hasPermission('canManageAgentCollections') ? 'Edit' : ''].filter(Boolean).map(function(h) { return <th key={h} className="px-4 py-3 text-left text-xs font-bold text-orange-700 uppercase tracking-wide">{h}</th>; })}</tr>
+                  <tr>{['Employee','Date','Agent','From','To','Cash Collected','Paid to Agent','Bank Transfer','Notes', hasPermission('canManageAgentCollections') ? 'Edit' : ''].filter(Boolean).map(function(h) { return <th key={h} className="px-4 py-3 text-left text-xs font-bold text-orange-700 uppercase tracking-wide">{h}</th>; })}</tr>
                    </thead>
                    <tbody className="divide-y divide-gray-100">
                   {reportData.map(function(col) {
@@ -1136,6 +1156,7 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   ) : <span className="text-gray-300">—</span>)}
                    </td>
+                   <td className="px-4 py-3 text-xs text-gray-600 max-w-xs whitespace-normal break-words">{noteText(col.notes) || <span className="text-gray-300">—</span>}</td>
                    {hasPermission('canManageAgentCollections') && (
                   <td className="px-4 py-3">
                    {isEditing ? (
@@ -1161,6 +1182,7 @@ import React, { useState, useEffect } from 'react';
                    <td className="px-4 py-3 text-green-700">{getCurrencySymbol(reportCurrency)}{totalCollected.toFixed(2)}</td>
                    <td className="px-4 py-3 text-red-600">{getCurrencySymbol(reportCurrency)}{totalPaid.toFixed(2)}</td>
                    <td className="px-4 py-3 text-blue-600">{getCurrencySymbol(reportCurrency)}{(reportData.reduce(function(s,c){return s+(c.bankAmount||0);},0)).toFixed(2)}</td>
+                   <td></td>
                    {hasPermission('canManageAgentCollections') && <td></td>}
                   </tr>
                    </tbody>
@@ -4581,7 +4603,7 @@ import React, { useState, useEffect } from 'react';
                    <tfoot>
                   <tr className="border-t-2 border-orange-200 bg-orange-50 font-bold">
                    <td colSpan="4" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Total ({filtered.length} record{filtered.length!==1?'s':''})</td>
-                   <td className="px-3 py-2 text-green-700" colSpan="3">
+                   <td className="px-3 py-2 text-green-700" colSpan="4">
                   {(function() {
                    const byCur = {};
                    filtered.forEach(function(c){
@@ -5270,7 +5292,7 @@ import React, { useState, useEffect } from 'react';
                     p.employeeName||'', p.employeeCode||'', p.batchName||'', p.shipmentCode||'',
                     moveBatchName||'(pending)', (p.notes||'').replace('Office:','').trim().split('|')[0].trim(),
                     recvName, recvMobile,
-                    p.amountIQD||0, p.amountUSD||0, p.amountGBP||0, p.amountEUR||0, p.status||''
+                    p.amountIQD||0, p.amountUSD||0, p.amountGBP||0, p.amountEUR||0, p.status||'', iraqNoteText(p.notes)
                    ];
                   });
                   const ws = window.XLSX.utils.aoa_to_sheet([...headerRows, ...dataRows]);
@@ -5304,6 +5326,7 @@ import React, { useState, useEffect } from 'react';
                       '<td style="padding:5px 8px;font-size:11px;text-align:right">'+fmt(p.amountGBP,'£')+'</td>',
                       '<td style="padding:5px 8px;font-size:11px;text-align:right">'+fmt(p.amountEUR,'€')+'</td>',
                       '<td style="padding:5px 8px;font-size:11px;text-align:center"><span style="padding:2px 8px;border-radius:9999px;background:#fef3c7;color:#92400e;font-size:10px">'+p.status+'</span></td>',
+                      '<td style="padding:5px 8px;font-size:10px;color:#4b5563">'+(String(iraqNoteText(p.notes)).replace(/&/g,'&amp;').replace(/</g,'&lt;') || '—')+'</td>',
                       '</tr>'
                     ].join('');
                   }).join('');
@@ -5331,7 +5354,7 @@ import React, { useState, useEffect } from 'react';
                     '</div>',
                     '<table><thead><tr>',
                     '<th>Employee</th><th>Old Batch</th><th>Shipment Code</th><th>New Batch</th>',
-                    '<th>To Office</th><th>Receiver Name</th><th>Mobile</th><th>IQD</th><th>USD</th><th>GBP</th><th>EUR</th><th>Status</th>',
+                    '<th>To Office</th><th>Receiver Name</th><th>Mobile</th><th>IQD</th><th>USD</th><th>GBP</th><th>EUR</th><th>Status</th><th>Notes</th>',
                     '</tr></thead><tbody>'+rows+'</tbody></table>',
                     '</body></html>'
                   ].join('');
@@ -5458,16 +5481,16 @@ import React, { useState, useEffect } from 'react';
                    meta.colGBP>0 ? ['Total GBP Collected:', '£'+meta.colGBP.toFixed(2)] : [],
                    meta.colEUR>0 ? ['Total EUR Collected:', '€'+meta.colEUR.toFixed(2)] : [],
                    [],
-                   ['Employee','Batch','Original Batch','Shipment Code','Receiver','Receiver Mobile','To Office','IQD Due','USD Due','GBP Due','EUR Due','Collected IQD','Collected USD','Collected GBP','Collected EUR','Status'],
+                   ['Employee','Batch','Original Batch','Shipment Code','Receiver','Receiver Mobile','To Office','IQD Due','USD Due','GBP Due','EUR Due','Collected IQD','Collected USD','Collected GBP','Collected EUR','Status','Notes'],
                   ];
                   const dataRows = filtered.map(function(p){
                    return [p.employeeName||'', p.batchName||'', (p.oldBatchName || p.batchName || ''), p.shipmentCode||'', p.receiver||'', p.receiverMobile||'', (p.notes||'').replace('Office:','').trim().split('|')[0].trim(),
                    p.amountIQD||0, p.amountUSD||0, p.amountGBP||0, p.amountEUR||0,
-                   p.collectedIQD||0, p.collectedUSD||0, p.collectedGBP||0, p.collectedEUR||0, p.status||''];
+                   p.collectedIQD||0, p.collectedUSD||0, p.collectedGBP||0, p.collectedEUR||0, p.status||'', iraqNoteText(p.notes)];
                   });
                   const ws = window.XLSX.utils.aoa_to_sheet([...headerRows, ...dataRows]);
                   // Style header cols width
-                  ws['!cols'] = [{wch:20},{wch:20},{wch:18},{wch:15},{wch:22},{wch:16},{wch:25},{wch:12},{wch:12},{wch:12},{wch:12},{wch:14},{wch:14},{wch:14},{wch:14},{wch:12}];
+                  ws['!cols'] = [{wch:20},{wch:20},{wch:18},{wch:15},{wch:22},{wch:16},{wch:25},{wch:12},{wch:12},{wch:12},{wch:12},{wch:14},{wch:14},{wch:14},{wch:14},{wch:12},{wch:30}];
                   window.XLSX.utils.book_append_sheet(wb, ws, 'Pay in Iraq');
                   window.XLSX.writeFile(wb, 'PayInIraq_Report_' + new Date().toISOString().slice(0,10) + '.xlsx');
                 };
@@ -5491,6 +5514,7 @@ import React, { useState, useEffect } from 'react';
                     +'<td style="padding:4px 8px;font-size:11px;text-align:right">'+fmt(p.amountEUR,'€')+'</td>'
                     +'<td style="padding:4px 8px;font-size:11px;text-align:right;color:'+(collectedParts.length?'#16a34a':'#d1d5db')+'">'+(collectedParts.join(' / ')||'—')+'</td>'
                     +'<td style="padding:4px 8px;font-size:11px;text-align:center"><span style="padding:2px 8px;border-radius:9999px;font-size:10px;background:'+(p.status==='collected'?'#dcfce7':'#fef9c3')+';color:'+(p.status==='collected'?'#16a34a':'#854d0e')+'">'+p.status+'</span></td>'
+                    +'<td style="padding:4px 8px;font-size:10px;color:#4b5563">'+(esc(iraqNoteText(p.notes))||'—')+'</td>'
                     +'</tr>';
                   }).join('');
                   const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pay in Iraq Report</title><style>@page{size:A4 landscape;margin:10mm}</style></head><body style="font-family:Arial,sans-serif;padding:24px;color:#1f2937">'
@@ -5520,6 +5544,7 @@ import React, { useState, useEffect } from 'react';
                    +'<th style="padding:6px 8px;text-align:right;font-size:11px">EUR</th>'
                    +'<th style="padding:6px 8px;text-align:right;font-size:11px">Collected</th>'
                    +'<th style="padding:6px 8px;text-align:center;font-size:11px">Status</th>'
+                   +'<th style="padding:6px 8px;text-align:left;font-size:11px">Notes</th>'
                    +'</tr></thead><tbody>'+rows+'</tbody></table>'
                    +'<p style="margin-top:16px;font-size:10px;color:#9ca3af;text-align:right">Generated: '+new Date().toLocaleString()+'</p>'
                    +'</body></html>';
@@ -7178,7 +7203,7 @@ import React, { useState, useEffect } from 'react';
                 const exportToCSV = () => {
                   if (!generatedReport) return;
 
-                  let csv = 'Employee ID,Name,Department,Position,Total Hours,Regular Hours,Overtime Hours,Break Minutes,Hourly Rate,Regular Pay,Overtime Pay,Break Deduction,Bonus,Sick Pay,Penalty,Advance,Total Pay,Payments Made,Brought Forward,Balance Owed,Dashboard Balance (To Date),Approved Shifts,Pending Shifts,Rejected Shifts\n';
+                  let csv = 'Employee ID,Name,Department,Position,Total Hours,Regular Hours,Overtime Hours,Break Minutes,Hourly Rate,Regular Pay,Overtime Pay,Break Deduction,Bonus,Sick Pay,Penalty,Advance,Total Pay,Payments Made,Brought Forward,Balance Owed,Dashboard Balance (To Date),Approved Shifts,Pending Shifts,Rejected Shifts,Shift Notes\n';
 
                   generatedReport.data.forEach(row => {
                    csv += `${row.employee.employeeId},`;
@@ -7204,7 +7229,8 @@ import React, { useState, useEffect } from 'react';
                    csv += `${(row.allTimeBalance||0).toFixed(2)},`;
                    csv += `${row.approvedShifts},`;
                    csv += `${row.pendingShifts},`;
-                   csv += `${row.rejectedShifts}\n`;
+                   csv += `${row.rejectedShifts},`;
+                    csv += '"' + (row.timesheets || []).filter(function(t){ return (t.notes||'').trim(); }).sort(function(x,y){ return new Date(x.date) - new Date(y.date); }).map(function(t){ return t.date + ': ' + (t.notes||'').trim(); }).join(' | ').replace(/"/g,'""') + '"\n';
                   });
 
                   const blob = new Blob([csv], { type: 'text/csv' });
@@ -7286,6 +7312,7 @@ import React, { useState, useEffect } from 'react';
                    + '<td class="n">' + tHrs.toFixed(1) + 'h</td>'
                    + '<td class="n">' + sy + shiftPayFor(r.employee, ts).toFixed(2) + '</td>'
                    + '<td>' + esc(ts.status) + (counted ? '' : ' (not counted)') + '</td>'
+                   + '<td>' + (esc((ts.notes || '').trim()) || '—') + '</td>'
                    + '</tr>';
                    }).join('');
                    const extra = []
@@ -7297,7 +7324,7 @@ import React, { useState, useEffect } from 'react';
                    if (r.payments > 0) extra.push('Payments made: ' + sy + r.payments.toFixed(2));
                    if (Math.abs(r.broughtForward) > 0.005) extra.push('Brought forward: ' + signedMoney(sy, r.broughtForward));
                    return '<div class="sec"><div class="sec-title"><span>Shift details — ' + esc(r.employee.firstName + ' ' + r.employee.lastName) + '</span><span>' + esc(r.employee.employeeId) + '</span></div>'
-                    + '<table><thead><tr><th>Date</th><th>Start</th><th>Finish</th><th class="n">Regular</th><th class="n">Overtime</th><th class="n">Break</th><th class="n">Total</th><th class="n">Pay</th><th>Status</th></tr></thead><tbody>' + trs + '</tbody></table>'
+                    + '<table><thead><tr><th>Date</th><th>Start</th><th>Finish</th><th class="n">Regular</th><th class="n">Overtime</th><th class="n">Break</th><th class="n">Total</th><th class="n">Pay</th><th>Status</th><th>Notes</th></tr></thead><tbody>' + trs + '</tbody></table>'
                     + (extra.length ? '<div class="extra">' + esc(extra.join('   ·   ')) + '</div>' : '')
                     + '</div>';
                   }).join('');
@@ -7557,6 +7584,7 @@ import React, { useState, useEffect } from 'react';
                    <th className="py-2 text-left">Total</th>
                    <th className="py-2 text-left">Pay</th>
                    <th className="py-2 text-left">Status</th>
+                   <th className="py-2 text-left">Notes</th>
                    {hasPermission('canApproveTimesheets') && <th className="py-2 text-left">Actions</th>}
                   </tr>
                    </thead>
@@ -7596,6 +7624,7 @@ import React, { useState, useEffect } from 'react';
                   {ts.status}
                    </span>
                   </td>
+                  <td className="py-1.5 text-xs text-gray-600 max-w-xs whitespace-normal break-words">{(ts.notes||'').trim() || <span className="text-gray-300">—</span>}</td>
                   {hasPermission('canApproveTimesheets') && (
                    <td className="py-1.5">
                   {(ts.status === 'pending' || ts.status === 'checkedout') ? (
@@ -9201,6 +9230,7 @@ import React, { useState, useEffect } from 'react';
                   </td>
                   <td className="px-3 py-3 text-gray-600 max-w-xs">
                    <div className="truncate">{exp.description || ''}</div>
+                   {exp.receiptNote && <div className="text-xs text-gray-500 italic whitespace-normal break-words" title="Employee note">Note: {exp.receiptNote}</div>}
                    {expDupMap[exp.id] && (function() {
                   const d = expDupMap[exp.id];
                   const t0 = d.twins[0];
@@ -9458,6 +9488,7 @@ import React, { useState, useEffect } from 'react';
                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Date</th>
                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Category</th>
                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Description</th>
+                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Notes</th>
                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Amount</th>
                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Status</th>
                   </tr>
@@ -9483,6 +9514,7 @@ import React, { useState, useEffect } from 'react';
                    );
                   })()}
                    </td>
+                   <td className="px-4 py-2 text-xs text-gray-600 whitespace-normal break-words max-w-xs">{exp.receiptNote || <span className="text-gray-300">—</span>}</td>
                    <td className="px-4 py-2 font-bold text-gray-800">{rowSym}{exp.amount.toFixed(2)}</td>
                    <td className="px-4 py-2">
                   <span className={'px-2 py-0.5 rounded-full text-xs font-semibold capitalize ' + getStatusBadgeClass(exp.status)}>{exp.status}</span>
@@ -9886,7 +9918,7 @@ import React, { useState, useEffect } from 'react';
                   const shiftRate = (ts.hourlyRate != null && ts.hourlyRate !== '') ? parseFloat(ts.hourlyRate) : hourlyRate;
                   const shiftOtMult = (ts.overtimeRate != null && ts.overtimeRate !== '') ? parseFloat(ts.overtimeRate) : overtimeMultiplier;
                   const earned = (reg * shiftRate) + (ot * shiftRate * shiftOtMult);
-                  return { date: ts.date, regularHours: reg, overtimeHours: ot, breakMinutes: breakMin, earned: earned };
+                  return { date: ts.date, regularHours: reg, overtimeHours: ot, breakMinutes: breakMin, earned: earned, note: (ts.notes || '').trim() };
                   });
 
                   const totalEarned = tsRows.reduce(function(s,r) { return s+r.earned; }, 0);
@@ -10111,15 +10143,15 @@ import React, { useState, useEffect } from 'react';
                   const balanceLabel = report.balance > 0 ? 'Employee Owes Company' : report.balance < 0 ? 'Company Owes Employee' : 'Balance Clear';
                   const balanceColor = report.balance > 0 ? '#dc2626' : report.balance < 0 ? '#16a34a' : '#6b7280';
                   const tsRows = report.tsRows.map(function(r) {
-                  return '<tr><td>'+new Date(r.date).toLocaleDateString('en-GB')+'</td><td>'+r.regularHours.toFixed(1)+'h</td><td>'+(r.overtimeHours>0?r.overtimeHours.toFixed(1)+'h':'—')+'</td><td>'+sym+report.hourlyRate.toFixed(2)+'/hr</td><td><b>'+sym+r.earned.toFixed(2)+'</b></td></tr>';
+                  return '<tr><td>'+new Date(r.date).toLocaleDateString('en-GB')+'</td><td>'+r.regularHours.toFixed(1)+'h</td><td>'+(r.overtimeHours>0?r.overtimeHours.toFixed(1)+'h':'—')+'</td><td>'+sym+report.hourlyRate.toFixed(2)+'/hr</td><td><b>'+sym+r.earned.toFixed(2)+'</b></td><td>'+(escHtmlNote(r.note)||'—')+'</td></tr>';
                   }).join('');
                   const collRows = report.empCollections.map(function(c) {
                   const cSym = getCurrencySymbol(recordCurrency(c, emp));
-                  return '<tr><td>'+new Date(c.date).toLocaleDateString('en-GB')+'</td><td>'+c.agentCode+' – '+c.agentCity+'</td><td>'+c.fromCode+'</td><td>'+c.toCode+'</td><td><b>'+cSym+c.amountCollected.toFixed(2)+'</b></td><td>'+(c.amountPaid>0?'-'+cSym+c.amountPaid.toFixed(2):'—')+'</td></tr>';
+                  return '<tr><td>'+new Date(c.date).toLocaleDateString('en-GB')+'</td><td>'+c.agentCode+' – '+c.agentCity+'</td><td>'+c.fromCode+'</td><td>'+c.toCode+'</td><td><b>'+cSym+c.amountCollected.toFixed(2)+'</b></td><td>'+(c.amountPaid>0?'-'+cSym+c.amountPaid.toFixed(2):'—')+'</td><td>'+(escHtmlNote(noteText(c.notes))||'—')+'</td></tr>';
                   }).join('');
                   const expRows = report.empExpenses.map(function(e) {
                   const eSym = getCurrencySymbol(recordCurrency(e, emp));
-                  return '<tr><td>'+new Date(e.date).toLocaleDateString('en-GB')+'</td><td>'+e.category+'</td><td>'+(e.description||'—')+'</td><td>'+e.status+'</td><td><b>'+eSym+e.amount.toFixed(2)+'</b></td></tr>';
+                  return '<tr><td>'+new Date(e.date).toLocaleDateString('en-GB')+'</td><td>'+e.category+'</td><td>'+escHtmlNote(e.description||'—')+'</td><td>'+(escHtmlNote(e.receiptNote)||'—')+'</td><td>'+e.status+'</td><td><b>'+eSym+e.amount.toFixed(2)+'</b></td></tr>';
                   }).join('');
                   // Groups a set of records by their own currency (e.g. an employee who
                   // collects in both USD and IQD) and returns a joined string like
@@ -10166,9 +10198,9 @@ import React, { useState, useEffect } from 'react';
                   const css = '<style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:Arial,sans-serif;font-size:10px;color:#1f2937;padding:16px;}h1{font-size:16px;color:#4338ca;margin-bottom:3px;}.meta{display:flex;justify-content:space-between;padding:8px 12px;background:#f3f4f6;border-radius:6px;margin:8px 0 14px;}.sec-title{font-size:9px;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;color:#374151;margin-bottom:4px;padding-bottom:3px;border-bottom:2px solid #e5e7eb;display:flex;justify-content:space-between;}.sec{margin-bottom:12px;}table{width:100%;border-collapse:collapse;font-size:9px;}th{background:#f9fafb;text-align:left;padding:3px 6px;font-size:8px;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb;}td{padding:3px 6px;border-bottom:1px solid #f3f4f6;}.sum{background:#fef2f2;border:2px solid #fecaca;border-radius:6px;padding:10px;margin-top:12px;}.srow{display:flex;justify-content:space-between;padding:2px 0;font-size:10px;}.stotal{display:flex;justify-content:space-between;padding-top:7px;margin-top:6px;border-top:2px solid #e5e7eb;font-size:13px;font-weight:bold;}.footer{margin-top:14px;text-align:center;font-size:8px;color:#9ca3af;}.ccards{display:flex;flex-wrap:wrap;gap:6px;}.ccard{flex:1 1 100px;border:1px solid #e5e7eb;border-radius:6px;padding:6px;}.ccard-head{display:flex;justify-content:space-between;align-items:center;font-size:8px;color:#6b7280;margin-bottom:2px;}.wage-badge{background:#e0e7ff;color:#4338ca;border-radius:8px;padding:0 4px;font-size:6px;}.ccard-bal{font-size:13px;font-weight:bold;}.ccard-label{font-size:7px;font-weight:600;margin-bottom:3px;}.crow{display:flex;justify-content:space-between;font-size:7px;color:#6b7280;padding:0.5px 0;}@page{size:A4 portrait;margin:10mm;}@media print{html,body{height:100%;width:100%;}body{padding:8px;font-size:9px;}h1{font-size:14px;}.meta{padding:6px 10px;margin:6px 0 10px;}.sec{margin-bottom:8px;}.sum{padding:8px;margin-top:8px;}.footer{margin-top:8px;}}</style>';
                   const body = '<h1>Employee Accounting Report</h1><p style="color:#6b7280;font-size:11px;margin-bottom:4px;">Generated: '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})+'</p>'
                   +'<div class="meta"><div><b style="font-size:15px;">'+emp.firstName+' '+emp.lastName+'</b><br><span style="color:#6b7280;">'+emp.employeeId+' · '+emp.department+' · '+sym+(parseFloat(emp.hourlyRate)||0).toFixed(2)+'/hr</span></div><div style="text-align:right;"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;">Period</span><br><b>'+periodStr+'</b></div></div>'
-                  +(report.empCollections.length>0?'<div class="sec"><div class="sec-title"><span>Agent Collections</span><span>'+groupByCur(report.empCollections,'amountCollected')+'</span></div><table><thead><tr><th>Date</th><th>Agent</th><th>From</th><th>To</th><th>Collected</th><th>Paid to Agent</th></tr></thead><tbody>'+collRows+'<tr style="background:#f0fdf4;font-weight:bold;"><td colspan="4" style="text-align:right;padding-right:8px;">Net</td><td>'+groupByCur(report.empCollections,'amountCollected')+'</td><td style="color:#dc2626;">-'+groupByCur(report.empCollections,'amountPaid')+'</td></tr></tbody></table></div>':'')
-                  +(report.tsRows.length>0?'<div class="sec"><div class="sec-title"><span>Earnings from Timesheets</span><span>'+sym+report.totalEarned.toFixed(2)+'</span></div><table><thead><tr><th>Date</th><th>Regular</th><th>Overtime</th><th>Rate</th><th>Earned</th></tr></thead><tbody>'+tsRows+'<tr style="background:#eff6ff;font-weight:bold;"><td colspan="4" style="text-align:right;padding-right:8px;">Total</td><td>'+sym+report.totalEarned.toFixed(2)+'</td></tr></tbody></table></div>':'')
-                  +(report.empExpenses.length>0?'<div class="sec"><div class="sec-title"><span>Approved Expenses</span><span>'+(function(){var byCur={};report.empExpenses.forEach(function(e){var cur=recordCurrency(e,emp);byCur[cur]=(byCur[cur]||0)+e.amount;});return Object.keys(byCur).map(function(cur){return getCurrencySymbol(cur)+byCur[cur].toFixed(2);}).join(' + ');})()+'</span></div><table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Status</th><th>Amount</th></tr></thead><tbody>'+expRows+'<tr style="background:#f0fdfa;font-weight:bold;"><td colspan="4" style="text-align:right;padding-right:8px;">Total</td><td>'+(function(){var byCur={};report.empExpenses.forEach(function(e){var cur=recordCurrency(e,emp);byCur[cur]=(byCur[cur]||0)+e.amount;});return Object.keys(byCur).map(function(cur){return getCurrencySymbol(cur)+byCur[cur].toFixed(2);}).join(' + ');})()+'</td></tr></tbody></table></div>':'')
+                  +(report.empCollections.length>0?'<div class="sec"><div class="sec-title"><span>Agent Collections</span><span>'+groupByCur(report.empCollections,'amountCollected')+'</span></div><table><thead><tr><th>Date</th><th>Agent</th><th>From</th><th>To</th><th>Collected</th><th>Paid to Agent</th><th>Notes</th></tr></thead><tbody>'+collRows+'<tr style="background:#f0fdf4;font-weight:bold;"><td colspan="4" style="text-align:right;padding-right:8px;">Net</td><td>'+groupByCur(report.empCollections,'amountCollected')+'</td><td style="color:#dc2626;">-'+groupByCur(report.empCollections,'amountPaid')+'</td><td></td></tr></tbody></table></div>':'')
+                  +(report.tsRows.length>0?'<div class="sec"><div class="sec-title"><span>Earnings from Timesheets</span><span>'+sym+report.totalEarned.toFixed(2)+'</span></div><table><thead><tr><th>Date</th><th>Regular</th><th>Overtime</th><th>Rate</th><th>Earned</th><th>Notes</th></tr></thead><tbody>'+tsRows+'<tr style="background:#eff6ff;font-weight:bold;"><td colspan="4" style="text-align:right;padding-right:8px;">Total</td><td>'+sym+report.totalEarned.toFixed(2)+'</td><td></td></tr></tbody></table></div>':'')
+                  +(report.empExpenses.length>0?'<div class="sec"><div class="sec-title"><span>Approved Expenses</span><span>'+(function(){var byCur={};report.empExpenses.forEach(function(e){var cur=recordCurrency(e,emp);byCur[cur]=(byCur[cur]||0)+e.amount;});return Object.keys(byCur).map(function(cur){return getCurrencySymbol(cur)+byCur[cur].toFixed(2);}).join(' + ');})()+'</span></div><table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Notes</th><th>Status</th><th>Amount</th></tr></thead><tbody>'+expRows+'<tr style="background:#f0fdfa;font-weight:bold;"><td colspan="5" style="text-align:right;padding-right:8px;">Total</td><td>'+(function(){var byCur={};report.empExpenses.forEach(function(e){var cur=recordCurrency(e,emp);byCur[cur]=(byCur[cur]||0)+e.amount;});return Object.keys(byCur).map(function(cur){return getCurrencySymbol(cur)+byCur[cur].toFixed(2);}).join(' + ');})()+'</td></tr></tbody></table></div>':'')
                   +((report.accountCredits&&report.accountCredits.length>0)?'<div class="sec"><div class="sec-title"><span>Account Credits (Cash to Accountant)</span><span>'+groupByCur(report.accountCredits,'amount')+'</span></div><table><thead><tr><th>Date</th><th>Note</th><th>Amount</th></tr></thead><tbody>'+creditRows+'<tr style="background:#eef2ff;font-weight:bold;"><td colspan="2" style="text-align:right;padding-right:8px;">Total</td><td>'+groupByCur(report.accountCredits,'amount')+'</td></tr></tbody></table></div>':'')
                   +currencyAccountsHtml
                   +'<div class="sum" style="'+(report.empIsMulti?'background:#f8fafc;border-color:#e2e8f0;':'')+'"><div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:10px;">'+(report.empIsMulti?'Combined Summary (all currencies — reference only)':'Final Balance Summary')+'</div>'
@@ -10194,10 +10226,10 @@ import React, { useState, useEffect } from 'react';
 
                 const exportCSV = function() {
                   if (!report) return;
-                  let csv = 'Section,Date,Description,Amount\n';
-                  report.tsRows.forEach(function(r) { csv += '"Timesheet","'+r.date+'","'+r.regularHours+'h reg + '+r.overtimeHours+'h OT",'+r.earned.toFixed(2)+'\n'; });
-                  report.empExpenses.forEach(function(e) { csv += '"Expense","'+e.date+'","'+e.category+(e.description?' - '+e.description:'')+'",'+e.amount.toFixed(2)+'\n'; });
-                  report.empCollections.forEach(function(c) { csv += '"Collection","'+c.date+'","'+c.agentCode+' '+c.agentCity+' ('+c.fromCode+'-'+c.toCode+')",'+c.amountCollected.toFixed(2)+'\n'; });
+                  let csv = 'Section,Date,Description,Amount,Notes\n';
+                  report.tsRows.forEach(function(r) { csv += '"Timesheet","'+r.date+'","'+r.regularHours+'h reg + '+r.overtimeHours+'h OT",'+r.earned.toFixed(2)+',"'+csvNote(r.note)+'"\n'; });
+                  report.empExpenses.forEach(function(e) { csv += '"Expense","'+e.date+'","'+e.category+(e.description?' - '+e.description:'')+'",'+e.amount.toFixed(2)+',"'+csvNote(e.receiptNote)+'"\n'; });
+                  report.empCollections.forEach(function(c) { csv += '"Collection","'+c.date+'","'+c.agentCode+' '+c.agentCity+' ('+c.fromCode+'-'+c.toCode+')",'+c.amountCollected.toFixed(2)+',"'+csvNote(noteText(c.notes))+'"\n'; });
                   (report.accountCredits||[]).forEach(function(cr) { csv += '"Account Credit","'+cr.date+'","'+(cr.reason||'Cash to accountant').replace(/"/g,'')+'",'+(parseFloat(cr.amount)||0).toFixed(2)+'\n'; });
                   csv += '"","","FINAL BALANCE",'+report.balance.toFixed(2)+'\n';
                   const blob = new Blob([csv], {type:'text/csv'});
@@ -10280,7 +10312,7 @@ import React, { useState, useEffect } from 'react';
                   <Section title="Agent Collections" color="bg-green-500" total={sym + report.totalCollected.toFixed(2)}>
                   {report.empCollections.length === 0 ? <p className="text-gray-400 text-sm">No collections in this period</p> : (
                   <table className="w-full text-sm">
-                  <thead><tr className="bg-green-50">{['Date','Agent','From','To','Collected','Paid to Agent','Bank Transfer (→ Company)'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-green-700">{h}</th>;})}</tr></thead>
+                  <thead><tr className="bg-green-50">{['Date','Agent','From','To','Collected','Paid to Agent','Bank Transfer (→ Company)','Notes'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-green-700">{h}</th>;})}</tr></thead>
                   <tbody className="divide-y divide-gray-100">
                     {report.empCollections.map(function(c){
                     const cSym = getCurrencySymbol(recordCurrency(c, emp));
@@ -10293,6 +10325,7 @@ import React, { useState, useEffect } from 'react';
                     <td className="px-3 py-2 font-bold text-green-700">{cSym}{c.amountCollected.toFixed(2)}</td>
                     <td className="px-3 py-2 text-red-600 font-semibold">{c.amountPaid>0?'-'+cSym+c.amountPaid.toFixed(2):'—'}</td>
                     <td className="px-3 py-2 text-blue-600 font-semibold">{(c.bankAmount||0)>0?<span className="flex items-center gap-1"><span className="text-xs">🏦</span>{cSym}{(c.bankAmount||0).toFixed(2)}</span>:'—'}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-normal break-words max-w-xs">{noteText(c.notes) || <span className="text-gray-300">—</span>}</td>
                     </tr>
                     );})}
                     <tr className="bg-green-50 font-bold border-t-2 border-green-200">
@@ -10338,7 +10371,7 @@ import React, { useState, useEffect } from 'react';
                    return Object.keys(byCur).filter(function(c){return byCur[c]>0;}).map(function(c){return getCurrencySymbol(c)+(c==='IQD'?byCur[c].toLocaleString():byCur[c].toFixed(2));}).join(' + ') || sym+'0.00';
                   })()}>
                   <table className="w-full text-sm">
-                  <thead><tr className="bg-indigo-50">{['Date','Shipment','Batch','To Office','Collected'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-indigo-700">{h}</th>;})}</tr></thead>
+                  <thead><tr className="bg-indigo-50">{['Date','Shipment','Batch','To Office','Notes','Collected'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-indigo-700">{h}</th>;})}</tr></thead>
                   <tbody className="divide-y divide-gray-100">
                     {report.empIraqPay.map(function(p){
                     const amounts = [];
@@ -10352,11 +10385,12 @@ import React, { useState, useEffect } from 'react';
                     <td className="px-3 py-2"><span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold">{p.shipmentCode}</span></td>
                     <td className="px-3 py-2 text-gray-600">{p.batchName||'—'}</td>
                     <td className="px-3 py-2 text-gray-600">{p.toOffice||'—'}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-normal break-words max-w-xs">{iraqNoteText(p.notes) || <span className="text-gray-300">—</span>}</td>
                     <td className="px-3 py-2 font-bold text-indigo-700">{amounts.join(' / ')||'—'}</td>
                     </tr>
                     );})}
                     <tr className="bg-indigo-50 font-bold border-t-2 border-indigo-200">
-                    <td colSpan="4" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Total ({report.empIraqPay.length} shipment{report.empIraqPay.length!==1?'s':''})</td>
+                    <td colSpan="5" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Total ({report.empIraqPay.length} shipment{report.empIraqPay.length!==1?'s':''})</td>
                     <td className="px-3 py-2 text-indigo-700">
                     {(function() {
                       const byCur = { IQD:0, USD:0, GBP:0, EUR:0 };
@@ -10378,7 +10412,7 @@ import React, { useState, useEffect } from 'react';
                   <Section title="Earnings from Approved Timesheets" color="bg-blue-500" total={sym + report.totalEarned.toFixed(2)}>
                   {report.tsRows.length === 0 ? <p className="text-gray-400 text-sm">No approved timesheets in this period</p> : (
                   <table className="w-full text-sm">
-                  <thead><tr className="bg-blue-50">{['Date','Regular Hrs','Overtime Hrs','Rate','Earned'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-blue-700">{h}</th>;})}</tr></thead>
+                  <thead><tr className="bg-blue-50">{['Date','Regular Hrs','Overtime Hrs','Rate','Earned','Notes'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-blue-700">{h}</th>;})}</tr></thead>
                   <tbody className="divide-y divide-gray-100">
                     {report.tsRows.map(function(r,i){return (
                     <tr key={i} className="hover:bg-blue-50">
@@ -10387,11 +10421,12 @@ import React, { useState, useEffect } from 'react';
                     <td className="px-3 py-2 text-amber-600 font-semibold">{r.overtimeHours > 0 ? r.overtimeHours.toFixed(1)+'h' : '—'}</td>
                     <td className="px-3 py-2 text-gray-500">{sym}{report.hourlyRate.toFixed(2)}/hr</td>
                     <td className="px-3 py-2 font-bold text-blue-700">{sym}{r.earned.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-normal break-words max-w-xs">{r.note || <span className="text-gray-300">—</span>}</td>
                     </tr>
                     );})}
                     <tr className="bg-blue-50 font-bold border-t-2 border-blue-200">
                     <td colSpan="4" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Total Earned</td>
-                    <td className="px-3 py-2 text-blue-700">{sym}{report.totalEarned.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-blue-700" colSpan="2">{sym}{report.totalEarned.toFixed(2)}</td>
                     </tr>
                   </tbody>
                   </table>
@@ -10428,7 +10463,7 @@ import React, { useState, useEffect } from 'react';
                   })()}>
                   {report.empExpenses.length === 0 ? <p className="text-gray-400 text-sm">No approved expenses in this period</p> : (
                   <table className="w-full text-sm">
-                  <thead><tr className="bg-teal-50">{['Date','Category','Description','Status','Amount'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-teal-700">{h}</th>;})}</tr></thead>
+                  <thead><tr className="bg-teal-50">{['Date','Category','Description','Notes','Status','Amount'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-teal-700">{h}</th>;})}</tr></thead>
                   <tbody className="divide-y divide-gray-100">
                     {report.empExpenses.map(function(e){
                     const eSym = getCurrencySymbol(recordCurrency(e, emp));
@@ -10437,12 +10472,13 @@ import React, { useState, useEffect } from 'react';
                     <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-GB')}</td>
                     <td className="px-3 py-2"><span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-semibold">{e.category}</span></td>
                     <td className="px-3 py-2 text-gray-600">{e.description||'—'}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-normal break-words max-w-xs">{e.receiptNote || <span className="text-gray-300">—</span>}</td>
                     <td className="px-3 py-2"><span className={'px-2 py-0.5 rounded-full text-xs font-semibold capitalize ' + (e.status==='paid'?'bg-blue-100 text-blue-700':'bg-green-100 text-green-700')}>{e.status}</span></td>
                     <td className="px-3 py-2 font-bold text-teal-700">{eSym}{e.amount.toFixed(2)}</td>
                     </tr>
                     );})}
                     <tr className="bg-teal-50 font-bold border-t-2 border-teal-200">
-                    <td colSpan="4" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Total Expenses</td>
+                    <td colSpan="5" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Total Expenses</td>
                     <td className="px-3 py-2 text-teal-700">
                     {(function() {
                       const byCur = {};
