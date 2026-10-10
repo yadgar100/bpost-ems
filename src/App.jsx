@@ -2788,7 +2788,7 @@ import React, { useState, useEffect } from 'react';
                   department: emp.Department || '',
                   position: emp.Position || '',
                   isAdmin: emp.IsAdmin,
-                  hourlyRate: emp.HourlyRate,
+                  hourlyRate: parseFloat(emp.HourlyRate) || 0,
                   country: emp.Country || emp.country || '',
                   currency: emp.Currency || emp.currency || 'GBP',
                   assignedLocations: emp.AssignedLocations || [],
@@ -7214,7 +7214,7 @@ import React, { useState, useEffect } from 'react';
                    csv += `${row.totalRegular.toFixed(2)},`;
                    csv += `${row.totalOvertime.toFixed(2)},`;
                    csv += `${row.totalBreakMinutes||0},`;
-                   csv += `${row.employee.hourlyRate.toFixed(2)},`;
+                   csv += `${(parseFloat(row.employee.hourlyRate)||0).toFixed(2)},`;
                    csv += `${row.regularPay.toFixed(2)},`;
                    csv += `${row.overtimePay.toFixed(2)},`;
                    csv += `${(row.breakDeduction||0).toFixed(2)},`;
@@ -7284,7 +7284,7 @@ import React, { useState, useEffect } from 'react';
                     + '<td class="n">' + r.totalRegular.toFixed(1) + '</td>'
                     + '<td class="n">' + r.totalOvertime.toFixed(1) + '</td>'
                     + '<td class="n"><b>' + r.totalHours.toFixed(1) + '</b></td>'
-                    + '<td class="n">' + sy + r.employee.hourlyRate.toFixed(2) + '</td>'
+                    + '<td class="n">' + sy + (parseFloat(r.employee.hourlyRate)||0).toFixed(2) + '</td>'
                     + '<td class="n"><b>' + sy + r.totalPay.toFixed(2) + '</b>' + (notes.length ? '<div class="sm">' + esc(notes.join('; ')) + '</div>' : '') + '</td>'
                     + '<td class="n">' + sy + r.payments.toFixed(2) + '</td>'
                     + '<td class="n">' + signedMoney(sy, r.broughtForward) + (r.broughtForward < -0.005 ? '<div class="sm">paid ahead</div>' : '') + '</td>'
@@ -7549,7 +7549,7 @@ import React, { useState, useEffect } from 'react';
                   <td className="px-4 py-3 text-sm font-medium">{row.totalRegular.toFixed(1)}</td>
                   <td className="px-4 py-3 text-sm font-medium text-amber-600">{row.totalOvertime.toFixed(1)}</td>
                   <td className="px-4 py-3 text-sm font-bold">{row.totalHours.toFixed(1)}</td>
-                  <td className="px-4 py-3 text-sm">{getCurrencySymbol(row.employee.currency || "GBP")}{row.employee.hourlyRate.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-sm">{getCurrencySymbol(row.employee.currency || "GBP")}{(parseFloat(row.employee.hourlyRate)||0).toFixed(2)}</td>
                   <td className="px-4 py-3 text-sm font-bold text-green-700">{getCurrencySymbol(row.employee.currency || "GBP")}{row.totalPay.toFixed(2)}
                    {row.totalBreakMinutes > 0 && <div className="text-xs font-normal text-gray-400">{row.totalBreakMinutes}m break (already excluded from hours)</div>}
                    {row.minimumHoursBonus > 0 && <div className="text-xs font-normal text-amber-600">incl. minimum-hours guarantee +{row.minimumHoursBonus.toFixed(1)}h</div>}
@@ -7779,7 +7779,7 @@ import React, { useState, useEffect } from 'react';
                    email: employee.email,
                    department: employee.department,
                    position: employee.position,
-                   hourlyRate: employee.hourlyRate.toString(),
+                   hourlyRate: String(employee.hourlyRate == null ? '' : employee.hourlyRate),
                    assignedLocations: employee.assignedLocations || [],
                    branches: employee.branches || [],
                    country: employee.country || '',
@@ -8136,7 +8136,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   <div>
                    <span className="text-gray-600">Hourly Rate:</span>
-                   <span className="ml-2 font-medium text-green-700">{getCurrencySymbol(employee.currency || "GBP")}{employee.hourlyRate.toFixed(2)}</span>
+                   <span className="ml-2 font-medium text-green-700">{getCurrencySymbol(employee.currency || "GBP")}{(parseFloat(employee.hourlyRate)||0).toFixed(2)}</span>
                   </div>
                   <div className="col-span-2">
                    <span className="text-gray-600">Assigned Locations:</span>
@@ -10143,7 +10143,7 @@ import React, { useState, useEffect } from 'react';
                   const balanceLabel = report.balance > 0 ? 'Employee Owes Company' : report.balance < 0 ? 'Company Owes Employee' : 'Balance Clear';
                   const balanceColor = report.balance > 0 ? '#dc2626' : report.balance < 0 ? '#16a34a' : '#6b7280';
                   const tsRows = report.tsRows.map(function(r) {
-                  return '<tr><td>'+new Date(r.date).toLocaleDateString('en-GB')+'</td><td>'+r.regularHours.toFixed(1)+'h</td><td>'+(r.overtimeHours>0?r.overtimeHours.toFixed(1)+'h':'—')+'</td><td>'+sym+report.hourlyRate.toFixed(2)+'/hr</td><td><b>'+sym+r.earned.toFixed(2)+'</b></td><td>'+(escHtmlNote(r.note)||'—')+'</td></tr>';
+                  return '<tr><td>'+new Date(r.date).toLocaleDateString('en-GB')+'</td><td>'+r.regularHours.toFixed(1)+'h</td><td>'+(r.overtimeHours>0?r.overtimeHours.toFixed(1)+'h':'—')+'</td><td>'+sym+(parseFloat(report.hourlyRate)||0).toFixed(2)+'/hr</td><td><b>'+sym+r.earned.toFixed(2)+'</b></td><td>'+(escHtmlNote(r.note)||'—')+'</td></tr>';
                   }).join('');
                   const collRows = report.empCollections.map(function(c) {
                   const cSym = getCurrencySymbol(recordCurrency(c, emp));
@@ -10419,7 +10419,7 @@ import React, { useState, useEffect } from 'react';
                     <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{new Date(r.date).toLocaleDateString('en-GB')}</td>
                     <td className="px-3 py-2 text-gray-700">{r.regularHours.toFixed(1)}h</td>
                     <td className="px-3 py-2 text-amber-600 font-semibold">{r.overtimeHours > 0 ? r.overtimeHours.toFixed(1)+'h' : '—'}</td>
-                    <td className="px-3 py-2 text-gray-500">{sym}{report.hourlyRate.toFixed(2)}/hr</td>
+                    <td className="px-3 py-2 text-gray-500">{sym}{(parseFloat(report.hourlyRate)||0).toFixed(2)}/hr</td>
                     <td className="px-3 py-2 font-bold text-blue-700">{sym}{r.earned.toFixed(2)}</td>
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-normal break-words max-w-xs">{r.note || <span className="text-gray-300">—</span>}</td>
                     </tr>
@@ -11616,7 +11616,7 @@ import React, { useState, useEffect } from 'react';
                    {selectedEmployee && (
                   <div className="mt-2 text-sm text-gray-600">
                    <p><strong>Position:</strong> {selectedEmployee.position}</p>
-                   <p><strong>Hourly Rate:</strong> {getCurrencySymbol(selectedEmployee.currency || 'GBP')}{selectedEmployee.hourlyRate.toFixed(2)}</p>
+                   <p><strong>Hourly Rate:</strong> {getCurrencySymbol(selectedEmployee.currency || 'GBP')}{(parseFloat(selectedEmployee.hourlyRate)||0).toFixed(2)}</p>
                   </div>
                    )}
                   </div>
@@ -12308,7 +12308,7 @@ import React, { useState, useEffect } from 'react';
                    </select>
                    {selectedEmployee && (
                   <p className="text-sm text-gray-600 mt-2">
-                   Position: {selectedEmployee.position} | Rate: {getCurrencySymbol(selectedEmployee.currency || 'GBP')}{selectedEmployee.hourlyRate.toFixed(2)}/hr
+                   Position: {selectedEmployee.position} | Rate: {getCurrencySymbol(selectedEmployee.currency || 'GBP')}{(parseFloat(selectedEmployee.hourlyRate)||0).toFixed(2)}/hr
                   </p>
                    )}
                   </div>
@@ -13085,7 +13085,7 @@ import React, { useState, useEffect } from 'react';
 
                 const startEditRate = (emp) => {
                   setEditingRate(emp.id);
-                  setRateValue(emp.hourlyRate.toString());
+                  setRateValue(String(emp.hourlyRate == null ? '' : emp.hourlyRate));
                 };
 
                 const saveRate = (empId) => {
