@@ -7147,6 +7147,33 @@ import React, { useState, useEffect } from 'react';
                   });
                 };
 
+                // Lets an administrator correct a decision made by mistake (e.g. Approved -> Pending).
+                const changeStatusFromReport = async (ts, newStatus) => {
+                  if (!newStatus || newStatus === ts.status) return;
+                  const labels = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected' };
+                  if (!window.confirm('Change this shift (' + ts.date + ') from ' + (labels[ts.status] || ts.status) + ' to ' + labels[newStatus] + '?\n\nThe payroll totals will be recalculated.')) return;
+                  try {
+                   const result = await apiCall(API_ENDPOINTS.timesheets + '/' + ts.id, {
+                  method: 'PUT',
+                  body: JSON.stringify({ status: newStatus })
+                   });
+                   if (result && result.success === false) throw new Error(result.error || 'API error');
+                   await loadTimesheetsFromAPI();
+                   setGeneratedReport(function(prev) {
+                  if (!prev || !prev.data) return prev;
+                  const data = prev.data.map(function(r) {
+                   const updatedTs = (r.timesheets || []).map(function(t) {
+                  return t.id === ts.id ? Object.assign({}, t, { status: newStatus }) : t;
+                   });
+                   return buildRow(r.employee, updatedTs, prev.startDate, prev.endDate);
+                  });
+                  return Object.assign({}, prev, { data: data }, summarize(data));
+                   });
+                  } catch (e) {
+                   alert('Unable to change the status: ' + e.message);
+                  }
+                };
+
                 const generateReport = () => {
                   if (!startDate || !endDate) {
                    alert('Please select both start and end dates');
@@ -7649,6 +7676,14 @@ import React, { useState, useEffect } from 'react';
                    title="Employee never clocked out — set a finish time and approve"
                    className="text-amber-600 hover:text-amber-800 text-xs font-semibold underline">Fix clock-out</button>
                    )
+                  ) : (ts.status === 'approved' || ts.status === 'rejected') ? (
+                   <select value={ts.status} onChange={function(e){ changeStatusFromReport(ts, e.target.value); }}
+                  title="Change the status of this shift"
+                  className="border border-gray-300 rounded px-1.5 py-0.5 text-xs bg-white">
+                  <option value="pending">Pending</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                   </select>
                   ) : <span className="text-gray-300 text-xs">—</span>}
                    </td>
                   )}
