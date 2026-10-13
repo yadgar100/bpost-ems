@@ -344,6 +344,12 @@ import React, { useState, useEffect } from 'react';
                 try { localStorage.removeItem(FX_DRAFT_KEY + employeeId); } catch (e) { /* ignore */ }
             };
 
+            // Formats an amount with thousands separators and two decimals (e.g. 7,500,000.00).
+            const fmt2 = function(n) {
+              const v = Number(n);
+              if (!isFinite(v)) return String(n);
+              return v.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            };
             // Returns the free-text part of a note, with internal machine markers removed
             // (bank approval, FX, period and branch tags), so only what a person wrote is shown.
             const noteText = function(v) {
@@ -430,10 +436,10 @@ import React, { useState, useEffect } from 'react';
                   if (!(rt > 0)) { alert('Enter an exchange rate.'); return; }
                   if (rateCheck && rateCheck.flipped) { alert('The rate looks upside-down. The rate means: 1 ' + fromCur + ' = ? ' + toCur + '.\n\nDid you mean ' + rateCheck.flipped + '? Please correct it before recording the exchange.'); return; }
                   if (rateCheck && !window.confirm('⚠️ The rate you entered looks unusual compared with ' + (rateCheck.usedHistory ? 'your recent exchanges' : 'normal IQD rates') + '.\n\nRecord this exchange anyway?')) return;
-                  if (insufficient && !window.confirm('Your ' + fromCur + ' account only holds ' + available.toFixed(2) + '. Record this exchange anyway?')) return;
+                  if (insufficient && !window.confirm('Your ' + fromCur + ' account only holds ' + fmt2(available) + '. Record this exchange anyway?')) return;
                   const buyRounded = parseFloat(buy.toFixed(2));
                   const sellRounded = parseFloat(sell.toFixed(2));
-                  if (!window.confirm('Exchange:\n\nSELL  ' + getCurrencySymbol(fromCur) + sellRounded.toFixed(2) + ' (' + fromCur + ')\nBUY   ' + getCurrencySymbol(toCur) + buyRounded.toFixed(2) + ' (' + toCur + ')\nRate  1 ' + fromCur + ' = ' + rt + ' ' + toCur + '\n\nConfirm?')) return;
+                  if (!window.confirm('Exchange:\n\nSELL  ' + getCurrencySymbol(fromCur) + fmt2(sellRounded) + ' (' + fromCur + ')\nBUY   ' + getCurrencySymbol(toCur) + fmt2(buyRounded) + ' (' + toCur + ')\nRate  1 ' + fromCur + ' = ' + rt + ' ' + toCur + '\n\nConfirm?')) return;
                   setSaving(true);
                   try {
                    const reason = buildFxTag(fromCur, toCur, rt, sellRounded, buyRounded) + (note ? ' ' + note : '');
@@ -491,7 +497,7 @@ import React, { useState, useEffect } from 'react';
                    <select value={fromCur} onChange={function(e){ const v = e.target.value; if (v === toCur) setToCur(fromCur); setFromCur(v); }} className={fc}>
                   {CURS.map(function(c){ return <option key={c} value={c}>{getCurrencySymbol(c)} {c}</option>; })}
                    </select>
-                   <p className="text-[11px] mt-1 text-gray-500">Available: {getCurrencySymbol(fromCur)}{available.toFixed(2)}</p>
+                   <p className="text-[11px] mt-1 text-gray-500">Available: {getCurrencySymbol(fromCur)}{fmt2(available)}</p>
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Buy into</label>
@@ -527,13 +533,13 @@ import React, { useState, useEffect } from 'react';
                    {buy > 0 && (
                   <div className="bg-white border-2 border-sky-300 rounded-lg p-3 text-center">
                    <p className="text-xs text-gray-500 mb-1">You will receive</p>
-                   <p className="text-2xl font-bold text-sky-700">{getCurrencySymbol(toCur)}{buy.toFixed(2)}</p>
+                   <p className="text-2xl font-bold text-sky-700">{getCurrencySymbol(toCur)}{fmt2(buy)}</p>
                    <p className="text-[11px] text-gray-500 mt-1">
-                  −{getCurrencySymbol(fromCur)}{sell.toFixed(2)} from {fromCur} &nbsp;·&nbsp; +{getCurrencySymbol(toCur)}{buy.toFixed(2)} to {toCur}
+                  −{getCurrencySymbol(fromCur)}{fmt2(sell)} from {fromCur} &nbsp;·&nbsp; +{getCurrencySymbol(toCur)}{fmt2(buy)} to {toCur}
                    </p>
                   </div>
                    )}
-                   {insufficient && <p className="text-xs text-red-600 font-semibold">⚠️ Exceeds your available {fromCur} balance ({getCurrencySymbol(fromCur)}{available.toFixed(2)}).</p>}
+                   {insufficient && <p className="text-xs text-red-600 font-semibold">⚠️ Exceeds your available {fromCur} balance ({getCurrencySymbol(fromCur)}{fmt2(available)}).</p>}
                    <button onClick={submit} disabled={saving || !(sell > 0) || !(rt > 0)}
                   className={'w-full py-2.5 rounded-lg font-semibold text-sm ' + (saving || !(sell>0) || !(rt>0) ? 'bg-gray-300 text-gray-500' : 'bg-sky-600 text-white hover:bg-sky-700')}>
                   {saving ? 'Recording…' : 'Record Exchange'}
@@ -550,9 +556,9 @@ import React, { useState, useEffect } from 'react';
                    return (
                   <div key={a.id} className="flex items-center justify-between text-xs bg-gray-50 rounded-lg px-3 py-2">
                    <div>
-                  <span className="font-semibold text-amber-700">−{getCurrencySymbol(fx.from)}{fx.sell.toFixed(2)}</span>
+                  <span className="font-semibold text-amber-700">−{getCurrencySymbol(fx.from)}{fmt2(fx.sell)}</span>
                   <span className="text-gray-400 mx-1.5">→</span>
-                  <span className="font-semibold text-sky-700">+{getCurrencySymbol(fx.to)}{fx.buy.toFixed(2)}</span>
+                  <span className="font-semibold text-sky-700">+{getCurrencySymbol(fx.to)}{fmt2(fx.buy)}</span>
                   <span className="text-gray-400 ml-2">@ {fx.rate}</span>
                    </div>
                    <span className="text-gray-400">{new Date(a.date).toLocaleDateString('en-GB',{day:'2-digit',month:'short'})}</span>
@@ -1055,8 +1061,8 @@ import React, { useState, useEffect } from 'react';
                    ) : (
                   <div>
                    <div className="grid grid-cols-2 gap-4 mb-6 max-w-lg">
-                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center"><p className="text-xs text-green-600 font-semibold uppercase">Total Collected</p><p className="text-2xl font-bold text-green-700 mt-1">{getCurrencySymbol(reportCurrency)}{totalCollected.toFixed(2)}</p></div>
-                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center"><p className="text-xs text-red-600 font-semibold uppercase">Total Paid</p><p className="text-2xl font-bold text-red-700 mt-1">{getCurrencySymbol(reportCurrency)}{totalPaid.toFixed(2)}</p></div>
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center"><p className="text-xs text-green-600 font-semibold uppercase">Total Collected</p><p className="text-2xl font-bold text-green-700 mt-1">{getCurrencySymbol(reportCurrency)}{fmt2(totalCollected)}</p></div>
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center"><p className="text-xs text-red-600 font-semibold uppercase">Total Paid</p><p className="text-2xl font-bold text-red-700 mt-1">{getCurrencySymbol(reportCurrency)}{fmt2(totalPaid)}</p></div>
                    </div>
                    {sequenceGaps.length > 0 && (
                    <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 mb-6">
@@ -1138,7 +1144,7 @@ import React, { useState, useEffect } from 'react';
                   </select>
                   <input type="number" value={editVals.amountCollected} onChange={function(e){setEditVals(Object.assign({},editVals,{amountCollected:e.target.value}));}} className={ic} />
                    </div>
-                  ) : sym+col.amountCollected.toFixed(2)}
+                  ) : sym+fmt2(col.amountCollected)}
                    </td>
                    <td className="px-4 py-3 font-bold text-red-600">
                   {isEditing ? <input type="number" value={editVals.amountPaid} onChange={function(e){setEditVals(Object.assign({},editVals,{amountPaid:e.target.value}));}} className={ic} /> : (col.amountPaid > 0 ? sym+col.amountPaid.toFixed(2) : '—')}
@@ -1146,7 +1152,7 @@ import React, { useState, useEffect } from 'react';
                    <td className="px-4 py-3 font-bold text-blue-600">
                   {isEditing ? <input type="number" min="0" step="0.01" value={editVals.bankAmount} onChange={function(e){setEditVals(Object.assign({},editVals,{bankAmount:e.target.value}));}} className={ic} /> : (col.bankAmount > 0 ? (
                    <div className="flex flex-col gap-1">
-                  <span className="flex items-center gap-1"><span className="text-xs">🏦</span>{sym}{(col.bankAmount||0).toFixed(2)}</span>
+                  <span className="flex items-center gap-1"><span className="text-xs">🏦</span>{sym}{fmt2((col.bankAmount||0))}</span>
                   {hasPermission('canManageAgentCollections') ? (
                    <label className="flex items-center gap-1 cursor-pointer select-none">
                   <input type="checkbox" checked={isBankApproved(col)} onChange={function(){ toggleBankApproved(col); }} className="w-3.5 h-3.5 accent-green-600" />
@@ -1179,9 +1185,9 @@ import React, { useState, useEffect } from 'react';
                   })}
                   <tr className="bg-orange-50 font-bold border-t-2 border-orange-200">
                    <td colSpan="5" className="px-4 py-3 text-right text-gray-700 uppercase text-xs tracking-wide">TOTAL</td>
-                   <td className="px-4 py-3 text-green-700">{getCurrencySymbol(reportCurrency)}{totalCollected.toFixed(2)}</td>
-                   <td className="px-4 py-3 text-red-600">{getCurrencySymbol(reportCurrency)}{totalPaid.toFixed(2)}</td>
-                   <td className="px-4 py-3 text-blue-600">{getCurrencySymbol(reportCurrency)}{(reportData.reduce(function(s,c){return s+(c.bankAmount||0);},0)).toFixed(2)}</td>
+                   <td className="px-4 py-3 text-green-700">{getCurrencySymbol(reportCurrency)}{fmt2(totalCollected)}</td>
+                   <td className="px-4 py-3 text-red-600">{getCurrencySymbol(reportCurrency)}{fmt2(totalPaid)}</td>
+                   <td className="px-4 py-3 text-blue-600">{getCurrencySymbol(reportCurrency)}{fmt2((reportData.reduce(function(s,c){return s+(c.bankAmount||0);},0)))}</td>
                    <td></td>
                    {hasPermission('canManageAgentCollections') && <td></td>}
                   </tr>
@@ -2589,7 +2595,7 @@ import React, { useState, useEffect } from 'react';
             };
             const describeExpenseTwin = (t, curSym) => {
                 const e = t.exp;
-                return '• ' + new Date(e.date).toLocaleDateString('en-GB') + ' · ' + e.category + ' · ' + curSym + (parseFloat(e.amount) || 0).toFixed(2) + ' · ' + e.status + (e.description ? ' · "' + e.description + '"' : '') + '  (' + t.reasons.join(', ') + ')';
+                return '• ' + new Date(e.date).toLocaleDateString('en-GB') + ' · ' + e.category + ' · ' + curSym + fmt2((parseFloat(e.amount) || 0)) + ' · ' + e.status + (e.description ? ' · "' + e.description + '"' : '') + '  (' + t.reasons.join(', ') + ')';
             };
 
             const extractTime = (val) => {
@@ -3879,7 +3885,7 @@ import React, { useState, useEffect } from 'react';
                    </div>
                    {pendingBreakMinutes > 0 && (
                   <p className="text-center text-sm text-amber-700 mb-4 font-medium">
-                   {pendingBreakMinutes} min break = {(pendingBreakMinutes/60).toFixed(2)}h deducted from pay
+                   {pendingBreakMinutes} min break = {fmt2((pendingBreakMinutes/60))}h deducted from pay
                   </p>
                    )}
                    <div className="flex gap-3">
@@ -3942,7 +3948,7 @@ import React, { useState, useEffect } from 'react';
                    </div>
                    <div className="bg-white bg-opacity-15 rounded-xl p-3 text-center">
                   <p className="text-indigo-200 text-xs font-semibold uppercase tracking-wide">Balance</p>
-                  <p className="text-xl font-bold mt-0.5 text-green-300">{myCurrencySym}{unpaidHoursValue.toFixed(2)}</p>
+                  <p className="text-xl font-bold mt-0.5 text-green-300">{myCurrencySym}{fmt2(unpaidHoursValue)}</p>
                    </div>
                   </div>
                    </div>
@@ -3956,14 +3962,14 @@ import React, { useState, useEffect } from 'react';
                    <div className="bg-white rounded-2xl shadow p-4 mb-4">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Earnings Breakdown</p>
                   <div className="space-y-2">
-                   <div className="flex justify-between text-sm"><span className="text-gray-600">Total Earnings</span><span className="font-semibold">{myCurrencySym}{payroll.totalPay.toFixed(2)}</span></div>
-                   {payroll.payments > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Paid</span><span className="font-semibold text-blue-600">-{myCurrencySym}{payroll.payments.toFixed(2)}</span></div>}
-                   {payroll.bonuses > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Bonus</span><span className="font-semibold text-emerald-600">+{myCurrencySym}{payroll.bonuses.toFixed(2)}</span></div>}
-                   {payroll.sickPay > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Sick Pay</span><span className="font-semibold text-emerald-600">+{myCurrencySym}{payroll.sickPay.toFixed(2)}</span></div>}
-                   {payroll.penalties > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Penalty</span><span className="font-semibold text-red-500">-{myCurrencySym}{payroll.penalties.toFixed(2)}</span></div>}
-                   {payroll.advances > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Advance</span><span className="font-semibold text-red-500">-{myCurrencySym}{payroll.advances.toFixed(2)}</span></div>}
-                   {payroll.breakDeduction > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Break Deduction</span><span className="font-semibold text-amber-600">-{myCurrencySym}{payroll.breakDeduction.toFixed(2)}</span></div>}
-                   <div className="flex justify-between text-sm font-bold border-t border-gray-100 pt-2 mt-2"><span>Balance Owed</span><span className="text-green-700">{myCurrencySym}{payroll.balance.toFixed(2)}</span></div>
+                   <div className="flex justify-between text-sm"><span className="text-gray-600">Total Earnings</span><span className="font-semibold">{myCurrencySym}{fmt2(payroll.totalPay)}</span></div>
+                   {payroll.payments > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Paid</span><span className="font-semibold text-blue-600">-{myCurrencySym}{fmt2(payroll.payments)}</span></div>}
+                   {payroll.bonuses > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Bonus</span><span className="font-semibold text-emerald-600">+{myCurrencySym}{fmt2(payroll.bonuses)}</span></div>}
+                   {payroll.sickPay > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Sick Pay</span><span className="font-semibold text-emerald-600">+{myCurrencySym}{fmt2(payroll.sickPay)}</span></div>}
+                   {payroll.penalties > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Penalty</span><span className="font-semibold text-red-500">-{myCurrencySym}{fmt2(payroll.penalties)}</span></div>}
+                   {payroll.advances > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Advance</span><span className="font-semibold text-red-500">-{myCurrencySym}{fmt2(payroll.advances)}</span></div>}
+                   {payroll.breakDeduction > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Break Deduction</span><span className="font-semibold text-amber-600">-{myCurrencySym}{fmt2(payroll.breakDeduction)}</span></div>}
+                   <div className="flex justify-between text-sm font-bold border-t border-gray-100 pt-2 mt-2"><span>Balance Owed</span><span className="text-green-700">{myCurrencySym}{fmt2(payroll.balance)}</span></div>
                   </div>
                    </div>
                   )}
@@ -4103,14 +4109,14 @@ import React, { useState, useEffect } from 'react';
                   {myCredits.map(function(a){return (
                    <div key={a.id} className="bg-white rounded-lg px-3 py-2 flex items-center justify-between text-sm">
                   <div>
-                   <p className="font-semibold text-gray-800">{sym2}{parseFloat(a.amount).toFixed(2)}</p>
+                   <p className="font-semibold text-gray-800">{sym2}{fmt2(parseFloat(a.amount))}</p>
                    <p className="text-xs text-gray-500">{new Date(a.date).toLocaleDateString('en-GB')} · {a.reason}</p>
                   </div>
                   <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">Credited</span>
                    </div>
                   );})}
                    </div>
-                   <p className="text-xs text-gray-500 mt-2">Total approved: <strong className="text-indigo-700">{sym2}{myCredits.filter(function(a){return a.type==='account_credit';}).reduce(function(s,a){return s+(parseFloat(a.amount)||0);},0).toFixed(2)}</strong></p>
+                   <p className="text-xs text-gray-500 mt-2">Total approved: <strong className="text-indigo-700">{sym2}{fmt2(myCredits.filter(function(a){return a.type==='account_credit';}).reduce(function(s,a){return s+(parseFloat(a.amount)||0);},0))}</strong></p>
                   </div>
                    );
                    })()}
@@ -4178,15 +4184,15 @@ import React, { useState, useEffect } from 'react';
                    <div className="grid grid-cols-3 gap-2 mb-4">
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-center">
                    <p className="text-xs text-amber-600 font-semibold">Pending</p>
-                   <p className="text-lg font-bold text-amber-700">{sym}{pendingTotal.toFixed(2)}</p>
+                   <p className="text-lg font-bold text-amber-700">{sym}{fmt2(pendingTotal)}</p>
                   </div>
                   <div className="bg-green-50 border border-green-200 rounded-lg p-2.5 text-center">
                    <p className="text-xs text-green-600 font-semibold">Approved</p>
-                   <p className="text-lg font-bold text-green-700">{sym}{approvedTotal.toFixed(2)}</p>
+                   <p className="text-lg font-bold text-green-700">{sym}{fmt2(approvedTotal)}</p>
                   </div>
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-center">
                    <p className="text-xs text-blue-600 font-semibold">Paid</p>
-                   <p className="text-lg font-bold text-blue-700">{sym}{paidTotal.toFixed(2)}</p>
+                   <p className="text-lg font-bold text-blue-700">{sym}{fmt2(paidTotal)}</p>
                   </div>
                    </div>
 
@@ -4226,7 +4232,7 @@ import React, { useState, useEffect } from 'react';
                   <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{new Date(exp.date).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'})}</td>
                   <td className="px-3 py-2"><span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-semibold">{exp.category}</span></td>
                   <td className="px-3 py-2 text-gray-600 max-w-xs truncate">{exp.description||''}</td>
-                  <td className="px-3 py-2 font-bold text-gray-800">{sym}{exp.amount.toFixed(2)}</td>
+                  <td className="px-3 py-2 font-bold text-gray-800">{sym}{fmt2(exp.amount)}</td>
                   <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${statusColors[exp.status]||'bg-gray-100 text-gray-600'}`}>{exp.status}</span></td>
                    </tr>
                   ))}
@@ -4234,7 +4240,7 @@ import React, { useState, useEffect } from 'react';
                    <tfoot>
                   <tr className="border-t-2 border-gray-200 bg-gray-50 font-bold">
                    <td colSpan="3" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Total ({filtered.length} item{filtered.length!==1?'s':''})</td>
-                   <td className="px-3 py-2 text-teal-700">{sym}{totalFiltered.toFixed(2)}</td>
+                   <td className="px-3 py-2 text-teal-700">{sym}{fmt2(totalFiltered)}</td>
                    <td></td>
                   </tr>
                    </tfoot>
@@ -4418,20 +4424,20 @@ import React, { useState, useEffect } from 'react';
                    {cur === defaultCur && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-semibold">wages</span>}
                   </div>
                   <p className="text-xl font-bold" style={{color: bal > 0.005 ? '#dc2626' : bal < -0.005 ? '#16a34a' : '#6b7280'}}>
-                   {csym}{Math.abs(bal) < 0.005 ? '0.00' : Math.abs(bal).toFixed(2)}
+                   {csym}{Math.abs(bal) < 0.005 ? '0.00' : fmt2(Math.abs(bal))}
                   </p>
                   <p className="text-[11px] font-semibold mt-0.5" style={{color: bal > 0.005 ? '#dc2626' : bal < -0.005 ? '#16a34a' : '#9ca3af'}}>
                    {bal > 0.005 ? 'You owe' : bal < -0.005 ? 'Owed to you' : 'Settled'}
                   </p>
                   {hasActivity ? (
                    <div className="mt-2 pt-2 border-t border-gray-200 space-y-0.5 text-[10px] text-gray-500">
-                  {L.collected ? <div className="flex justify-between"><span>Collected</span><span>+{csym}{L.collected.toFixed(2)}</span></div> : null}
-                  {L.earned ? <div className="flex justify-between"><span>Earnings</span><span>-{csym}{L.earned.toFixed(2)}</span></div> : null}
-                  {L.expenses ? <div className="flex justify-between"><span>Expenses</span><span>-{csym}{L.expenses.toFixed(2)}</span></div> : null}
-                  {L.credits ? <div className="flex justify-between"><span>Credits</span><span>-{csym}{L.credits.toFixed(2)}</span></div> : null}
-                  {L.settled ? <div className="flex justify-between"><span>Settled</span><span>-{csym}{L.settled.toFixed(2)}</span></div> : null}
-                  {L.fxIn ? <div className="flex justify-between text-sky-600"><span>FX bought</span><span>+{csym}{L.fxIn.toFixed(2)}</span></div> : null}
-                  {L.fxOut ? <div className="flex justify-between text-amber-600"><span>FX sold</span><span>-{csym}{L.fxOut.toFixed(2)}</span></div> : null}
+                  {L.collected ? <div className="flex justify-between"><span>Collected</span><span>+{csym}{fmt2(L.collected)}</span></div> : null}
+                  {L.earned ? <div className="flex justify-between"><span>Earnings</span><span>-{csym}{fmt2(L.earned)}</span></div> : null}
+                  {L.expenses ? <div className="flex justify-between"><span>Expenses</span><span>-{csym}{fmt2(L.expenses)}</span></div> : null}
+                  {L.credits ? <div className="flex justify-between"><span>Credits</span><span>-{csym}{fmt2(L.credits)}</span></div> : null}
+                  {L.settled ? <div className="flex justify-between"><span>Settled</span><span>-{csym}{fmt2(L.settled)}</span></div> : null}
+                  {L.fxIn ? <div className="flex justify-between text-sky-600"><span>FX bought</span><span>+{csym}{fmt2(L.fxIn)}</span></div> : null}
+                  {L.fxOut ? <div className="flex justify-between text-amber-600"><span>FX sold</span><span>-{csym}{fmt2(L.fxOut)}</span></div> : null}
                    </div>
                   ) : <p className="text-[10px] text-gray-300 mt-2">No activity</p>}
                    </div>
@@ -4450,7 +4456,7 @@ import React, { useState, useEffect } from 'react';
                   {empBalance > 0.005 ? 'You Owe The Company' : empBalance < -0.005 ? 'The Company Owes You' : 'Balance Settled'}
                    </p>
                    <p className="text-3xl font-bold" style={{color: empBalance > 0.005 ? '#dc2626' : empBalance < -0.005 ? '#16a34a' : '#6b7280'}}>
-                  {Math.abs(empBalance) < 0.005 ? sym + '0.00' : sym + Math.abs(empBalance).toFixed(2)}
+                  {Math.abs(empBalance) < 0.005 ? sym + '0.00' : sym + fmt2(Math.abs(empBalance))}
                    </p>
                    {lastSettleDate && <p className="text-xs text-gray-400 mt-2">Last settled up to {new Date(lastSettleDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</p>}
                   </div>
@@ -4527,7 +4533,7 @@ import React, { useState, useEffect } from 'react';
                   unsettledCollections.forEach(function(c){ const cur = recordCurrency(c, myEmpRecord); byCur[cur] = (byCur[cur]||0) + c.amountCollected; });
                   const keys = Object.keys(byCur);
                   if (keys.length === 0) return sym + '0.00';
-                  return keys.map(function(cur){ return <div key={cur}>{getCurrencySymbol(cur)}{byCur[cur].toFixed(2)}</div>; });
+                  return keys.map(function(cur){ return <div key={cur}>{getCurrencySymbol(cur)}{fmt2(byCur[cur])}</div>; });
                    })()}
                   </p>
                    </div>
@@ -4539,7 +4545,7 @@ import React, { useState, useEffect } from 'react';
                   unsettledCollections.forEach(function(c){ const cur = recordCurrency(c, myEmpRecord); byCur[cur] = (byCur[cur]||0) + c.amountPaid; });
                   const keys = Object.keys(byCur).filter(function(k){ return byCur[k] > 0; });
                   if (keys.length === 0) return sym + '0.00';
-                  return keys.map(function(cur){ return <div key={cur}>{getCurrencySymbol(cur)}{byCur[cur].toFixed(2)}</div>; });
+                  return keys.map(function(cur){ return <div key={cur}>{getCurrencySymbol(cur)}{fmt2(byCur[cur])}</div>; });
                    })()}
                   </p>
                    </div>
@@ -4551,7 +4557,7 @@ import React, { useState, useEffect } from 'react';
                   unsettledCollections.forEach(function(c){ const cur = recordCurrency(c, myEmpRecord); byCur[cur] = (byCur[cur]||0) + (c.bankAmount||0); });
                   const keys = Object.keys(byCur).filter(function(k){ return byCur[k] > 0; });
                   if (keys.length === 0) return sym + '0.00';
-                  return keys.map(function(cur){ return <div key={cur}>{getCurrencySymbol(cur)}{byCur[cur].toFixed(2)}</div>; });
+                  return keys.map(function(cur){ return <div key={cur}>{getCurrencySymbol(cur)}{fmt2(byCur[cur])}</div>; });
                    })()}
                   </p>
                    </div>
@@ -4593,9 +4599,9 @@ import React, { useState, useEffect } from 'react';
                   </td>
                   <td className="px-3 py-2 font-semibold text-gray-700">{col.fromCode||'—'}</td>
                   <td className="px-3 py-2 font-semibold text-gray-700">{col.toCode||'—'}</td>
-                  <td className="px-3 py-2 font-bold text-green-700">{cSym}{col.amountCollected.toFixed(2)}</td>
-                  <td className="px-3 py-2 font-bold text-red-600">{col.amountPaid > 0 ? cSym+col.amountPaid.toFixed(2) : '—'}</td>
-                  <td className="px-3 py-2 font-bold text-blue-600">{(col.bankAmount||0) > 0 ? cSym+(col.bankAmount||0).toFixed(2) : '—'}</td>
+                  <td className="px-3 py-2 font-bold text-green-700">{cSym}{fmt2(col.amountCollected)}</td>
+                  <td className="px-3 py-2 font-bold text-red-600">{col.amountPaid > 0 ? cSym+fmt2(col.amountPaid) : '—'}</td>
+                  <td className="px-3 py-2 font-bold text-blue-600">{(col.bankAmount||0) > 0 ? cSym+fmt2((col.bankAmount||0)) : '—'}</td>
                    </tr>
                    );
                   })}
@@ -4618,9 +4624,9 @@ import React, { useState, useEffect } from 'react';
                   const t = byCur[cur];
                   return (
                    <span key={cur} className="inline-flex items-center gap-3 mr-4">
-                  <span>{s2}{t.collected.toFixed(2)}</span>
-                  {t.paid > 0 && <span className="text-red-600">{s2}{t.paid.toFixed(2)}</span>}
-                  {t.bank > 0 && <span className="text-blue-600">{s2}{t.bank.toFixed(2)}</span>}
+                  <span>{s2}{fmt2(t.collected)}</span>
+                  {t.paid > 0 && <span className="text-red-600">{s2}{fmt2(t.paid)}</span>}
+                  {t.bank > 0 && <span className="text-blue-600">{s2}{fmt2(t.bank)}</span>}
                    </span>
                   );
                    });
@@ -4798,10 +4804,10 @@ import React, { useState, useEffect } from 'react';
                    <span className="px-2 py-0.5 bg-green-200 text-green-800 rounded-full text-xs font-semibold">collected</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                   {p.collectedGBP>0 && <div className="bg-white rounded-lg px-3 py-2 border border-green-100"><p className="text-xs text-gray-400">GBP collected</p><p className="font-bold text-sm text-green-700">£{p.collectedGBP.toFixed(2)}</p></div>}
-                   {p.collectedUSD>0 && <div className="bg-white rounded-lg px-3 py-2 border border-green-100"><p className="text-xs text-gray-400">USD collected</p><p className="font-bold text-sm text-green-700">${p.collectedUSD.toFixed(2)}</p></div>}
+                   {p.collectedGBP>0 && <div className="bg-white rounded-lg px-3 py-2 border border-green-100"><p className="text-xs text-gray-400">GBP collected</p><p className="font-bold text-sm text-green-700">£{fmt2(p.collectedGBP)}</p></div>}
+                   {p.collectedUSD>0 && <div className="bg-white rounded-lg px-3 py-2 border border-green-100"><p className="text-xs text-gray-400">USD collected</p><p className="font-bold text-sm text-green-700">${fmt2(p.collectedUSD)}</p></div>}
                    {p.collectedIQD>0 && <div className="bg-white rounded-lg px-3 py-2 border border-green-100"><p className="text-xs text-gray-400">IQD collected</p><p className="font-bold text-sm text-green-700">{p.collectedIQD.toLocaleString()}</p></div>}
-                   {p.collectedEUR>0 && <div className="bg-white rounded-lg px-3 py-2 border border-green-100"><p className="text-xs text-gray-400">EUR collected</p><p className="font-bold text-sm text-green-700">€{p.collectedEUR.toFixed(2)}</p></div>}
+                   {p.collectedEUR>0 && <div className="bg-white rounded-lg px-3 py-2 border border-green-100"><p className="text-xs text-gray-400">EUR collected</p><p className="font-bold text-sm text-green-700">€{fmt2(p.collectedEUR)}</p></div>}
                   </div>
                   <p className="text-xs text-gray-400 mt-2 italic">🔒 Locked — please contact an administrator to make corrections</p>
                    </div>
@@ -4852,10 +4858,10 @@ import React, { useState, useEffect } from 'react';
                    <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-xs font-semibold">{p.status}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 mb-3">
-                   {p.amountGBP>0 && <div className="bg-gray-50 rounded-lg px-3 py-2"><p className="text-xs text-gray-400">GBP</p><p className="font-bold text-sm">£{p.amountGBP.toFixed(2)}</p></div>}
-                   {p.amountUSD>0 && <div className="bg-gray-50 rounded-lg px-3 py-2"><p className="text-xs text-gray-400">USD</p><p className="font-bold text-sm">${p.amountUSD.toFixed(2)}</p></div>}
+                   {p.amountGBP>0 && <div className="bg-gray-50 rounded-lg px-3 py-2"><p className="text-xs text-gray-400">GBP</p><p className="font-bold text-sm">£{fmt2(p.amountGBP)}</p></div>}
+                   {p.amountUSD>0 && <div className="bg-gray-50 rounded-lg px-3 py-2"><p className="text-xs text-gray-400">USD</p><p className="font-bold text-sm">${fmt2(p.amountUSD)}</p></div>}
                    {p.amountIQD>0 && <div className="bg-gray-50 rounded-lg px-3 py-2"><p className="text-xs text-gray-400">IQD</p><p className="font-bold text-sm">{p.amountIQD.toLocaleString()}</p></div>}
-                   {p.amountEUR>0 && <div className="bg-gray-50 rounded-lg px-3 py-2"><p className="text-xs text-gray-400">EUR</p><p className="font-bold text-sm">€{p.amountEUR.toFixed(2)}</p></div>}
+                   {p.amountEUR>0 && <div className="bg-gray-50 rounded-lg px-3 py-2"><p className="text-xs text-gray-400">EUR</p><p className="font-bold text-sm">€{fmt2(p.amountEUR)}</p></div>}
                   </div>
                   <p className="text-xs font-semibold text-gray-500 mb-2">Enter collected amount:</p>
                   <div className="grid grid-cols-2 gap-2 mb-3">
@@ -5302,7 +5308,7 @@ import React, { useState, useEffect } from 'react';
                 };
 
                 const printMoveBatchPDF = function() {
-                  const fmt = function(v, sym){ return v > 0 ? sym + (sym === 'IQD ' ? Number(v).toLocaleString() : Number(v).toFixed(2)) : '—'; };
+                  const fmt = function(v, sym){ return v > 0 ? sym + (sym === 'IQD ' ? Number(v).toLocaleString() : fmt2(Number(v))) : '—'; };
                   const totIQD = moveBatchRecords.reduce(function(s,p){return s+(p.amountIQD||0);},0);
                   const totUSD = moveBatchRecords.reduce(function(s,p){return s+(p.amountUSD||0);},0);
                   const totGBP = moveBatchRecords.reduce(function(s,p){return s+(p.amountGBP||0);},0);
@@ -5331,10 +5337,10 @@ import React, { useState, useEffect } from 'react';
                     ].join('');
                   }).join('');
                   const summaryRows = [
-                    totGBP>0 ? '<div><b>Total GBP:</b> £'+totGBP.toFixed(2)+'</div>' : '',
-                    totUSD>0 ? '<div><b>Total USD:</b> $'+totUSD.toFixed(2)+'</div>' : '',
+                    totGBP>0 ? '<div><b>Total GBP:</b> £'+fmt2(totGBP)+'</div>' : '',
+                    totUSD>0 ? '<div><b>Total USD:</b> $'+fmt2(totUSD)+'</div>' : '',
                     totIQD>0 ? '<div><b>Total IQD:</b> '+totIQD.toLocaleString()+'</div>' : '',
-                    totEUR>0 ? '<div><b>Total EUR:</b> €'+totEUR.toFixed(2)+'</div>' : ''
+                    totEUR>0 ? '<div><b>Total EUR:</b> €'+fmt2(totEUR)+'</div>' : ''
                   ].join('');
                   const html = [
                     '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Move Batch Report</title>',
@@ -5477,9 +5483,9 @@ import React, { useState, useEffect } from 'react';
                    ['Date Range:', meta.dateRange],
                    ['Total Records:', meta.qty, '', 'Fully Collected:', meta.collected],
                    meta.colIQD>0 ? ['Total IQD Collected:', meta.colIQD] : [],
-                   meta.colUSD>0 ? ['Total USD Collected:', '$'+meta.colUSD.toFixed(2)] : [],
-                   meta.colGBP>0 ? ['Total GBP Collected:', '£'+meta.colGBP.toFixed(2)] : [],
-                   meta.colEUR>0 ? ['Total EUR Collected:', '€'+meta.colEUR.toFixed(2)] : [],
+                   meta.colUSD>0 ? ['Total USD Collected:', '$'+fmt2(meta.colUSD)] : [],
+                   meta.colGBP>0 ? ['Total GBP Collected:', '£'+fmt2(meta.colGBP)] : [],
+                   meta.colEUR>0 ? ['Total EUR Collected:', '€'+fmt2(meta.colEUR)] : [],
                    [],
                    ['Employee','Batch','Original Batch','Shipment Code','Receiver','Receiver Mobile','To Office','IQD Due','USD Due','GBP Due','EUR Due','Collected IQD','Collected USD','Collected GBP','Collected EUR','Status','Notes'],
                   ];
@@ -5498,7 +5504,7 @@ import React, { useState, useEffect } from 'react';
                 const exportPDF = function() {
                   const meta = getReportMeta();
                   const esc = function(v){ return String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
-                  const fmt = function(v, sym){ return v > 0 ? sym + (sym==='IQD ' ? v.toLocaleString() : v.toFixed(2)) : '—'; };
+                  const fmt = function(v, sym){ return v > 0 ? sym + (sym==='IQD ' ? v.toLocaleString() : fmt2(v)) : '—'; };
                   const rows = filtered.map(function(p){
                    const off = (p.notes||'').replace('Office:','').trim().split('|')[0].trim();
                    const collectedParts = [fmt(p.collectedIQD,'IQD '),fmt(p.collectedUSD,'$'),fmt(p.collectedGBP,'£'),fmt(p.collectedEUR,'€')].filter(function(x){return x!=='—';});
@@ -5527,9 +5533,9 @@ import React, { useState, useEffect } from 'react';
                    +'<div><b>Date Range:</b> '+meta.dateRange+'</div>'
                    +'<div><b>Records:</b> '+meta.qty+' total · '+meta.collected+' collected</div>'
                    +(meta.colIQD>0?'<div><b>Total IQD Collected:</b> '+meta.colIQD.toLocaleString()+'</div>':'')
-                   +(meta.colGBP>0?'<div><b>Total GBP Collected:</b> £'+meta.colGBP.toFixed(2)+'</div>':'')
-                   +(meta.colUSD>0?'<div><b>Total USD Collected:</b> $'+meta.colUSD.toFixed(2)+'</div>':'')
-                   +(meta.colEUR>0?'<div><b>Total EUR Collected:</b> €'+meta.colEUR.toFixed(2)+'</div>':'')
+                   +(meta.colGBP>0?'<div><b>Total GBP Collected:</b> £'+fmt2(meta.colGBP)+'</div>':'')
+                   +(meta.colUSD>0?'<div><b>Total USD Collected:</b> $'+fmt2(meta.colUSD)+'</div>':'')
+                   +(meta.colEUR>0?'<div><b>Total EUR Collected:</b> €'+fmt2(meta.colEUR)+'</div>':'')
                    +'</div>'
                    +'<table style="width:100%;border-collapse:collapse">'
                    +'<thead><tr style="background:#1e3a8a;color:white">'
@@ -5667,7 +5673,7 @@ import React, { useState, useEffect } from 'react';
                    iqd:s.iqd+(p.collectedIQD||0), usd:s.usd+(p.collectedUSD||0),
                    gbp:s.gbp+(p.collectedGBP||0), eur:s.eur+(p.collectedEUR||0)
                   };},{iqd:0,usd:0,gbp:0,eur:0});
-                  return [c.gbp>0?'£'+c.gbp.toFixed(2):'', c.usd>0?'$'+c.usd.toFixed(2):'', c.iqd>0?c.iqd.toLocaleString()+' IQD':'', c.eur>0?'€'+c.eur.toFixed(2):''].filter(Boolean).join(' · ') || '—';
+                  return [c.gbp>0?'£'+fmt2(c.gbp):'', c.usd>0?'$'+fmt2(c.usd):'', c.iqd>0?c.iqd.toLocaleString()+' IQD':'', c.eur>0?'€'+fmt2(c.eur):''].filter(Boolean).join(' · ') || '—';
                    })()}
                   </div>
                    )}
@@ -5741,9 +5747,9 @@ import React, { useState, useEffect } from 'react';
                    </td>
                    <td className="px-3 py-2 text-xs text-gray-500">{p.notes && p.notes.startsWith('Office:') ? p.notes.replace('Office:','').trim() : (p.notes||'—')}</td>
                    <td className="px-3 py-2 text-xs">{isEditing ? inp('amountIQD',p.amountIQD) : (p.amountIQD>0?<span className="font-semibold">{p.amountIQD.toLocaleString()}</span>:'—')}</td>
-                   <td className="px-3 py-2 text-xs">{isEditing ? inp('amountUSD',p.amountUSD) : (p.amountUSD>0?<span className="font-semibold">${p.amountUSD.toFixed(2)}</span>:'—')}</td>
-                   <td className="px-3 py-2 text-xs">{isEditing ? inp('amountGBP',p.amountGBP) : (p.amountGBP>0?<span className="font-semibold">£{p.amountGBP.toFixed(2)}</span>:'—')}</td>
-                   <td className="px-3 py-2 text-xs">{isEditing ? inp('amountEUR',p.amountEUR) : (p.amountEUR>0?<span className="font-semibold">€{p.amountEUR.toFixed(2)}</span>:'—')}</td>
+                   <td className="px-3 py-2 text-xs">{isEditing ? inp('amountUSD',p.amountUSD) : (p.amountUSD>0?<span className="font-semibold">${fmt2(p.amountUSD)}</span>:'—')}</td>
+                   <td className="px-3 py-2 text-xs">{isEditing ? inp('amountGBP',p.amountGBP) : (p.amountGBP>0?<span className="font-semibold">£{fmt2(p.amountGBP)}</span>:'—')}</td>
+                   <td className="px-3 py-2 text-xs">{isEditing ? inp('amountEUR',p.amountEUR) : (p.amountEUR>0?<span className="font-semibold">€{fmt2(p.amountEUR)}</span>:'—')}</td>
                    <td className="px-3 py-2 text-xs">
                   {isEditing ? (
                    <div className="space-y-1">
@@ -5770,9 +5776,9 @@ import React, { useState, useEffect } from 'react';
                    return (
                   <React.Fragment>
                    {line(p.amountIQD, p.collectedIQD, function(v){ return 'IQD ' + v.toLocaleString(); })}
-                   {line(p.amountUSD, p.collectedUSD, function(v){ return '$' + v.toFixed(2); })}
-                   {line(p.amountGBP, p.collectedGBP, function(v){ return '£' + v.toFixed(2); })}
-                   {line(p.amountEUR, p.collectedEUR, function(v){ return '€' + v.toFixed(2); })}
+                   {line(p.amountUSD, p.collectedUSD, function(v){ return '$' + fmt2(v); })}
+                   {line(p.amountGBP, p.collectedGBP, function(v){ return '£' + fmt2(v); })}
+                   {line(p.amountEUR, p.collectedEUR, function(v){ return '€' + fmt2(v); })}
                   </React.Fragment>
                    );
                   })()}
@@ -5811,14 +5817,14 @@ import React, { useState, useEffect } from 'react';
                   <td className="px-3 py-2 text-blue-700" colSpan="3">TOTAL ({filtered.length} records)</td>
                   <td className="px-3 py-2 text-blue-600"></td>
                   <td className="px-3 py-2 text-blue-700">{totIQD>0?totIQD.toLocaleString():'—'}</td>
-                  <td className="px-3 py-2 text-blue-700">{totUSD>0?'$'+totUSD.toFixed(2):'—'}</td>
-                  <td className="px-3 py-2 text-blue-700">{totGBP>0?'£'+totGBP.toFixed(2):'—'}</td>
-                  <td className="px-3 py-2 text-blue-700">{totEUR>0?'€'+totEUR.toFixed(2):'—'}</td>
+                  <td className="px-3 py-2 text-blue-700">{totUSD>0?'$'+fmt2(totUSD):'—'}</td>
+                  <td className="px-3 py-2 text-blue-700">{totGBP>0?'£'+fmt2(totGBP):'—'}</td>
+                  <td className="px-3 py-2 text-blue-700">{totEUR>0?'€'+fmt2(totEUR):'—'}</td>
                   <td className="px-3 py-2">
                    {colIQD>0 && <div className="text-green-700">IQD {colIQD.toLocaleString()}</div>}
-                   {colUSD>0 && <div className="text-green-700">${colUSD.toFixed(2)}</div>}
-                   {colGBP>0 && <div className="text-green-700">£{colGBP.toFixed(2)}</div>}
-                   {colEUR>0 && <div className="text-green-700">€{colEUR.toFixed(2)}</div>}
+                   {colUSD>0 && <div className="text-green-700">${fmt2(colUSD)}</div>}
+                   {colGBP>0 && <div className="text-green-700">£{fmt2(colGBP)}</div>}
+                   {colEUR>0 && <div className="text-green-700">€{fmt2(colEUR)}</div>}
                    {!colIQD&&!colUSD&&!colGBP&&!colEUR && <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-3 py-2 text-xs">
@@ -5975,9 +5981,9 @@ import React, { useState, useEffect } from 'react';
                    <td className="px-3 py-2 text-xs text-gray-600">{off}</td>
                    <td className="px-3 py-2 text-xs text-gray-600">{cName || '—'}{cPhone ? <span className="block text-blue-600 font-medium">{cPhone}</span> : null}</td>
                    <td className="px-3 py-2 text-xs">{p.amountIQD>0?<span className="font-semibold">{p.amountIQD.toLocaleString()}</span>:'—'}</td>
-                   <td className="px-3 py-2 text-xs">{p.amountUSD>0?<span className="font-semibold">${p.amountUSD.toFixed(2)}</span>:'—'}</td>
-                   <td className="px-3 py-2 text-xs">{p.amountGBP>0?<span className="font-semibold">£{p.amountGBP.toFixed(2)}</span>:'—'}</td>
-                   <td className="px-3 py-2 text-xs">{p.amountEUR>0?<span className="font-semibold">€{p.amountEUR.toFixed(2)}</span>:'—'}</td>
+                   <td className="px-3 py-2 text-xs">{p.amountUSD>0?<span className="font-semibold">${fmt2(p.amountUSD)}</span>:'—'}</td>
+                   <td className="px-3 py-2 text-xs">{p.amountGBP>0?<span className="font-semibold">£{fmt2(p.amountGBP)}</span>:'—'}</td>
+                   <td className="px-3 py-2 text-xs">{p.amountEUR>0?<span className="font-semibold">€{fmt2(p.amountEUR)}</span>:'—'}</td>
                    <td className="px-3 py-2"><span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">{p.status}</span></td>
                   </tr>
                    );
@@ -5986,9 +5992,9 @@ import React, { useState, useEffect } from 'react';
                   <tr className="bg-amber-50 font-bold border-t-2 border-amber-200 text-xs">
                    <td className="px-3 py-2 text-amber-700" colSpan="6">TOTAL ({moveBatchRecords.length} records)</td>
                    <td className="px-3 py-2 text-amber-700">{moveTotIQD>0?moveTotIQD.toLocaleString():'—'}</td>
-                   <td className="px-3 py-2 text-amber-700">{moveTotUSD>0?'$'+moveTotUSD.toFixed(2):'—'}</td>
-                   <td className="px-3 py-2 text-amber-700">{moveTotGBP>0?'£'+moveTotGBP.toFixed(2):'—'}</td>
-                   <td className="px-3 py-2 text-amber-700">{moveTotEUR>0?'€'+moveTotEUR.toFixed(2):'—'}</td>
+                   <td className="px-3 py-2 text-amber-700">{moveTotUSD>0?'$'+fmt2(moveTotUSD):'—'}</td>
+                   <td className="px-3 py-2 text-amber-700">{moveTotGBP>0?'£'+fmt2(moveTotGBP):'—'}</td>
+                   <td className="px-3 py-2 text-amber-700">{moveTotEUR>0?'€'+fmt2(moveTotEUR):'—'}</td>
                    <td></td>
                   </tr>
                   )}
@@ -6210,9 +6216,9 @@ import React, { useState, useEffect } from 'react';
                   <td className="px-3 py-1.5 text-gray-500 whitespace-nowrap">{(String(r.receiverContact||'').split('|')[1]||'').trim()||'—'}</td>
                   <td className="px-3 py-1.5 text-gray-500">{r.toOffice||'—'}</td>
                   <td className="px-3 py-1.5">{r.amountIQD>0?r.amountIQD.toLocaleString():'—'}</td>
-                  <td className="px-3 py-1.5">{r.amountUSD>0?'$'+r.amountUSD.toFixed(2):'—'}</td>
-                  <td className="px-3 py-1.5">{r.amountGBP>0?'£'+r.amountGBP.toFixed(2):'—'}</td>
-                  <td className="px-3 py-1.5">{r.amountEUR>0?'€'+r.amountEUR.toFixed(2):'—'}</td>
+                  <td className="px-3 py-1.5">{r.amountUSD>0?'$'+fmt2(r.amountUSD):'—'}</td>
+                  <td className="px-3 py-1.5">{r.amountGBP>0?'£'+fmt2(r.amountGBP):'—'}</td>
+                  <td className="px-3 py-1.5">{r.amountEUR>0?'€'+fmt2(r.amountEUR):'—'}</td>
                   <td className="px-3 py-1.5 text-gray-400">{r.notes||'—'}</td>
                   <td className="px-3 py-1.5 whitespace-nowrap">
                    {rv ? (
@@ -6280,7 +6286,7 @@ import React, { useState, useEffect } from 'react';
                   setCreditSaving(false);
                 };
                 const handleDeleteCredit = async function(a) {
-                  if (!window.confirm('Delete credit of ' + sym + parseFloat(a.amount).toFixed(2) + ' for ' + a.employeeName + '?')) return;
+                  if (!window.confirm('Delete credit of ' + sym + fmt2(parseFloat(a.amount)) + ' for ' + a.employeeName + '?')) return;
                   try { await apiCall(API_ENDPOINTS.adjustments + '/' + a.id, { method: 'DELETE' }); await loadAdjustmentsFromAPI(); }
                   catch(e) { alert('Failed: ' + e.message); }
                 };
@@ -6400,7 +6406,7 @@ import React, { useState, useEffect } from 'react';
                   <p className="text-xs text-gray-500">{new Date(a.date).toLocaleDateString('en-GB')} · {a.reason}</p>
                    </div>
                    <div className="flex items-center gap-2">
-                  <span className="font-bold text-indigo-700">{getCurrencySymbol('GBP')}{parseFloat(a.amount).toFixed(2)}</span>
+                  <span className="font-bold text-indigo-700">{getCurrencySymbol('GBP')}{fmt2(parseFloat(a.amount))}</span>
                   <button onClick={function(){startEditCredit(a);}} className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs font-semibold hover:bg-indigo-200">Edit</button>
                   <button onClick={function(){handleDeleteCredit(a);}} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold hover:bg-red-200">Delete</button>
                    </div>
@@ -6411,7 +6417,7 @@ import React, { useState, useEffect } from 'react';
                   {filteredCredits.length > 0 && (
                   <div className="mt-3 flex justify-between items-center bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3">
                    <span className="text-sm font-semibold text-gray-700">{(filterEmpId || filterFrom || filterTo) ? 'Filtered Total' : 'Grand Total'} ({filteredCredits.length} record{filteredCredits.length!==1?'s':''})</span>
-                   <span className="text-lg font-bold text-indigo-700">{getCurrencySymbol('GBP')}{filteredTotal.toFixed(2)}</span>
+                   <span className="text-lg font-bold text-indigo-700">{getCurrencySymbol('GBP')}{fmt2(filteredTotal)}</span>
                   </div>
                   )}
                   </div>
@@ -6821,7 +6827,7 @@ import React, { useState, useEffect } from 'react';
                    <div className="flex items-center gap-4 text-sm text-gray-500">
                   <span className="font-semibold text-lg">
                    {adjustment.type === 'bonus' || adjustment.type === 'sick_pay' ? '+' : '-'}
-                   {getEmployeeCurrency(adjustment.employeeId)}{adjustment.amount.toFixed(2)}
+                   {getEmployeeCurrency(adjustment.employeeId)}{fmt2(adjustment.amount)}
                   </span>
                   {adjustment.hours && (
                    <span className="text-purple-600">({adjustment.hours}h added)</span>
@@ -6852,7 +6858,7 @@ import React, { useState, useEffect } from 'react';
                   <p className="text-sm text-green-600 font-semibold">Total Bonuses</p>
                    </div>
                    <p className="text-2xl font-bold text-green-700">
-                  {visibleAdjustments.filter(a => a.type === 'bonus').reduce((sum, a) => sum + a.amount, 0).toFixed(2)}
+                  {fmt2(visibleAdjustments.filter(a => a.type === 'bonus').reduce((sum, a) => sum + a.amount, 0))}
                    </p>
                   </div>
                   <div className="bg-red-50 p-4 rounded-lg">
@@ -6861,7 +6867,7 @@ import React, { useState, useEffect } from 'react';
                   <p className="text-sm text-red-600 font-semibold">Total Penalties</p>
                    </div>
                    <p className="text-2xl font-bold text-red-700">
-                  {visibleAdjustments.filter(a => a.type === 'penalty').reduce((sum, a) => sum + a.amount, 0).toFixed(2)}
+                  {fmt2(visibleAdjustments.filter(a => a.type === 'penalty').reduce((sum, a) => sum + a.amount, 0))}
                    </p>
                   </div>
                   <div className="bg-blue-50 p-4 rounded-lg">
@@ -6870,7 +6876,7 @@ import React, { useState, useEffect } from 'react';
                   <p className="text-sm text-blue-600 font-semibold">Total Advances</p>
                    </div>
                    <p className="text-2xl font-bold text-blue-700">
-                  {visibleAdjustments.filter(a => a.type === 'advance').reduce((sum, a) => sum + a.amount, 0).toFixed(2)}
+                  {fmt2(visibleAdjustments.filter(a => a.type === 'advance').reduce((sum, a) => sum + a.amount, 0))}
                    </p>
                   </div>
                   <div className="bg-purple-50 p-4 rounded-lg">
@@ -6879,7 +6885,7 @@ import React, { useState, useEffect } from 'react';
                   <p className="text-sm text-purple-600 font-semibold">Total Sick Pay</p>
                    </div>
                    <p className="text-2xl font-bold text-purple-700">
-                  {visibleAdjustments.filter(a => a.type === 'sick_pay').reduce((sum, a) => sum + a.amount, 0).toFixed(2)}
+                  {fmt2(visibleAdjustments.filter(a => a.type === 'sick_pay').reduce((sum, a) => sum + a.amount, 0))}
                    </p>
                   </div>
                   <div className="bg-emerald-50 p-4 rounded-lg">
@@ -6888,7 +6894,7 @@ import React, { useState, useEffect } from 'react';
                   <p className="text-sm text-emerald-600 font-semibold">💵 Cash Payments</p>
                    </div>
                    <p className="text-2xl font-bold text-emerald-700">
-                  {visibleAdjustments.filter(a => a.type === 'payment' && !/^\[BANK\]/.test(a.reason||'')).reduce((sum, a) => sum + a.amount, 0).toFixed(2)}
+                  {fmt2(visibleAdjustments.filter(a => a.type === 'payment' && !/^\[BANK\]/.test(a.reason||'')).reduce((sum, a) => sum + a.amount, 0))}
                    </p>
                    <p className="text-xs text-emerald-600 mt-1">Counted in branch/company cash accounting</p>
                   </div>
@@ -6898,7 +6904,7 @@ import React, { useState, useEffect } from 'react';
                   <p className="text-sm text-sky-600 font-semibold">🏦 Bank Payments</p>
                    </div>
                    <p className="text-2xl font-bold text-sky-700">
-                  {visibleAdjustments.filter(a => a.type === 'payment' && /^\[BANK\]/.test(a.reason||'')).reduce((sum, a) => sum + a.amount, 0).toFixed(2)}
+                  {fmt2(visibleAdjustments.filter(a => a.type === 'payment' && /^\[BANK\]/.test(a.reason||'')).reduce((sum, a) => sum + a.amount, 0))}
                    </p>
                    <p className="text-xs text-sky-600 mt-1">Excluded — reconciled from bank statement instead</p>
                   </div>
@@ -6926,12 +6932,12 @@ import React, { useState, useEffect } from 'react';
                    </p>
                    <p className="text-xs text-gray-500">{empAdj.employee.employeeId}</p>
                   </td>
-                  <td className="px-4 py-3 text-green-700 font-semibold">+{getCurrencySymbol(empAdj.employee.currency || 'GBP')}{empAdj.bonuses.toFixed(2)}</td>
-                  <td className="px-4 py-3 text-red-700 font-semibold">-{getCurrencySymbol(empAdj.employee.currency || 'GBP')}{empAdj.penalties.toFixed(2)}</td>
-                  <td className="px-4 py-3 text-blue-700 font-semibold">-{getCurrencySymbol(empAdj.employee.currency || 'GBP')}{empAdj.advances.toFixed(2)}</td>
-                  <td className="px-4 py-3 text-purple-700 font-semibold">+{getCurrencySymbol(empAdj.employee.currency || 'GBP')}{empAdj.sickPay.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-green-700 font-semibold">+{getCurrencySymbol(empAdj.employee.currency || 'GBP')}{fmt2(empAdj.bonuses)}</td>
+                  <td className="px-4 py-3 text-red-700 font-semibold">-{getCurrencySymbol(empAdj.employee.currency || 'GBP')}{fmt2(empAdj.penalties)}</td>
+                  <td className="px-4 py-3 text-blue-700 font-semibold">-{getCurrencySymbol(empAdj.employee.currency || 'GBP')}{fmt2(empAdj.advances)}</td>
+                  <td className="px-4 py-3 text-purple-700 font-semibold">+{getCurrencySymbol(empAdj.employee.currency || 'GBP')}{fmt2(empAdj.sickPay)}</td>
                   <td className={`px-4 py-3 font-bold ${empAdj.netAdjustment >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                   {empAdj.netAdjustment >= 0 ? '+' : ''}{getCurrencySymbol(empAdj.employee.currency || 'GBP')}{empAdj.netAdjustment.toFixed(2)}
+                   {empAdj.netAdjustment >= 0 ? '+' : ''}{getCurrencySymbol(empAdj.employee.currency || 'GBP')}{fmt2(empAdj.netAdjustment)}
                   </td>
                    </tr>
                   ))}
@@ -7279,8 +7285,8 @@ import React, { useState, useEffect } from 'react';
                   const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                   const fmtDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
                   const symOf = (emp) => getCurrencySymbol(emp.currency || 'GBP');
-                  const curLines = (obj) => { const k = Object.keys(obj); return k.length ? k.map(function(c) { return c + obj[c].toFixed(2); }).join(' + ') : '—'; };
-                  const signedMoney = (sym, v) => (v < 0 ? '-' : '') + sym + Math.abs(v).toFixed(2);
+                  const curLines = (obj) => { const k = Object.keys(obj); return k.length ? k.map(function(c) { return c + fmt2(obj[c]); }).join(' + ') : '—'; };
+                  const signedMoney = (sym, v) => (v < 0 ? '-' : '') + sym + fmt2(Math.abs(v));
                   const shiftPayFor = function(emp, ts) {
                    const rate = (ts.hourlyRate != null && ts.hourlyRate !== '') ? parseFloat(ts.hourlyRate) : emp.hourlyRate;
                    const empMult = (emp.overtimeRate != null && emp.overtimeRate !== '') ? parseFloat(emp.overtimeRate) : (payrollSettings.overtimeMultiplier || 1.5);
@@ -7298,10 +7304,10 @@ import React, { useState, useEffect } from 'react';
                    const sy = symOf(r.employee);
                    const notes = [];
                    if (r.minimumHoursBonus > 0) notes.push('incl. minimum-hours guarantee +' + r.minimumHoursBonus.toFixed(1) + 'h');
-                   if (r.bonuses > 0) notes.push('bonus +' + sy + r.bonuses.toFixed(2));
-                   if (r.sickPay > 0) notes.push('sick pay +' + sy + r.sickPay.toFixed(2));
-                   if (r.penalties > 0) notes.push('penalty -' + sy + r.penalties.toFixed(2));
-                   if (r.advances > 0) notes.push('advance -' + sy + r.advances.toFixed(2));
+                   if (r.bonuses > 0) notes.push('bonus +' + sy + fmt2(r.bonuses));
+                   if (r.sickPay > 0) notes.push('sick pay +' + sy + fmt2(r.sickPay));
+                   if (r.penalties > 0) notes.push('penalty -' + sy + fmt2(r.penalties));
+                   if (r.advances > 0) notes.push('advance -' + sy + fmt2(r.advances));
                    const shifts = r.approvedShifts + ' approved' + (r.pendingShifts > 0 ? ', ' + r.pendingShifts + ' pending' : '') + (r.rejectedShifts > 0 ? ', ' + r.rejectedShifts + ' rejected' : '');
                    const showDash = Math.abs(r.allTimeBalance - Math.max(r.balanceOwed, 0)) > 0.005;
                    return '<tr>'
@@ -7311,11 +7317,11 @@ import React, { useState, useEffect } from 'react';
                     + '<td class="n">' + r.totalRegular.toFixed(1) + '</td>'
                     + '<td class="n">' + r.totalOvertime.toFixed(1) + '</td>'
                     + '<td class="n"><b>' + r.totalHours.toFixed(1) + '</b></td>'
-                    + '<td class="n">' + sy + (parseFloat(r.employee.hourlyRate)||0).toFixed(2) + '</td>'
-                    + '<td class="n"><b>' + sy + r.totalPay.toFixed(2) + '</b>' + (notes.length ? '<div class="sm">' + esc(notes.join('; ')) + '</div>' : '') + '</td>'
-                    + '<td class="n">' + sy + r.payments.toFixed(2) + '</td>'
+                    + '<td class="n">' + sy + fmt2((parseFloat(r.employee.hourlyRate)||0)) + '</td>'
+                    + '<td class="n"><b>' + sy + fmt2(r.totalPay) + '</b>' + (notes.length ? '<div class="sm">' + esc(notes.join('; ')) + '</div>' : '') + '</td>'
+                    + '<td class="n">' + sy + fmt2(r.payments) + '</td>'
                     + '<td class="n">' + signedMoney(sy, r.broughtForward) + (r.broughtForward < -0.005 ? '<div class="sm">paid ahead</div>' : '') + '</td>'
-                    + '<td class="n"><b>' + signedMoney(sy, r.balanceOwed) + '</b>' + (showDash ? '<div class="sm">Dashboard balance: ' + sy + r.allTimeBalance.toFixed(2) + '</div>' : '') + '</td>'
+                    + '<td class="n"><b>' + signedMoney(sy, r.balanceOwed) + '</b>' + (showDash ? '<div class="sm">Dashboard balance: ' + sy + fmt2(r.allTimeBalance) + '</div>' : '') + '</td>'
                     + '</tr>';
                   }).join('');
 
@@ -7337,18 +7343,18 @@ import React, { useState, useEffect } from 'react';
                    + '<td class="n">' + (ts.overtimeHours || 0).toFixed(1) + 'h</td>'
                    + '<td class="n">' + brk + '</td>'
                    + '<td class="n">' + tHrs.toFixed(1) + 'h</td>'
-                   + '<td class="n">' + sy + shiftPayFor(r.employee, ts).toFixed(2) + '</td>'
+                   + '<td class="n">' + sy + fmt2(shiftPayFor(r.employee, ts)) + '</td>'
                    + '<td>' + esc(ts.status) + (counted ? '' : ' (not counted)') + '</td>'
                    + '<td>' + (esc((ts.notes || '').trim()) || '—') + '</td>'
                    + '</tr>';
                    }).join('');
                    const extra = []
-                   if (r.minimumHoursBonus > 0) extra.push('Minimum-hours guarantee: +' + r.minimumHoursBonus.toFixed(1) + 'h (+' + sy + r.minimumHoursPay.toFixed(2) + ')');
-                   if (r.bonuses > 0) extra.push('Bonus: +' + sy + r.bonuses.toFixed(2));
-                   if (r.sickPay > 0) extra.push('Sick pay: +' + sy + r.sickPay.toFixed(2));
-                   if (r.penalties > 0) extra.push('Penalty: -' + sy + r.penalties.toFixed(2));
-                   if (r.advances > 0) extra.push('Advance: -' + sy + r.advances.toFixed(2));
-                   if (r.payments > 0) extra.push('Payments made: ' + sy + r.payments.toFixed(2));
+                   if (r.minimumHoursBonus > 0) extra.push('Minimum-hours guarantee: +' + r.minimumHoursBonus.toFixed(1) + 'h (+' + sy + fmt2(r.minimumHoursPay) + ')');
+                   if (r.bonuses > 0) extra.push('Bonus: +' + sy + fmt2(r.bonuses));
+                   if (r.sickPay > 0) extra.push('Sick pay: +' + sy + fmt2(r.sickPay));
+                   if (r.penalties > 0) extra.push('Penalty: -' + sy + fmt2(r.penalties));
+                   if (r.advances > 0) extra.push('Advance: -' + sy + fmt2(r.advances));
+                   if (r.payments > 0) extra.push('Payments made: ' + sy + fmt2(r.payments));
                    if (Math.abs(r.broughtForward) > 0.005) extra.push('Brought forward: ' + signedMoney(sy, r.broughtForward));
                    return '<div class="sec"><div class="sec-title"><span>Shift details — ' + esc(r.employee.firstName + ' ' + r.employee.lastName) + '</span><span>' + esc(r.employee.employeeId) + '</span></div>'
                     + '<table><thead><tr><th>Date</th><th>Start</th><th>Finish</th><th class="n">Regular</th><th class="n">Overtime</th><th class="n">Break</th><th class="n">Total</th><th class="n">Pay</th><th>Status</th><th>Notes</th></tr></thead><tbody>' + trs + '</tbody></table>'
@@ -7510,25 +7516,25 @@ import React, { useState, useEffect } from 'react';
                   <div className="bg-green-50 p-4 rounded-lg">
                    <p className="text-sm text-green-600 font-semibold">Total Payroll</p>
                    {Object.entries(generatedReport.payByCurrency).map(function(entry) {
-                   return <p key={entry[0]} className="text-lg font-bold text-green-900">{entry[0]}{entry[1].toFixed(2)}</p>;
+                   return <p key={entry[0]} className="text-lg font-bold text-green-900">{entry[0]}{fmt2(entry[1])}</p>;
                    })}
                   </div>
                    <div className="bg-emerald-50 p-4 rounded-lg">
                    <p className="text-sm text-emerald-600 font-semibold">Payments Made</p>
                    {Object.entries(generatedReport.paidByCurrency || {}).map(function(entry) {
-                   return <p key={entry[0]} className="text-lg font-bold text-emerald-900">{entry[0]}{entry[1].toFixed(2)}</p>;
+                   return <p key={entry[0]} className="text-lg font-bold text-emerald-900">{entry[0]}{fmt2(entry[1])}</p>;
                    })}
                   </div>
                   <div className="bg-slate-50 p-4 rounded-lg">
                    <p className="text-sm text-slate-600 font-semibold">Brought Forward</p>
                    {Object.entries(generatedReport.bfByCurrency || {}).map(function(entry) {
-                   return <p key={entry[0]} className="text-lg font-bold text-slate-900">{entry[1] < 0 ? '-' : ''}{entry[0]}{Math.abs(entry[1]).toFixed(2)}</p>;
+                   return <p key={entry[0]} className="text-lg font-bold text-slate-900">{entry[1] < 0 ? '-' : ''}{entry[0]}{fmt2(Math.abs(entry[1]))}</p>;
                    })}
                   </div>
                   <div className="bg-amber-50 p-4 rounded-lg">
                    <p className="text-sm text-amber-600 font-semibold">Balance Owed</p>
                    {Object.entries(generatedReport.balanceByCurrency || {}).map(function(entry) {
-                   return <p key={entry[0]} className="text-lg font-bold text-amber-900">{entry[1] < 0 ? '-' : ''}{entry[0]}{Math.abs(entry[1]).toFixed(2)}</p>;
+                   return <p key={entry[0]} className="text-lg font-bold text-amber-900">{entry[1] < 0 ? '-' : ''}{entry[0]}{fmt2(Math.abs(entry[1]))}</p>;
                    })}
                   </div>
                    </div>
@@ -7576,23 +7582,23 @@ import React, { useState, useEffect } from 'react';
                   <td className="px-4 py-3 text-sm font-medium">{row.totalRegular.toFixed(1)}</td>
                   <td className="px-4 py-3 text-sm font-medium text-amber-600">{row.totalOvertime.toFixed(1)}</td>
                   <td className="px-4 py-3 text-sm font-bold">{row.totalHours.toFixed(1)}</td>
-                  <td className="px-4 py-3 text-sm">{getCurrencySymbol(row.employee.currency || "GBP")}{(parseFloat(row.employee.hourlyRate)||0).toFixed(2)}</td>
-                  <td className="px-4 py-3 text-sm font-bold text-green-700">{getCurrencySymbol(row.employee.currency || "GBP")}{row.totalPay.toFixed(2)}
+                  <td className="px-4 py-3 text-sm">{getCurrencySymbol(row.employee.currency || "GBP")}{fmt2((parseFloat(row.employee.hourlyRate)||0))}</td>
+                  <td className="px-4 py-3 text-sm font-bold text-green-700">{getCurrencySymbol(row.employee.currency || "GBP")}{fmt2(row.totalPay)}
                    {row.totalBreakMinutes > 0 && <div className="text-xs font-normal text-gray-400">{row.totalBreakMinutes}m break (already excluded from hours)</div>}
                    {row.minimumHoursBonus > 0 && <div className="text-xs font-normal text-amber-600">incl. minimum-hours guarantee +{row.minimumHoursBonus.toFixed(1)}h</div>}
-                   {row.bonuses > 0 && <div className="text-xs font-normal text-emerald-600">incl. bonus +{getCurrencySymbol(row.employee.currency || "GBP")}{row.bonuses.toFixed(2)}</div>}
-                   {row.sickPay > 0 && <div className="text-xs font-normal text-emerald-600">incl. sick pay +{getCurrencySymbol(row.employee.currency || "GBP")}{row.sickPay.toFixed(2)}</div>}
-                   {row.penalties > 0 && <div className="text-xs font-normal text-red-500">less penalty -{getCurrencySymbol(row.employee.currency || "GBP")}{row.penalties.toFixed(2)}</div>}
-                   {row.advances > 0 && <div className="text-xs font-normal text-red-500">less advance -{getCurrencySymbol(row.employee.currency || "GBP")}{row.advances.toFixed(2)}</div>}
+                   {row.bonuses > 0 && <div className="text-xs font-normal text-emerald-600">incl. bonus +{getCurrencySymbol(row.employee.currency || "GBP")}{fmt2(row.bonuses)}</div>}
+                   {row.sickPay > 0 && <div className="text-xs font-normal text-emerald-600">incl. sick pay +{getCurrencySymbol(row.employee.currency || "GBP")}{fmt2(row.sickPay)}</div>}
+                   {row.penalties > 0 && <div className="text-xs font-normal text-red-500">less penalty -{getCurrencySymbol(row.employee.currency || "GBP")}{fmt2(row.penalties)}</div>}
+                   {row.advances > 0 && <div className="text-xs font-normal text-red-500">less advance -{getCurrencySymbol(row.employee.currency || "GBP")}{fmt2(row.advances)}</div>}
                   </td>
-                  <td className="px-4 py-3 text-sm font-medium">{getCurrencySymbol(row.employee.currency || "GBP")}{row.payments.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-sm font-medium">{getCurrencySymbol(row.employee.currency || "GBP")}{fmt2(row.payments)}</td>
                   <td className="px-4 py-3 text-sm">
-                   <div className={'font-medium ' + (row.broughtForward < -0.005 ? 'text-red-600' : 'text-gray-700')}>{row.broughtForward < 0 ? '-' : ''}{getCurrencySymbol(row.employee.currency || "GBP")}{Math.abs(row.broughtForward).toFixed(2)}</div>
+                   <div className={'font-medium ' + (row.broughtForward < -0.005 ? 'text-red-600' : 'text-gray-700')}>{row.broughtForward < 0 ? '-' : ''}{getCurrencySymbol(row.employee.currency || "GBP")}{fmt2(Math.abs(row.broughtForward))}</div>
                    {row.broughtForward < -0.005 && <div className="text-xs font-normal text-red-400">paid ahead</div>}
                   </td>
                   <td className="px-4 py-3 text-sm">
-                   <div className={'font-bold ' + (row.balanceOwed > 0.005 ? 'text-green-700' : 'text-gray-500')}>{row.balanceOwed < 0 ? '-' : ''}{getCurrencySymbol(row.employee.currency || "GBP")}{Math.abs(row.balanceOwed).toFixed(2)}</div>
-                   {Math.abs(row.allTimeBalance - Math.max(row.balanceOwed, 0)) > 0.005 && <div className="text-xs font-normal text-gray-400">Dashboard balance (to date): {getCurrencySymbol(row.employee.currency || "GBP")}{row.allTimeBalance.toFixed(2)}</div>}
+                   <div className={'font-bold ' + (row.balanceOwed > 0.005 ? 'text-green-700' : 'text-gray-500')}>{row.balanceOwed < 0 ? '-' : ''}{getCurrencySymbol(row.employee.currency || "GBP")}{fmt2(Math.abs(row.balanceOwed))}</div>
+                   {Math.abs(row.allTimeBalance - Math.max(row.balanceOwed, 0)) > 0.005 && <div className="text-xs font-normal text-gray-400">Dashboard balance (to date): {getCurrencySymbol(row.employee.currency || "GBP")}{fmt2(row.allTimeBalance)}</div>}
                   </td>
                   <td className="px-4 py-3 text-xs text-indigo-600 font-medium">{expandedEmp === row.employee.id ? 'Hide ▲' : 'Show ▼'}</td>
                    </tr>
@@ -7645,7 +7651,7 @@ import React, { useState, useEffect } from 'react';
                   <td className="py-1.5 text-amber-600">{(ts.overtimeHours||0).toFixed(1)}h</td>
                   <td className="py-1.5 text-gray-500">{shiftBreakMin > 0 ? shiftBreakMin + 'm' : '—'}</td>
                   <td className="py-1.5 font-semibold">{tHrs.toFixed(1)}h</td>
-                  <td className={'py-1.5 font-semibold ' + (ts.status === 'approved' ? 'text-green-700' : 'text-gray-400')} title={ts.status === 'approved' ? '' : 'Not included in totals — only approved shifts are paid'}>{sym}{shiftPay.toFixed(2)}</td>
+                  <td className={'py-1.5 font-semibold ' + (ts.status === 'approved' ? 'text-green-700' : 'text-gray-400')} title={ts.status === 'approved' ? '' : 'Not included in totals — only approved shifts are paid'}>{sym}{fmt2(shiftPay)}</td>
                   <td className="py-1.5">
                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${ts.status==='approved'?'bg-green-100 text-green-700':ts.status==='rejected'?'bg-red-100 text-red-700':'bg-yellow-100 text-yellow-700'}`}>
                   {ts.status}
@@ -7694,13 +7700,13 @@ import React, { useState, useEffect } from 'react';
                    <tr className="border-t-2 border-indigo-200 bg-indigo-50/50">
                   <td className="py-1.5 font-semibold text-gray-600" colSpan="6">Adjustments</td>
                   <td className="py-1.5 font-semibold" colSpan={hasPermission('canApproveTimesheets') ? "4" : "3"}>
-                   {row.bonuses > 0 && <span className="text-emerald-600 mr-3">Bonus +{getCurrencySymbol(row.employee.currency||'GBP')}{row.bonuses.toFixed(2)}</span>}
-                   {row.sickPay > 0 && <span className="text-emerald-600 mr-3">Sick Pay +{getCurrencySymbol(row.employee.currency||'GBP')}{row.sickPay.toFixed(2)}</span>}
-                   {row.penalties > 0 && <span className="text-red-500 mr-3">Penalty -{getCurrencySymbol(row.employee.currency||'GBP')}{row.penalties.toFixed(2)}</span>}
-                   {row.advances > 0 && <span className="text-red-500 mr-3">Advance -{getCurrencySymbol(row.employee.currency||'GBP')}{row.advances.toFixed(2)}</span>}
-                   {row.minimumHoursBonus > 0 && <span className="text-amber-600 mr-3">Guarantee +{row.minimumHoursBonus.toFixed(1)}h (+{getCurrencySymbol(row.employee.currency||'GBP')}{row.minimumHoursPay.toFixed(2)})</span>}
-                   {row.payments > 0 && <span className="text-blue-600 mr-3">Payments made {getCurrencySymbol(row.employee.currency||'GBP')}{row.payments.toFixed(2)}</span>}
-                   {Math.abs(row.broughtForward) > 0.005 && <span className={(row.broughtForward < 0 ? 'text-red-600' : 'text-gray-700') + ' mr-3'}>Brought forward {row.broughtForward < 0 ? '-' : ''}{getCurrencySymbol(row.employee.currency||'GBP')}{Math.abs(row.broughtForward).toFixed(2)}</span>}
+                   {row.bonuses > 0 && <span className="text-emerald-600 mr-3">Bonus +{getCurrencySymbol(row.employee.currency||'GBP')}{fmt2(row.bonuses)}</span>}
+                   {row.sickPay > 0 && <span className="text-emerald-600 mr-3">Sick Pay +{getCurrencySymbol(row.employee.currency||'GBP')}{fmt2(row.sickPay)}</span>}
+                   {row.penalties > 0 && <span className="text-red-500 mr-3">Penalty -{getCurrencySymbol(row.employee.currency||'GBP')}{fmt2(row.penalties)}</span>}
+                   {row.advances > 0 && <span className="text-red-500 mr-3">Advance -{getCurrencySymbol(row.employee.currency||'GBP')}{fmt2(row.advances)}</span>}
+                   {row.minimumHoursBonus > 0 && <span className="text-amber-600 mr-3">Guarantee +{row.minimumHoursBonus.toFixed(1)}h (+{getCurrencySymbol(row.employee.currency||'GBP')}{fmt2(row.minimumHoursPay)})</span>}
+                   {row.payments > 0 && <span className="text-blue-600 mr-3">Payments made {getCurrencySymbol(row.employee.currency||'GBP')}{fmt2(row.payments)}</span>}
+                   {Math.abs(row.broughtForward) > 0.005 && <span className={(row.broughtForward < 0 ? 'text-red-600' : 'text-gray-700') + ' mr-3'}>Brought forward {row.broughtForward < 0 ? '-' : ''}{getCurrencySymbol(row.employee.currency||'GBP')}{fmt2(Math.abs(row.broughtForward))}</span>}
                   </td>
                    </tr>
                   )}
@@ -7717,22 +7723,22 @@ import React, { useState, useEffect } from 'react';
                    <td className="px-4 py-3 text-sm"></td>
                    <td className="px-4 py-3 text-sm text-green-700">
                    {Object.entries(generatedReport.payByCurrency).map(function(entry) {
-                   return <div key={entry[0]}>{entry[0]}{entry[1].toFixed(2)}</div>;
+                   return <div key={entry[0]}>{entry[0]}{fmt2(entry[1])}</div>;
                    })}
                    </td>
                    <td className="px-4 py-3 text-sm">
                    {Object.entries(generatedReport.paidByCurrency || {}).map(function(entry) {
-                   return <div key={entry[0]}>{entry[0]}{entry[1].toFixed(2)}</div>;
+                   return <div key={entry[0]}>{entry[0]}{fmt2(entry[1])}</div>;
                    })}
                    </td>
                    <td className="px-4 py-3 text-sm">
                    {Object.entries(generatedReport.bfByCurrency || {}).map(function(entry) {
-                   return <div key={entry[0]}>{entry[1] < 0 ? '-' : ''}{entry[0]}{Math.abs(entry[1]).toFixed(2)}</div>;
+                   return <div key={entry[0]}>{entry[1] < 0 ? '-' : ''}{entry[0]}{fmt2(Math.abs(entry[1]))}</div>;
                    })}
                    </td>
                    <td className="px-4 py-3 text-sm text-green-700">
                    {Object.entries(generatedReport.balanceByCurrency || {}).map(function(entry) {
-                   return <div key={entry[0]}>{entry[1] < 0 ? '-' : ''}{entry[0]}{Math.abs(entry[1]).toFixed(2)}</div>;
+                   return <div key={entry[0]}>{entry[1] < 0 ? '-' : ''}{entry[0]}{fmt2(Math.abs(entry[1]))}</div>;
                    })}
                    </td>
                    <td className="px-4 py-3"></td>
@@ -8104,7 +8110,7 @@ import React, { useState, useEffect } from 'react';
                   placeholder="e.g. 10"
                    />
                    <p className="text-xs text-amber-700 mt-1">
-                  If employee works fewer than <strong>{editData.minimumHours || 10}h</strong> in a day, pay will be calculated as <strong>{editData.minimumHours || 10}h × {getCurrencySymbol(editData.currency || 'GBP')}{parseFloat(editData.hourlyRate || 0).toFixed(2)}/hr = {getCurrencySymbol(editData.currency || 'GBP')}{((editData.minimumHours || 10) * parseFloat(editData.hourlyRate || 0)).toFixed(2)}</strong> minimum per day.
+                  If employee works fewer than <strong>{editData.minimumHours || 10}h</strong> in a day, pay will be calculated as <strong>{editData.minimumHours || 10}h × {getCurrencySymbol(editData.currency || 'GBP')}{fmt2(parseFloat(editData.hourlyRate || 0))}/hr = {getCurrencySymbol(editData.currency || 'GBP')}{fmt2(((editData.minimumHours || 10) * parseFloat(editData.hourlyRate || 0)))}</strong> minimum per day.
                    </p>
                   </div>
                    ) : (
@@ -8171,7 +8177,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   <div>
                    <span className="text-gray-600">Hourly Rate:</span>
-                   <span className="ml-2 font-medium text-green-700">{getCurrencySymbol(employee.currency || "GBP")}{(parseFloat(employee.hourlyRate)||0).toFixed(2)}</span>
+                   <span className="ml-2 font-medium text-green-700">{getCurrencySymbol(employee.currency || "GBP")}{fmt2((parseFloat(employee.hourlyRate)||0))}</span>
                   </div>
                   <div className="col-span-2">
                    <span className="text-gray-600">Assigned Locations:</span>
@@ -8466,7 +8472,7 @@ import React, { useState, useEffect } from 'react';
                 };
                 const describeTwins = (twins) => twins.map(t => {
                   const e = t.exp;
-                  return '• ' + new Date(e.date).toLocaleDateString('en-GB') + ' · ' + e.category + ' · ' + getCurrencySymbol(myCurOf(e)) + (parseFloat(e.amount) || 0).toFixed(2)
+                  return '• ' + new Date(e.date).toLocaleDateString('en-GB') + ' · ' + e.category + ' · ' + getCurrencySymbol(myCurOf(e)) + fmt2((parseFloat(e.amount) || 0))
                     + (e.description ? ' · "' + e.description + '"' : '') + ' — ' + (e._inList ? 'already in your list below' : 'already submitted (' + e.status + ')');
                 }).join('\n');
 
@@ -8507,7 +8513,7 @@ import React, { useState, useEffect } from 'react';
                    if (prior.length) flaggedItems.push({ item: item, twins: prior });
                   });
                   if (flaggedItems.length && !window.confirm('⚠ ' + flaggedItems.length + ' of your items look like expenses you have already submitted:\n\n'
-                    + flaggedItems.map(f => '— ' + f.item.category + ' ' + getCurrencySymbol(myCurOf(f.item)) + f.item.amount.toFixed(2) + ' (' + new Date(f.item.date).toLocaleDateString('en-GB') + ')\n' + describeTwins(f.twins)).join('\n\n')
+                    + flaggedItems.map(f => '— ' + f.item.category + ' ' + getCurrencySymbol(myCurOf(f.item)) + fmt2(f.item.amount) + ' (' + new Date(f.item.date).toLocaleDateString('en-GB') + ')\n' + describeTwins(f.twins)).join('\n\n')
                     + '\n\nPress OK to submit anyway, or Cancel to go back and remove them.')) return;
                   _submitGuard.current = true;
                   setSaving(true);
@@ -8634,7 +8640,7 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   </div>
                   <div className="flex items-center gap-3">
-                   <span className="font-bold text-teal-700">{sym}{item.amount.toFixed(2)}</span>
+                   <span className="font-bold text-teal-700">{sym}{fmt2(item.amount)}</span>
                    <button onClick={() => removeItem(item.id)} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none">✕</button>
                   </div>
                    </div>
@@ -8642,7 +8648,7 @@ import React, { useState, useEffect } from 'react';
                    </div>
                    <div className="flex items-center justify-between mt-3 px-3 py-2 bg-gray-100 rounded-lg">
                   <span className="text-sm font-semibold text-gray-700">Total</span>
-                  <span className="text-lg font-bold text-teal-700">{sym}{total.toFixed(2)}</span>
+                  <span className="text-lg font-bold text-teal-700">{sym}{fmt2(total)}</span>
                    </div>
                   </div>
                    )}
@@ -8706,12 +8712,12 @@ import React, { useState, useEffect } from 'react';
                 };
                 const fmtByCur = function(t) {
                   const k = Object.keys(t);
-                  return k.length ? k.map(function(c){ return getCurrencySymbol(c) + t[c].toFixed(2); }).join(' + ') : '0.00';
+                  return k.length ? k.map(function(c){ return getCurrencySymbol(c) + fmt2(t[c]); }).join(' + ') : '0.00';
                 };
                 const renderCurLines = function(t) {
                   const k = Object.keys(t);
                   if (!k.length) return '0.00';
-                  return k.map(function(c){ return <div key={c}>{getCurrencySymbol(c)}{t[c].toFixed(2)}</div>; });
+                  return k.map(function(c){ return <div key={c}>{getCurrencySymbol(c)}{fmt2(t[c])}</div>; });
                 };
                 const addDefaultCur = addForm.employeeId
                   ? resolveEmployeeCurrency(visEmp.find(function(e){ return e.id === parseInt(addForm.employeeId); }))
@@ -8723,7 +8729,7 @@ import React, { useState, useEffect } from 'react';
                 const dupMessage = function(exp, action) {
                   const d = expDupMap[exp.id];
                   const sym0 = getCurrencySymbol(expCurOf(exp));
-                  return '⚠ POSSIBLE DUPLICATE\n\n' + exp.employeeName + ' · ' + new Date(exp.date).toLocaleDateString('en-GB') + ' · ' + exp.category + ' · ' + sym0 + exp.amount.toFixed(2)
+                  return '⚠ POSSIBLE DUPLICATE\n\n' + exp.employeeName + ' · ' + new Date(exp.date).toLocaleDateString('en-GB') + ' · ' + exp.category + ' · ' + sym0 + fmt2(exp.amount)
                     + '\n\nSimilar expense(s):\n' + d.twins.map(function(t){ return describeExpenseTwin(t, getCurrencySymbol(expCurOf(t.exp))); }).join('\n')
                     + '\n\n' + action + ' this expense anyway?';
                 };
@@ -9277,7 +9283,7 @@ import React, { useState, useEffect } from 'react';
                   );
                    })()}
                   </td>
-                  <td className="px-3 py-3 font-bold text-gray-800 whitespace-nowrap">{getCurrencySymbol(expCur)}{exp.amount.toFixed(2)}</td>
+                  <td className="px-3 py-3 font-bold text-gray-800 whitespace-nowrap">{getCurrencySymbol(expCur)}{fmt2(exp.amount)}</td>
                   <td className="px-3 py-3">
                    {exp.receiptImage ? (
                   <img src={exp.receiptImage} alt="Receipt"
@@ -9325,7 +9331,7 @@ import React, { useState, useEffect } from 'react';
                    const keys = Object.keys(totals);
                    if (keys.length === 0) return <span className="text-gray-400 font-normal">—</span>;
                    return keys.map(function(cur) {
-                  return <div key={cur}>{getCurrencySymbol(cur)}{totals[cur].toFixed(2)}</div>;
+                  return <div key={cur}>{getCurrencySymbol(cur)}{fmt2(totals[cur])}</div>;
                    });
                   })()}
                    </td>
@@ -9491,7 +9497,7 @@ import React, { useState, useEffect } from 'react';
                   <div className="space-y-6">
                    <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 text-center mb-6">
                   <p className="text-xs text-teal-600 font-semibold uppercase">Total Expenses ({fromDate} to {toDate})</p>
-                  <p className="text-3xl font-bold text-teal-700 mt-1">{grandSym}{grandTotal.toFixed(2)}</p>
+                  <p className="text-3xl font-bold text-teal-700 mt-1">{grandSym}{fmt2(grandTotal)}</p>
                    </div>
                    {reportDupCount > 0 && (
                   <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-4 py-3 text-xs">
@@ -9511,10 +9517,10 @@ import React, { useState, useEffect } from 'react';
                   <span className="text-gray-500 text-sm ml-2">{row.employeeCode}</span>
                    </div>
                    <div className="flex gap-4 text-xs flex-wrap">
-                  {row.totalPending > 0 && <span className="text-amber-600 font-semibold">Pending: {rowSym}{row.totalPending.toFixed(2)}</span>}
-                  {row.totalApproved > 0 && <span className="text-green-600 font-semibold">Approved: {rowSym}{row.totalApproved.toFixed(2)}</span>}
-                  {row.totalPaid > 0 && <span className="text-blue-600 font-semibold">Paid: {rowSym}{row.totalPaid.toFixed(2)}</span>}
-                  {row.totalRejected > 0 && <span className="text-red-400 font-semibold">Rejected: {rowSym}{row.totalRejected.toFixed(2)}</span>}
+                  {row.totalPending > 0 && <span className="text-amber-600 font-semibold">Pending: {rowSym}{fmt2(row.totalPending)}</span>}
+                  {row.totalApproved > 0 && <span className="text-green-600 font-semibold">Approved: {rowSym}{fmt2(row.totalApproved)}</span>}
+                  {row.totalPaid > 0 && <span className="text-blue-600 font-semibold">Paid: {rowSym}{fmt2(row.totalPaid)}</span>}
+                  {row.totalRejected > 0 && <span className="text-red-400 font-semibold">Rejected: {rowSym}{fmt2(row.totalRejected)}</span>}
                    </div>
                   </div>
                   <table className="w-full text-sm">
@@ -9550,7 +9556,7 @@ import React, { useState, useEffect } from 'react';
                   })()}
                    </td>
                    <td className="px-4 py-2 text-xs text-gray-600 whitespace-normal break-words max-w-xs">{exp.receiptNote || <span className="text-gray-300">—</span>}</td>
-                   <td className="px-4 py-2 font-bold text-gray-800">{rowSym}{exp.amount.toFixed(2)}</td>
+                   <td className="px-4 py-2 font-bold text-gray-800">{rowSym}{fmt2(exp.amount)}</td>
                    <td className="px-4 py-2">
                   <span className={'px-2 py-0.5 rounded-full text-xs font-semibold capitalize ' + getStatusBadgeClass(exp.status)}>{exp.status}</span>
                    </td>
@@ -9559,7 +9565,7 @@ import React, { useState, useEffect } from 'react';
                   })}
                   <tr className="bg-gray-50 font-bold border-t-2 border-gray-300">
                    <td colSpan="3" className="px-4 py-2 text-right text-gray-700">TOTAL</td>
-                   <td className="px-4 py-2 text-gray-800">{rowSym}{rowTotal.toFixed(2)}</td>
+                   <td className="px-4 py-2 text-gray-800">{rowSym}{fmt2(rowTotal)}</td>
                    <td></td>
                   </tr>
                    </tbody>
@@ -9735,9 +9741,9 @@ import React, { useState, useEffect } from 'react';
                   <span className="text-gray-500 text-xs ml-2">{col.fromCode} to {col.toCode}</span>
                    </div>
                    <div className="flex items-center gap-3 text-sm">
-                  <span className="text-green-600 font-bold">+{colSym}{col.amountCollected.toFixed(2)}</span>
-                  {col.amountPaid > 0 && <span className="text-red-500 font-semibold">-{colSym}{col.amountPaid.toFixed(2)}</span>}
-                  {col.bankAmount > 0 && <span className="text-blue-600 font-semibold">Bank:{colSym}{col.bankAmount.toFixed(2)}</span>}
+                  <span className="text-green-600 font-bold">+{colSym}{fmt2(col.amountCollected)}</span>
+                  {col.amountPaid > 0 && <span className="text-red-500 font-semibold">-{colSym}{fmt2(col.amountPaid)}</span>}
+                  {col.bankAmount > 0 && <span className="text-blue-600 font-semibold">Bank:{colSym}{fmt2(col.bankAmount)}</span>}
                   <button onClick={function() { handleDelete(col.id); }} className="text-red-400 hover:text-red-600 font-bold">X</button>
                    </div>
                   </div>
@@ -9761,8 +9767,8 @@ import React, { useState, useEffect } from 'react';
                    const t = byCur[cur];
                    return (
                   <span key={cur} className="mr-3">
-                   {s}{t.cash.toFixed(2)} cash
-                   {t.bank > 0 && <span className="text-blue-600 ml-1">+ {s}{t.bank.toFixed(2)} bank</span>}
+                   {s}{fmt2(t.cash)} cash
+                   {t.bank > 0 && <span className="text-blue-600 ml-1">+ {s}{fmt2(t.bank)} bank</span>}
                   </span>
                    );
                   });
@@ -9868,7 +9874,7 @@ import React, { useState, useEffect } from 'react';
                    const cur = recordCurrency(it, emp);
                    byCur[cur] = (byCur[cur] || 0) + (parseFloat(it[field]) || 0);
                   });
-                  return Object.keys(byCur).map(function(cur) { return getCurrencySymbol(cur) + byCur[cur].toFixed(2); }).join(' + ');
+                  return Object.keys(byCur).map(function(cur) { return getCurrencySymbol(cur) + fmt2(byCur[cur]); }).join(' + ');
                 };
 
                 const generateReport = function() {
@@ -10080,7 +10086,7 @@ import React, { useState, useEffect } from 'react';
                 };
 
                 const handleDeleteSettlement = async function(s) {
-                  if (!window.confirm('Delete this settlement of ' + sym + parseFloat(s.amount).toFixed(2) + ' dated ' + s.date + '?\n\nThis will recalculate the balance.')) return;
+                  if (!window.confirm('Delete this settlement of ' + sym + fmt2(parseFloat(s.amount)) + ' dated ' + s.date + '?\n\nThis will recalculate the balance.')) return;
                   try {
                    await apiCall(API_ENDPOINTS.adjustments + '/' + s.id, { method: 'DELETE' });
                    await loadAdjustmentsFromAPI();
@@ -10092,12 +10098,12 @@ import React, { useState, useEffect } from 'react';
                   if (!report) return;
                   const amount = parseFloat(settleAmount);
                   if (!amount || amount <= 0) { alert('Please enter a valid amount'); return; }
-                  if (amount > Math.abs(report.balance) + 0.005) { alert('Amount cannot exceed the balance of ' + sym + Math.abs(report.balance).toFixed(2)); return; }
+                  if (amount > Math.abs(report.balance) + 0.005) { alert('Amount cannot exceed the balance of ' + sym + fmt2(Math.abs(report.balance))); return; }
                   // This period overlaps one or more periods already settled — block accidental
                   // double-settlement here specifically, while still allowing the period to be
                   // freely VIEWED/reviewed above (the date picker no longer restricts that).
                   if (report.overlaps && report.overlaps.length > 0) {
-                   const list = report.overlaps.map(function(o){ return o.from + ' to ' + o.to + ' (' + sym + o.amount.toFixed(2) + ' on ' + o.date + ')'; }).join('\n');
+                   const list = report.overlaps.map(function(o){ return o.from + ' to ' + o.to + ' (' + sym + fmt2(o.amount) + ' on ' + o.date + ')'; }).join('\n');
                    if (!window.confirm('\u26a0\ufe0f This period overlaps ' + report.overlaps.length + ' already-settled period(s):\n\n' + list + '\n\nSettling again may double-count that activity. Are you SURE you want to record another settlement for this range?')) return;
                   }
                   const effectiveDate = settleDate || toDate;
@@ -10106,8 +10112,8 @@ import React, { useState, useEffect } from 'react';
                   }
                   const isPartial = amount < Math.abs(report.balance) - 0.005;
                   const confirmMsg = isPartial
-                  ? 'Record partial settlement of ' + sym + amount.toFixed(2) + ' dated ' + effectiveDate + '?\nRemaining balance: ' + sym + (Math.abs(report.balance) - amount).toFixed(2) + ' will carry forward.'
-                  : 'Record full settlement of ' + sym + amount.toFixed(2) + ' dated ' + effectiveDate + '?';
+                  ? 'Record partial settlement of ' + sym + fmt2(amount) + ' dated ' + effectiveDate + '?\nRemaining balance: ' + sym + fmt2((Math.abs(report.balance) - amount)) + ' will carry forward.'
+                  : 'Record full settlement of ' + sym + fmt2(amount) + ' dated ' + effectiveDate + '?';
                   if (!window.confirm(confirmMsg)) return;
                   setSettling(true);
                   try {
@@ -10124,7 +10130,7 @@ import React, { useState, useEffect } from 'react';
                   if (data.success) {
                   await loadAdjustmentsFromAPI();
                   alert(isPartial
-                  ? 'Partial settlement of ' + sym + amount.toFixed(2) + ' recorded on ' + effectiveDate + '. Remaining ' + sym + (Math.abs(report.balance) - amount).toFixed(2) + ' carries forward.'
+                  ? 'Partial settlement of ' + sym + fmt2(amount) + ' recorded on ' + effectiveDate + '. Remaining ' + sym + fmt2((Math.abs(report.balance) - amount)) + ' carries forward.'
                   : 'Full settlement recorded successfully on ' + effectiveDate + '.'
                   );
                   setReport(null);
@@ -10141,12 +10147,12 @@ import React, { useState, useEffect } from 'react';
                   const L = report.currencyBreakdown[cur];
                   const amount = parseFloat(curSettleAmt);
                   if (!amount || amount <= 0) { alert('Please enter a valid amount'); return; }
-                  if (amount > Math.abs(L.balance) + 0.005) { alert('Amount cannot exceed this account\'s balance of ' + getCurrencySymbol(cur) + Math.abs(L.balance).toFixed(2)); return; }
+                  if (amount > Math.abs(L.balance) + 0.005) { alert('Amount cannot exceed this account\'s balance of ' + getCurrencySymbol(cur) + fmt2(Math.abs(L.balance))); return; }
                   const effectiveDate = curSettleDate || toDate;
                   const isPartial = amount < Math.abs(L.balance) - 0.005;
                   const confirmMsg = (isPartial
-                   ? 'Record partial settlement of ' + getCurrencySymbol(cur) + amount.toFixed(2) + ' on the ' + cur + ' account, dated ' + effectiveDate + '?\nRemaining: ' + getCurrencySymbol(cur) + (Math.abs(L.balance) - amount).toFixed(2) + ' will carry forward.'
-                   : 'Record full settlement of the ' + cur + ' account — ' + getCurrencySymbol(cur) + amount.toFixed(2) + ' dated ' + effectiveDate + '?');
+                   ? 'Record partial settlement of ' + getCurrencySymbol(cur) + fmt2(amount) + ' on the ' + cur + ' account, dated ' + effectiveDate + '?\nRemaining: ' + getCurrencySymbol(cur) + fmt2((Math.abs(L.balance) - amount)) + ' will carry forward.'
+                   : 'Record full settlement of the ' + cur + ' account — ' + getCurrencySymbol(cur) + fmt2(amount) + ' dated ' + effectiveDate + '?');
                   if (!window.confirm(confirmMsg)) return;
                   setCurSettling(true);
                   try {
@@ -10178,15 +10184,15 @@ import React, { useState, useEffect } from 'react';
                   const balanceLabel = report.balance > 0 ? 'Employee Owes Company' : report.balance < 0 ? 'Company Owes Employee' : 'Balance Clear';
                   const balanceColor = report.balance > 0 ? '#dc2626' : report.balance < 0 ? '#16a34a' : '#6b7280';
                   const tsRows = report.tsRows.map(function(r) {
-                  return '<tr><td>'+new Date(r.date).toLocaleDateString('en-GB')+'</td><td>'+r.regularHours.toFixed(1)+'h</td><td>'+(r.overtimeHours>0?r.overtimeHours.toFixed(1)+'h':'—')+'</td><td>'+sym+(parseFloat(report.hourlyRate)||0).toFixed(2)+'/hr</td><td><b>'+sym+r.earned.toFixed(2)+'</b></td><td>'+(escHtmlNote(r.note)||'—')+'</td></tr>';
+                  return '<tr><td>'+new Date(r.date).toLocaleDateString('en-GB')+'</td><td>'+r.regularHours.toFixed(1)+'h</td><td>'+(r.overtimeHours>0?r.overtimeHours.toFixed(1)+'h':'—')+'</td><td>'+sym+fmt2((parseFloat(report.hourlyRate)||0))+'/hr</td><td><b>'+sym+fmt2(r.earned)+'</b></td><td>'+(escHtmlNote(r.note)||'—')+'</td></tr>';
                   }).join('');
                   const collRows = report.empCollections.map(function(c) {
                   const cSym = getCurrencySymbol(recordCurrency(c, emp));
-                  return '<tr><td>'+new Date(c.date).toLocaleDateString('en-GB')+'</td><td>'+c.agentCode+' – '+c.agentCity+'</td><td>'+c.fromCode+'</td><td>'+c.toCode+'</td><td><b>'+cSym+c.amountCollected.toFixed(2)+'</b></td><td>'+(c.amountPaid>0?'-'+cSym+c.amountPaid.toFixed(2):'—')+'</td><td>'+(escHtmlNote(noteText(c.notes))||'—')+'</td></tr>';
+                  return '<tr><td>'+new Date(c.date).toLocaleDateString('en-GB')+'</td><td>'+c.agentCode+' – '+c.agentCity+'</td><td>'+c.fromCode+'</td><td>'+c.toCode+'</td><td><b>'+cSym+fmt2(c.amountCollected)+'</b></td><td>'+(c.amountPaid>0?'-'+cSym+fmt2(c.amountPaid):'—')+'</td><td>'+(escHtmlNote(noteText(c.notes))||'—')+'</td></tr>';
                   }).join('');
                   const expRows = report.empExpenses.map(function(e) {
                   const eSym = getCurrencySymbol(recordCurrency(e, emp));
-                  return '<tr><td>'+new Date(e.date).toLocaleDateString('en-GB')+'</td><td>'+e.category+'</td><td>'+escHtmlNote(e.description||'—')+'</td><td>'+(escHtmlNote(e.receiptNote)||'—')+'</td><td>'+e.status+'</td><td><b>'+eSym+e.amount.toFixed(2)+'</b></td></tr>';
+                  return '<tr><td>'+new Date(e.date).toLocaleDateString('en-GB')+'</td><td>'+e.category+'</td><td>'+escHtmlNote(e.description||'—')+'</td><td>'+(escHtmlNote(e.receiptNote)||'—')+'</td><td>'+e.status+'</td><td><b>'+eSym+fmt2(e.amount)+'</b></td></tr>';
                   }).join('');
                   // Groups a set of records by their own currency (e.g. an employee who
                   // collects in both USD and IQD) and returns a joined string like
@@ -10198,7 +10204,7 @@ import React, { useState, useEffect } from 'react';
                   const cur = recordCurrency(it, emp);
                   byCur[cur] = (byCur[cur] || 0) + (parseFloat(it[field]) || 0);
                    });
-                   return Object.keys(byCur).map(function(cur) { return getCurrencySymbol(cur) + byCur[cur].toFixed(2); }).join(' + ');
+                   return Object.keys(byCur).map(function(cur) { return getCurrencySymbol(cur) + fmt2(byCur[cur]); }).join(' + ');
                   };
                   const currencyAccountsHtml = (function() {
                    if (!report.empIsMulti || !report.currencyBreakdown) return '';
@@ -10210,17 +10216,17 @@ import React, { useState, useEffect } from 'react';
                   const balColor = L.balance > 0.005 ? '#dc2626' : L.balance < -0.005 ? '#16a34a' : '#6b7280';
                   const balLabel = L.balance > 0.005 ? 'Employee owes' : L.balance < -0.005 ? 'Company owes' : 'Clear';
                   const rows = ''
-                   + (Math.abs(L.opening) >= 0.005 ? '<div class="crow"><span>Opening</span><span>'+(L.opening>0?'+':'-')+csym+Math.abs(L.opening).toFixed(2)+'</span></div>' : '')
-                   + (L.collected ? '<div class="crow"><span>Collected</span><span>+'+csym+L.collected.toFixed(2)+'</span></div>' : '')
-                   + (L.paidAgents ? '<div class="crow"><span>Paid agents</span><span>-'+csym+L.paidAgents.toFixed(2)+'</span></div>' : '')
-                   + (L.earned ? '<div class="crow"><span>Earnings</span><span>-'+csym+L.earned.toFixed(2)+'</span></div>' : '')
-                   + (L.expenses ? '<div class="crow"><span>Expenses</span><span>-'+csym+L.expenses.toFixed(2)+'</span></div>' : '')
-                   + (L.credits ? '<div class="crow"><span>Credits</span><span>-'+csym+L.credits.toFixed(2)+'</span></div>' : '')
-                   + (L.settled ? '<div class="crow"><span>Settled</span><span>-'+csym+L.settled.toFixed(2)+'</span></div>' : '')
-                   + (L.fxIn ? '<div class="crow" style="color:#0284c7;"><span>FX bought</span><span>+'+csym+L.fxIn.toFixed(2)+'</span></div>' : '')
-                   + (L.fxOut ? '<div class="crow" style="color:#d97706;"><span>FX sold</span><span>-'+csym+L.fxOut.toFixed(2)+'</span></div>' : '');
+                   + (Math.abs(L.opening) >= 0.005 ? '<div class="crow"><span>Opening</span><span>'+(L.opening>0?'+':'-')+csym+fmt2(Math.abs(L.opening))+'</span></div>' : '')
+                   + (L.collected ? '<div class="crow"><span>Collected</span><span>+'+csym+fmt2(L.collected)+'</span></div>' : '')
+                   + (L.paidAgents ? '<div class="crow"><span>Paid agents</span><span>-'+csym+fmt2(L.paidAgents)+'</span></div>' : '')
+                   + (L.earned ? '<div class="crow"><span>Earnings</span><span>-'+csym+fmt2(L.earned)+'</span></div>' : '')
+                   + (L.expenses ? '<div class="crow"><span>Expenses</span><span>-'+csym+fmt2(L.expenses)+'</span></div>' : '')
+                   + (L.credits ? '<div class="crow"><span>Credits</span><span>-'+csym+fmt2(L.credits)+'</span></div>' : '')
+                   + (L.settled ? '<div class="crow"><span>Settled</span><span>-'+csym+fmt2(L.settled)+'</span></div>' : '')
+                   + (L.fxIn ? '<div class="crow" style="color:#0284c7;"><span>FX bought</span><span>+'+csym+fmt2(L.fxIn)+'</span></div>' : '')
+                   + (L.fxOut ? '<div class="crow" style="color:#d97706;"><span>FX sold</span><span>-'+csym+fmt2(L.fxOut)+'</span></div>' : '');
                   return '<div class="ccard"><div class="ccard-head"><b>'+cur+'</b>'+(cur===report.empDefaultCur?'<span class="wage-badge">wages</span>':'')+'</div>'
-                   +'<div class="ccard-bal" style="color:'+balColor+';">'+csym+Math.abs(L.balance).toFixed(2)+'</div>'
+                   +'<div class="ccard-bal" style="color:'+balColor+';">'+csym+fmt2(Math.abs(L.balance))+'</div>'
                    +'<div class="ccard-label" style="color:'+balColor+';">'+balLabel+'</div>'
                    + rows + '</div>';
                    }).join('');
@@ -10228,27 +10234,27 @@ import React, { useState, useEffect } from 'react';
                   })();
                   const creditRows = (report.accountCredits||[]).map(function(cr) {
                   const crSym = getCurrencySymbol(recordCurrency(cr, emp));
-                  return '<tr><td>'+new Date(cr.date).toLocaleDateString('en-GB')+'</td><td>'+(cr.reason||'Cash to accountant')+'</td><td><b>'+crSym+(parseFloat(cr.amount)||0).toFixed(2)+'</b></td></tr>';
+                  return '<tr><td>'+new Date(cr.date).toLocaleDateString('en-GB')+'</td><td>'+(cr.reason||'Cash to accountant')+'</td><td><b>'+crSym+fmt2((parseFloat(cr.amount)||0))+'</b></td></tr>';
                   }).join('');
                   const css = '<style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:Arial,sans-serif;font-size:10px;color:#1f2937;padding:16px;}h1{font-size:16px;color:#4338ca;margin-bottom:3px;}.meta{display:flex;justify-content:space-between;padding:8px 12px;background:#f3f4f6;border-radius:6px;margin:8px 0 14px;}.sec-title{font-size:9px;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;color:#374151;margin-bottom:4px;padding-bottom:3px;border-bottom:2px solid #e5e7eb;display:flex;justify-content:space-between;}.sec{margin-bottom:12px;}table{width:100%;border-collapse:collapse;font-size:9px;}th{background:#f9fafb;text-align:left;padding:3px 6px;font-size:8px;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb;}td{padding:3px 6px;border-bottom:1px solid #f3f4f6;}.sum{background:#fef2f2;border:2px solid #fecaca;border-radius:6px;padding:10px;margin-top:12px;}.srow{display:flex;justify-content:space-between;padding:2px 0;font-size:10px;}.stotal{display:flex;justify-content:space-between;padding-top:7px;margin-top:6px;border-top:2px solid #e5e7eb;font-size:13px;font-weight:bold;}.footer{margin-top:14px;text-align:center;font-size:8px;color:#9ca3af;}.ccards{display:flex;flex-wrap:wrap;gap:6px;}.ccard{flex:1 1 100px;border:1px solid #e5e7eb;border-radius:6px;padding:6px;}.ccard-head{display:flex;justify-content:space-between;align-items:center;font-size:8px;color:#6b7280;margin-bottom:2px;}.wage-badge{background:#e0e7ff;color:#4338ca;border-radius:8px;padding:0 4px;font-size:6px;}.ccard-bal{font-size:13px;font-weight:bold;}.ccard-label{font-size:7px;font-weight:600;margin-bottom:3px;}.crow{display:flex;justify-content:space-between;font-size:7px;color:#6b7280;padding:0.5px 0;}@page{size:A4 portrait;margin:10mm;}@media print{html,body{height:100%;width:100%;}body{padding:8px;font-size:9px;}h1{font-size:14px;}.meta{padding:6px 10px;margin:6px 0 10px;}.sec{margin-bottom:8px;}.sum{padding:8px;margin-top:8px;}.footer{margin-top:8px;}}</style>';
                   const body = '<h1>Employee Accounting Report</h1><p style="color:#6b7280;font-size:11px;margin-bottom:4px;">Generated: '+new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})+'</p>'
-                  +'<div class="meta"><div><b style="font-size:15px;">'+emp.firstName+' '+emp.lastName+'</b><br><span style="color:#6b7280;">'+emp.employeeId+' · '+emp.department+' · '+sym+(parseFloat(emp.hourlyRate)||0).toFixed(2)+'/hr</span></div><div style="text-align:right;"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;">Period</span><br><b>'+periodStr+'</b></div></div>'
+                  +'<div class="meta"><div><b style="font-size:15px;">'+emp.firstName+' '+emp.lastName+'</b><br><span style="color:#6b7280;">'+emp.employeeId+' · '+emp.department+' · '+sym+fmt2((parseFloat(emp.hourlyRate)||0))+'/hr</span></div><div style="text-align:right;"><span style="font-size:10px;color:#6b7280;text-transform:uppercase;">Period</span><br><b>'+periodStr+'</b></div></div>'
                   +(report.empCollections.length>0?'<div class="sec"><div class="sec-title"><span>Agent Collections</span><span>'+groupByCur(report.empCollections,'amountCollected')+'</span></div><table><thead><tr><th>Date</th><th>Agent</th><th>From</th><th>To</th><th>Collected</th><th>Paid to Agent</th><th>Notes</th></tr></thead><tbody>'+collRows+'<tr style="background:#f0fdf4;font-weight:bold;"><td colspan="4" style="text-align:right;padding-right:8px;">Net</td><td>'+groupByCur(report.empCollections,'amountCollected')+'</td><td style="color:#dc2626;">-'+groupByCur(report.empCollections,'amountPaid')+'</td><td></td></tr></tbody></table></div>':'')
-                  +(report.tsRows.length>0?'<div class="sec"><div class="sec-title"><span>Earnings from Timesheets</span><span>'+sym+report.totalEarned.toFixed(2)+'</span></div><table><thead><tr><th>Date</th><th>Regular</th><th>Overtime</th><th>Rate</th><th>Earned</th><th>Notes</th></tr></thead><tbody>'+tsRows+'<tr style="background:#eff6ff;font-weight:bold;"><td colspan="4" style="text-align:right;padding-right:8px;">Total</td><td>'+sym+report.totalEarned.toFixed(2)+'</td><td></td></tr></tbody></table></div>':'')
-                  +(report.empExpenses.length>0?'<div class="sec"><div class="sec-title"><span>Approved Expenses</span><span>'+(function(){var byCur={};report.empExpenses.forEach(function(e){var cur=recordCurrency(e,emp);byCur[cur]=(byCur[cur]||0)+e.amount;});return Object.keys(byCur).map(function(cur){return getCurrencySymbol(cur)+byCur[cur].toFixed(2);}).join(' + ');})()+'</span></div><table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Notes</th><th>Status</th><th>Amount</th></tr></thead><tbody>'+expRows+'<tr style="background:#f0fdfa;font-weight:bold;"><td colspan="5" style="text-align:right;padding-right:8px;">Total</td><td>'+(function(){var byCur={};report.empExpenses.forEach(function(e){var cur=recordCurrency(e,emp);byCur[cur]=(byCur[cur]||0)+e.amount;});return Object.keys(byCur).map(function(cur){return getCurrencySymbol(cur)+byCur[cur].toFixed(2);}).join(' + ');})()+'</td></tr></tbody></table></div>':'')
+                  +(report.tsRows.length>0?'<div class="sec"><div class="sec-title"><span>Earnings from Timesheets</span><span>'+sym+fmt2(report.totalEarned)+'</span></div><table><thead><tr><th>Date</th><th>Regular</th><th>Overtime</th><th>Rate</th><th>Earned</th><th>Notes</th></tr></thead><tbody>'+tsRows+'<tr style="background:#eff6ff;font-weight:bold;"><td colspan="4" style="text-align:right;padding-right:8px;">Total</td><td>'+sym+fmt2(report.totalEarned)+'</td><td></td></tr></tbody></table></div>':'')
+                  +(report.empExpenses.length>0?'<div class="sec"><div class="sec-title"><span>Approved Expenses</span><span>'+(function(){var byCur={};report.empExpenses.forEach(function(e){var cur=recordCurrency(e,emp);byCur[cur]=(byCur[cur]||0)+e.amount;});return Object.keys(byCur).map(function(cur){return getCurrencySymbol(cur)+fmt2(byCur[cur]);}).join(' + ');})()+'</span></div><table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Notes</th><th>Status</th><th>Amount</th></tr></thead><tbody>'+expRows+'<tr style="background:#f0fdfa;font-weight:bold;"><td colspan="5" style="text-align:right;padding-right:8px;">Total</td><td>'+(function(){var byCur={};report.empExpenses.forEach(function(e){var cur=recordCurrency(e,emp);byCur[cur]=(byCur[cur]||0)+e.amount;});return Object.keys(byCur).map(function(cur){return getCurrencySymbol(cur)+fmt2(byCur[cur]);}).join(' + ');})()+'</td></tr></tbody></table></div>':'')
                   +((report.accountCredits&&report.accountCredits.length>0)?'<div class="sec"><div class="sec-title"><span>Account Credits (Cash to Accountant)</span><span>'+groupByCur(report.accountCredits,'amount')+'</span></div><table><thead><tr><th>Date</th><th>Note</th><th>Amount</th></tr></thead><tbody>'+creditRows+'<tr style="background:#eef2ff;font-weight:bold;"><td colspan="2" style="text-align:right;padding-right:8px;">Total</td><td>'+groupByCur(report.accountCredits,'amount')+'</td></tr></tbody></table></div>':'')
                   +currencyAccountsHtml
                   +'<div class="sum" style="'+(report.empIsMulti?'background:#f8fafc;border-color:#e2e8f0;':'')+'"><div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:10px;">'+(report.empIsMulti?'Combined Summary (all currencies — reference only)':'Final Balance Summary')+'</div>'
-                  +(Math.abs(report.openingBalance)>=0.01?'<div class="srow" style="border-bottom:1px dashed #e5e7eb;padding-bottom:5px;margin-bottom:3px;"><span style="font-weight:600;">Opening Balance (carried forward)</span><span style="color:'+(report.openingBalance>0?'#dc2626':'#16a34a')+';font-weight:600;">'+(report.openingBalance>0?'+':'-')+sym+Math.abs(report.openingBalance).toFixed(2)+'</span></div>':'')
+                  +(Math.abs(report.openingBalance)>=0.01?'<div class="srow" style="border-bottom:1px dashed #e5e7eb;padding-bottom:5px;margin-bottom:3px;"><span style="font-weight:600;">Opening Balance (carried forward)</span><span style="color:'+(report.openingBalance>0?'#dc2626':'#16a34a')+';font-weight:600;">'+(report.openingBalance>0?'+':'-')+sym+fmt2(Math.abs(report.openingBalance))+'</span></div>':'')
                   +'<div class="srow"><span>Agent Collections Received</span><span style="color:#16a34a;font-weight:600;">+'+groupByCur(report.empCollections,'amountCollected')+'</span></div>'
                   +(report.totalPaidToAgents>0?'<div class="srow"><span>Paid to Agents</span><span style="color:#dc2626;font-weight:600;">-'+groupByCur(report.empCollections,'amountPaid')+'</span></div>':'')
                   +(report.totalAccountCredits>0?'<div class="srow"><span>Account Credits (Cash to Accountant)</span><span style="color:#7c3aed;font-weight:600;">-'+groupByCur(report.accountCredits,'amount')+'</span></div>':'')
-                  +'<div class="srow"><span>Earnings (timesheets)</span><span style="color:#dc2626;font-weight:600;">-'+sym+report.totalEarned.toFixed(2)+'</span></div>'
+                  +'<div class="srow"><span>Earnings (timesheets)</span><span style="color:#dc2626;font-weight:600;">-'+sym+fmt2(report.totalEarned)+'</span></div>'
                   +'<div class="srow"><span>Approved Expenses</span><span style="color:#dc2626;font-weight:600;">-'+groupByCur(report.empExpenses,'amount')+'</span></div>'
-                  +(report.previousPayments!==0?'<div class="srow" style="border-top:1px dashed #e5e7eb;padding-top:5px;margin-top:3px;"><span>'+(report.previousPayments>0?'Settled This Period':'Company Payment This Period')+'</span><span style="color:'+(report.previousPayments>0?'#2563eb':'#ea580c')+';font-weight:600;">'+(report.previousPayments>0?'-':'+')+sym+Math.abs(report.previousPayments).toFixed(2)+'</span></div>':'')
+                  +(report.previousPayments!==0?'<div class="srow" style="border-top:1px dashed #e5e7eb;padding-top:5px;margin-top:3px;"><span>'+(report.previousPayments>0?'Settled This Period':'Company Payment This Period')+'</span><span style="color:'+(report.previousPayments>0?'#2563eb':'#ea580c')+';font-weight:600;">'+(report.previousPayments>0?'-':'+')+sym+fmt2(Math.abs(report.previousPayments))+'</span></div>':'')
                   +(report.empIsMulti
                    ? '<div style="font-size:8px;color:#94a3b8;text-align:center;border-top:1px dashed #e2e8f0;padding-top:8px;margin-top:6px;">This combined figure adds different currencies together and is not a real amount — see the Currency Accounts above for the actual balance owed in each currency.</div>'
-                   : '<div class="stotal"><span style="color:'+balanceColor+'">'+balanceLabel+'</span><span style="color:'+balanceColor+';">'+(report.balance>0?'+':'')+sym+Math.abs(report.balance).toFixed(2)+'</span></div>')
+                   : '<div class="stotal"><span style="color:'+balanceColor+'">'+balanceLabel+'</span><span style="color:'+balanceColor+';">'+(report.balance>0?'+':'')+sym+fmt2(Math.abs(report.balance))+'</span></div>')
                   +'</div>'
                   +'<div class="footer">B-Post Employee Management System &nbsp;·&nbsp; Printed '+new Date().toLocaleString('en-GB')+'</div>';
                   const w = window.open('','_blank','width=860,height=1100');
@@ -10336,7 +10342,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   <div>
                   <p className="font-bold text-gray-900 text-lg">{emp.firstName} {emp.lastName}</p>
-                  <p className="text-gray-500 text-sm">{emp.employeeId} · {emp.department} · {sym}{(parseFloat(emp.hourlyRate)||0).toFixed(2)}/hr</p>
+                  <p className="text-gray-500 text-sm">{emp.employeeId} · {emp.department} · {sym}{fmt2((parseFloat(emp.hourlyRate)||0))}/hr</p>
                   </div>
                   <div className="ml-auto text-right">
                   <p className="text-xs text-gray-500 uppercase tracking-wide">Period</p>
@@ -10344,7 +10350,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   </div>
 
-                  <Section title="Agent Collections" color="bg-green-500" total={sym + report.totalCollected.toFixed(2)}>
+                  <Section title="Agent Collections" color="bg-green-500" total={sym + fmt2(report.totalCollected)}>
                   {report.empCollections.length === 0 ? <p className="text-gray-400 text-sm">No collections in this period</p> : (
                   <table className="w-full text-sm">
                   <thead><tr className="bg-green-50">{['Date','Agent','From','To','Collected','Paid to Agent','Bank Transfer (→ Company)','Notes'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-green-700">{h}</th>;})}</tr></thead>
@@ -10357,9 +10363,9 @@ import React, { useState, useEffect } from 'react';
                     <td className="px-3 py-2"><span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-bold">{c.agentCode}</span><span className="text-gray-400 text-xs ml-1">{c.agentCity}</span></td>
                     <td className="px-3 py-2 font-semibold">{c.fromCode||'—'}</td>
                     <td className="px-3 py-2 font-semibold">{c.toCode||'—'}</td>
-                    <td className="px-3 py-2 font-bold text-green-700">{cSym}{c.amountCollected.toFixed(2)}</td>
-                    <td className="px-3 py-2 text-red-600 font-semibold">{c.amountPaid>0?'-'+cSym+c.amountPaid.toFixed(2):'—'}</td>
-                    <td className="px-3 py-2 text-blue-600 font-semibold">{(c.bankAmount||0)>0?<span className="flex items-center gap-1"><span className="text-xs">🏦</span>{cSym}{(c.bankAmount||0).toFixed(2)}</span>:'—'}</td>
+                    <td className="px-3 py-2 font-bold text-green-700">{cSym}{fmt2(c.amountCollected)}</td>
+                    <td className="px-3 py-2 text-red-600 font-semibold">{c.amountPaid>0?'-'+cSym+fmt2(c.amountPaid):'—'}</td>
+                    <td className="px-3 py-2 text-blue-600 font-semibold">{(c.bankAmount||0)>0?<span className="flex items-center gap-1"><span className="text-xs">🏦</span>{cSym}{fmt2((c.bankAmount||0))}</span>:'—'}</td>
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-normal break-words max-w-xs">{noteText(c.notes) || <span className="text-gray-300">—</span>}</td>
                     </tr>
                     );})}
@@ -10382,9 +10388,9 @@ import React, { useState, useEffect } from 'react';
                         const t = byCur[cur];
                         return (
                           <span key={cur} className="inline-flex items-center gap-3 mr-4">
-                            <span className="text-green-700">{s}{t.collected.toFixed(2)}</span>
-                            {t.paid > 0 && <span className="text-red-600">-{s}{t.paid.toFixed(2)}</span>}
-                            {t.bank > 0 && <span className="text-blue-600">{s}{t.bank.toFixed(2)} (co.)</span>}
+                            <span className="text-green-700">{s}{fmt2(t.collected)}</span>
+                            {t.paid > 0 && <span className="text-red-600">-{s}{fmt2(t.paid)}</span>}
+                            {t.bank > 0 && <span className="text-blue-600">{s}{fmt2(t.bank)} (co.)</span>}
                           </span>
                         );
                       });
@@ -10403,7 +10409,7 @@ import React, { useState, useEffect } from 'react';
                   byCur.IQD += (p.collectedIQD||0); byCur.USD += (p.collectedUSD||0);
                   byCur.GBP += (p.collectedGBP||0); byCur.EUR += (p.collectedEUR||0);
                    });
-                   return Object.keys(byCur).filter(function(c){return byCur[c]>0;}).map(function(c){return getCurrencySymbol(c)+(c==='IQD'?byCur[c].toLocaleString():byCur[c].toFixed(2));}).join(' + ') || sym+'0.00';
+                   return Object.keys(byCur).filter(function(c){return byCur[c]>0;}).map(function(c){return getCurrencySymbol(c)+(c==='IQD'?byCur[c].toLocaleString():fmt2(byCur[c]));}).join(' + ') || sym+'0.00';
                   })()}>
                   <table className="w-full text-sm">
                   <thead><tr className="bg-indigo-50">{['Date','Shipment','Batch','To Office','Notes','Collected'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-indigo-700">{h}</th>;})}</tr></thead>
@@ -10411,9 +10417,9 @@ import React, { useState, useEffect } from 'react';
                     {report.empIraqPay.map(function(p){
                     const amounts = [];
                     if (p.collectedIQD>0) amounts.push(getCurrencySymbol('IQD')+p.collectedIQD.toLocaleString());
-                    if (p.collectedUSD>0) amounts.push(getCurrencySymbol('USD')+p.collectedUSD.toFixed(2));
-                    if (p.collectedGBP>0) amounts.push(getCurrencySymbol('GBP')+p.collectedGBP.toFixed(2));
-                    if (p.collectedEUR>0) amounts.push(getCurrencySymbol('EUR')+p.collectedEUR.toFixed(2));
+                    if (p.collectedUSD>0) amounts.push(getCurrencySymbol('USD')+fmt2(p.collectedUSD));
+                    if (p.collectedGBP>0) amounts.push(getCurrencySymbol('GBP')+fmt2(p.collectedGBP));
+                    if (p.collectedEUR>0) amounts.push(getCurrencySymbol('EUR')+fmt2(p.collectedEUR));
                     return (
                     <tr key={p.id} className="hover:bg-indigo-50">
                     <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{p.collectedAt ? new Date(p.collectedAt).toLocaleDateString('en-GB') : '—'}</td>
@@ -10434,7 +10440,7 @@ import React, { useState, useEffect } from 'react';
                         byCur.GBP += (p.collectedGBP||0); byCur.EUR += (p.collectedEUR||0);
                       });
                       return Object.keys(byCur).filter(function(c){return byCur[c]>0;}).map(function(c){
-                        return <div key={c}>{getCurrencySymbol(c)}{c==='IQD'?byCur[c].toLocaleString():byCur[c].toFixed(2)}</div>;
+                        return <div key={c}>{getCurrencySymbol(c)}{c==='IQD'?byCur[c].toLocaleString():fmt2(byCur[c])}</div>;
                       });
                     })()}
                     </td>
@@ -10444,7 +10450,7 @@ import React, { useState, useEffect } from 'react';
                   </Section>
                   )}
 
-                  <Section title="Earnings from Approved Timesheets" color="bg-blue-500" total={sym + report.totalEarned.toFixed(2)}>
+                  <Section title="Earnings from Approved Timesheets" color="bg-blue-500" total={sym + fmt2(report.totalEarned)}>
                   {report.tsRows.length === 0 ? <p className="text-gray-400 text-sm">No approved timesheets in this period</p> : (
                   <table className="w-full text-sm">
                   <thead><tr className="bg-blue-50">{['Date','Regular Hrs','Overtime Hrs','Rate','Earned','Notes'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-blue-700">{h}</th>;})}</tr></thead>
@@ -10454,14 +10460,14 @@ import React, { useState, useEffect } from 'react';
                     <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{new Date(r.date).toLocaleDateString('en-GB')}</td>
                     <td className="px-3 py-2 text-gray-700">{r.regularHours.toFixed(1)}h</td>
                     <td className="px-3 py-2 text-amber-600 font-semibold">{r.overtimeHours > 0 ? r.overtimeHours.toFixed(1)+'h' : '—'}</td>
-                    <td className="px-3 py-2 text-gray-500">{sym}{(parseFloat(report.hourlyRate)||0).toFixed(2)}/hr</td>
-                    <td className="px-3 py-2 font-bold text-blue-700">{sym}{r.earned.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-gray-500">{sym}{fmt2((parseFloat(report.hourlyRate)||0))}/hr</td>
+                    <td className="px-3 py-2 font-bold text-blue-700">{sym}{fmt2(r.earned)}</td>
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-normal break-words max-w-xs">{r.note || <span className="text-gray-300">—</span>}</td>
                     </tr>
                     );})}
                     <tr className="bg-blue-50 font-bold border-t-2 border-blue-200">
                     <td colSpan="4" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Total Earned</td>
-                    <td className="px-3 py-2 text-blue-700" colSpan="2">{sym}{report.totalEarned.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-blue-700" colSpan="2">{sym}{fmt2(report.totalEarned)}</td>
                     </tr>
                   </tbody>
                   </table>
@@ -10469,7 +10475,7 @@ import React, { useState, useEffect } from 'react';
                   </Section>
 
                   {report.accountCredits && report.accountCredits.length > 0 && (
-                  <Section title="Account Credits" color="bg-indigo-500" total={'-' + sym + (report.totalAccountCredits||0).toFixed(2)}>
+                  <Section title="Account Credits" color="bg-indigo-500" total={'-' + sym + fmt2((report.totalAccountCredits||0))}>
                   <table className="w-full text-sm">
                   <thead><tr className="bg-indigo-50">{['Date','Note','Amount'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-indigo-700">{h}</th>;})}</tr></thead>
                   <tbody className="divide-y divide-gray-100">
@@ -10477,12 +10483,12 @@ import React, { useState, useEffect } from 'react';
                    <tr key={a.id} className="hover:bg-indigo-50">
                   <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{new Date(a.date).toLocaleDateString('en-GB')}</td>
                   <td className="px-3 py-2 text-gray-700">{a.reason || 'Cash to accountant'}</td>
-                  <td className="px-3 py-2 font-bold text-indigo-700">-{sym}{(parseFloat(a.amount)||0).toFixed(2)}</td>
+                  <td className="px-3 py-2 font-bold text-indigo-700">-{sym}{fmt2((parseFloat(a.amount)||0))}</td>
                    </tr>
                   );})}
                   <tr className="bg-indigo-50 font-bold border-t-2 border-indigo-200">
                   <td colSpan="2" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Total Credits</td>
-                  <td className="px-3 py-2 text-indigo-700">-{sym}{(report.totalAccountCredits||0).toFixed(2)}</td>
+                  <td className="px-3 py-2 text-indigo-700">-{sym}{fmt2((report.totalAccountCredits||0))}</td>
                   </tr>
                   </tbody>
                   </table>
@@ -10494,7 +10500,7 @@ import React, { useState, useEffect } from 'react';
                    report.empExpenses.forEach(function(e){ const cur = recordCurrency(e, emp); byCur[cur] = (byCur[cur]||0) + e.amount; });
                    const keys = Object.keys(byCur);
                    if (keys.length === 0) return sym + '0.00';
-                   return keys.map(function(cur){ return getCurrencySymbol(cur) + byCur[cur].toFixed(2); }).join(' + ');
+                   return keys.map(function(cur){ return getCurrencySymbol(cur) + fmt2(byCur[cur]); }).join(' + ');
                   })()}>
                   {report.empExpenses.length === 0 ? <p className="text-gray-400 text-sm">No approved expenses in this period</p> : (
                   <table className="w-full text-sm">
@@ -10509,7 +10515,7 @@ import React, { useState, useEffect } from 'react';
                     <td className="px-3 py-2 text-gray-600">{e.description||'—'}</td>
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-normal break-words max-w-xs">{e.receiptNote || <span className="text-gray-300">—</span>}</td>
                     <td className="px-3 py-2"><span className={'px-2 py-0.5 rounded-full text-xs font-semibold capitalize ' + (e.status==='paid'?'bg-blue-100 text-blue-700':'bg-green-100 text-green-700')}>{e.status}</span></td>
-                    <td className="px-3 py-2 font-bold text-teal-700">{eSym}{e.amount.toFixed(2)}</td>
+                    <td className="px-3 py-2 font-bold text-teal-700">{eSym}{fmt2(e.amount)}</td>
                     </tr>
                     );})}
                     <tr className="bg-teal-50 font-bold border-t-2 border-teal-200">
@@ -10520,7 +10526,7 @@ import React, { useState, useEffect } from 'react';
                       report.empExpenses.forEach(function(e){ const cur = recordCurrency(e, emp); byCur[cur] = (byCur[cur]||0) + e.amount; });
                       const keys = Object.keys(byCur);
                       if (keys.length === 0) return sym + '0.00';
-                      return keys.map(function(cur){ return <div key={cur}>{getCurrencySymbol(cur)}{byCur[cur].toFixed(2)}</div>; });
+                      return keys.map(function(cur){ return <div key={cur}>{getCurrencySymbol(cur)}{fmt2(byCur[cur])}</div>; });
                     })()}
                     </td>
                     </tr>
@@ -10538,7 +10544,7 @@ import React, { useState, useEffect } from 'react';
                       <p className="text-xs text-amber-700 mb-2">This period overlaps with {report.overlaps.length} already-settled period{report.overlaps.length>1?'s':''}. Collections, earnings, or expenses on the overlapping days may be counted twice. Review before settling:</p>
                       <ul className="text-xs text-amber-800 space-y-1">
                       {report.overlaps.map(function(o,i){
-                       return <li key={i} className="bg-amber-100 rounded px-2 py-1">• Already settled <b>{o.from}</b> to <b>{o.to}</b> ({sym}{o.amount.toFixed(2)}) on {o.date}</li>;
+                       return <li key={i} className="bg-amber-100 rounded px-2 py-1">• Already settled <b>{o.from}</b> to <b>{o.to}</b> ({sym}{fmt2(o.amount)}) on {o.date}</li>;
                       })}
                       </ul>
                     </div>
@@ -10562,22 +10568,22 @@ import React, { useState, useEffect } from 'react';
                         {cur === report.empDefaultCur && <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-semibold">wages</span>}
                         </div>
                         <p className="text-lg font-bold" style={{color: L.balance > 0.005 ? '#dc2626' : L.balance < -0.005 ? '#16a34a' : '#6b7280'}}>
-                        {csym}{Math.abs(L.balance) < 0.005 ? '0.00' : Math.abs(L.balance).toFixed(2)}
+                        {csym}{Math.abs(L.balance) < 0.005 ? '0.00' : fmt2(Math.abs(L.balance))}
                         </p>
                         <p className="text-[10px] font-semibold" style={{color: L.balance > 0.005 ? '#dc2626' : L.balance < -0.005 ? '#16a34a' : '#9ca3af'}}>
                         {L.balance > 0.005 ? 'Employee owes' : L.balance < -0.005 ? 'Company owes' : 'Clear'}
                         </p>
                         {active ? (
                         <div className="mt-2 pt-2 border-t border-gray-100 space-y-0.5 text-[10px] text-gray-500">
-                          {Math.abs(L.opening) >= 0.005 ? <div className="flex justify-between"><span>Opening</span><span>{L.opening>0?'+':''}{csym}{L.opening.toFixed(2)}</span></div> : null}
-                          {L.collected ? <div className="flex justify-between"><span>Collected</span><span>+{csym}{L.collected.toFixed(2)}</span></div> : null}
-                          {L.paidAgents ? <div className="flex justify-between"><span>Paid agents</span><span>-{csym}{L.paidAgents.toFixed(2)}</span></div> : null}
-                          {L.earned ? <div className="flex justify-between"><span>Earnings</span><span>-{csym}{L.earned.toFixed(2)}</span></div> : null}
-                          {L.expenses ? <div className="flex justify-between"><span>Expenses</span><span>-{csym}{L.expenses.toFixed(2)}</span></div> : null}
-                          {L.credits ? <div className="flex justify-between"><span>Credits</span><span>-{csym}{L.credits.toFixed(2)}</span></div> : null}
-                          {L.settled ? <div className="flex justify-between"><span>Settled</span><span>-{csym}{L.settled.toFixed(2)}</span></div> : null}
-                          {L.fxIn ? <div className="flex justify-between text-sky-600"><span>FX bought</span><span>+{csym}{L.fxIn.toFixed(2)}</span></div> : null}
-                          {L.fxOut ? <div className="flex justify-between text-amber-600"><span>FX sold</span><span>-{csym}{L.fxOut.toFixed(2)}</span></div> : null}
+                          {Math.abs(L.opening) >= 0.005 ? <div className="flex justify-between"><span>Opening</span><span>{L.opening>0?'+':''}{csym}{fmt2(L.opening)}</span></div> : null}
+                          {L.collected ? <div className="flex justify-between"><span>Collected</span><span>+{csym}{fmt2(L.collected)}</span></div> : null}
+                          {L.paidAgents ? <div className="flex justify-between"><span>Paid agents</span><span>-{csym}{fmt2(L.paidAgents)}</span></div> : null}
+                          {L.earned ? <div className="flex justify-between"><span>Earnings</span><span>-{csym}{fmt2(L.earned)}</span></div> : null}
+                          {L.expenses ? <div className="flex justify-between"><span>Expenses</span><span>-{csym}{fmt2(L.expenses)}</span></div> : null}
+                          {L.credits ? <div className="flex justify-between"><span>Credits</span><span>-{csym}{fmt2(L.credits)}</span></div> : null}
+                          {L.settled ? <div className="flex justify-between"><span>Settled</span><span>-{csym}{fmt2(L.settled)}</span></div> : null}
+                          {L.fxIn ? <div className="flex justify-between text-sky-600"><span>FX bought</span><span>+{csym}{fmt2(L.fxIn)}</span></div> : null}
+                          {L.fxOut ? <div className="flex justify-between text-amber-600"><span>FX sold</span><span>-{csym}{fmt2(L.fxOut)}</span></div> : null}
                         </div>
                         ) : <p className="text-[10px] text-gray-300 mt-2">No activity</p>}
                         {Math.abs(L.balance) >= 0.005 && (
@@ -10622,7 +10628,7 @@ import React, { useState, useEffect } from 'react';
                   <div className="flex justify-between text-sm pb-2 mb-1 border-b border-dashed border-gray-300">
                   <span className="text-gray-600 font-semibold">Opening Balance (carried forward)</span>
                   <span className={'font-semibold ' + (report.openingBalance > 0 ? 'text-red-600' : 'text-green-600')}>
-                    {report.openingBalance > 0 ? '+' : '−'}{sym}{Math.abs(report.openingBalance).toFixed(2)}
+                    {report.openingBalance > 0 ? '+' : '−'}{sym}{fmt2(Math.abs(report.openingBalance))}
                   </span>
                   </div>
                   )}
@@ -10644,7 +10650,7 @@ import React, { useState, useEffect } from 'react';
                   )}
                   <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Earnings (timesheets)</span>
-                  <span className="font-semibold text-red-600">-{sym}{report.totalEarned.toFixed(2)}</span>
+                  <span className="font-semibold text-red-600">-{sym}{fmt2(report.totalEarned)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Approved Expenses</span>
@@ -10655,7 +10661,7 @@ import React, { useState, useEffect } from 'react';
                     <div className="flex justify-between text-sm mb-1">
                       <span className="text-gray-600 font-semibold">Settled This Period {report.previousPayments < 0 ? '(company → employee)' : report.previousPayments > 0 ? '(employee → company)' : ''}</span>
                       <span className={'font-semibold ' + (report.previousPayments > 0 ? 'text-blue-600' : 'text-orange-600')}>
-                        {report.previousPayments > 0 ? '-' : '+'}{sym}{Math.abs(report.previousPayments).toFixed(2)}
+                        {report.previousPayments > 0 ? '-' : '+'}{sym}{fmt2(Math.abs(report.previousPayments))}
                       </span>
                     </div>
                     {report.settlementRecords.map(function(s,i){
@@ -10664,7 +10670,7 @@ import React, { useState, useEffect } from 'react';
                       const dir = amt < 0 ? 'Company paid employee' : 'Employee paid company';
                       return (
                       <div key={s.id||i} className="flex justify-between items-center text-xs text-gray-500 bg-white/60 rounded px-2 py-1 mb-1">
-                        <span>{s.date} · {sym}{Math.abs(amt).toFixed(2)} · <span className={amt < 0 ? 'text-orange-600' : 'text-blue-600'}>{dir}</span>{cleanNote ? ' · ' + cleanNote : ''}</span>
+                        <span>{s.date} · {sym}{fmt2(Math.abs(amt))} · <span className={amt < 0 ? 'text-orange-600' : 'text-blue-600'}>{dir}</span>{cleanNote ? ' · ' + cleanNote : ''}</span>
                         <button onClick={function(){handleDeleteSettlement(s);}} className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 rounded hover:bg-red-200 text-xs font-semibold">Remove</button>
                       </div>
                       );
@@ -10674,13 +10680,13 @@ import React, { useState, useEffect } from 'react';
                   {report.previousBonuses > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Bonuses / Sick Pay</span>
-                    <span className="font-semibold text-red-600">-{sym}{report.previousBonuses.toFixed(2)}</span>
+                    <span className="font-semibold text-red-600">-{sym}{fmt2(report.previousBonuses)}</span>
                   </div>
                   )}
                   {report.previousPenalties > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Penalties / Advances</span>
-                    <span className="font-semibold text-green-600">+{sym}{report.previousPenalties.toFixed(2)}</span>
+                    <span className="font-semibold text-green-600">+{sym}{fmt2(report.previousPenalties)}</span>
                   </div>
                   )}
                   {report.empIsMulti ? (
@@ -10693,7 +10699,7 @@ import React, { useState, useEffect } from 'react';
                     {report.balance > 0 ? 'Employee Owes Company' : report.balance < 0 ? 'Company Owes Employee' : 'Balance Clear'}
                   </span>
                   <span className={report.balance > 0 ? 'text-red-700' : report.balance < 0 ? 'text-green-700' : 'text-gray-500'}>
-                    {report.balance > 0 ? '+' : ''}{sym}{Math.abs(report.balance).toFixed(2)}
+                    {report.balance > 0 ? '+' : ''}{sym}{fmt2(Math.abs(report.balance))}
                   </span>
                   </div>
                   )}
@@ -10715,7 +10721,7 @@ import React, { useState, useEffect } from 'react';
                     type="number"
                     min="0.01"
                     step="0.01"
-                    max={Math.abs(report.balance).toFixed(2)}
+                    max={fmt2(Math.abs(report.balance))}
                     value={settleAmount}
                     onChange={function(e){setSettleAmount(e.target.value);}}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-indigo-400 font-semibold"
@@ -10737,12 +10743,12 @@ import React, { useState, useEffect } from 'react';
                     <input value={settleNote} onChange={function(e){setSettleNote(e.target.value);}} placeholder="e.g. Cash collected on 06/05/2026" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                     </div>
                     <button onClick={handleSettle} disabled={settling || !settleAmount || parseFloat(settleAmount) <= 0} className={'px-5 py-2 rounded-lg font-bold text-sm transition whitespace-nowrap ' + (settling || !settleAmount || parseFloat(settleAmount) <= 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : report.balance > 0 ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-green-600 text-white hover:bg-green-700')}>
-                    {settling ? 'Processing...' : report.balance > 0 ? 'Collect ' + sym + (parseFloat(settleAmount)||0).toFixed(2) : 'Pay ' + sym + (parseFloat(settleAmount)||0).toFixed(2)}
+                    {settling ? 'Processing...' : report.balance > 0 ? 'Collect ' + sym + fmt2((parseFloat(settleAmount)||0)) : 'Pay ' + sym + fmt2((parseFloat(settleAmount)||0))}
                     </button>
                   </div>
                   {settleAmount && parseFloat(settleAmount) > 0 && parseFloat(settleAmount) < Math.abs(report.balance) && (
                     <p className="text-xs text-amber-600 font-semibold mt-1">
-                    Remaining balance after settlement: {sym}{(Math.abs(report.balance) - parseFloat(settleAmount)).toFixed(2)} — will carry forward to next period
+                    Remaining balance after settlement: {sym}{fmt2((Math.abs(report.balance) - parseFloat(settleAmount)))} — will carry forward to next period
                     </p>
                   )}
                   {settleAmount && parseFloat(settleAmount) >= Math.abs(report.balance) && (
@@ -10830,7 +10836,7 @@ import React, { useState, useEffect } from 'react';
                   setCreditSaving(false);
                 };
                 const handleDeleteCredit = async function(a) {
-                  if (!window.confirm('Delete credit of ' + sym + parseFloat(a.amount).toFixed(2) + ' for ' + a.employeeName + '?')) return;
+                  if (!window.confirm('Delete credit of ' + sym + fmt2(parseFloat(a.amount)) + ' for ' + a.employeeName + '?')) return;
                   try { await apiCall(API_ENDPOINTS.adjustments + '/' + a.id, { method: 'DELETE' }); await loadAdjustmentsFromAPI(); }
                   catch(e) { alert('Unable to delete the account credit: ' + e.message); }
                 };
@@ -10977,13 +10983,13 @@ import React, { useState, useEffect } from 'react';
                   if (!report) return;
                   const amount = parseFloat(coSettleAmount);
                   if (!amount || amount <= 0) { alert('Please enter a valid amount.'); return; }
-                  if (amount > Math.abs(report.branchCashDue) + 0.005) { alert('Amount cannot exceed the outstanding cash of ' + sym + Math.abs(report.branchCashDue).toFixed(2)); return; }
+                  if (amount > Math.abs(report.branchCashDue) + 0.005) { alert('Amount cannot exceed the outstanding cash of ' + sym + fmt2(Math.abs(report.branchCashDue))); return; }
                   const effDate = coSettleDate || toDate;
                   if (effDate < fromDate || effDate > toDate) {
                    if (!window.confirm('\u26a0\ufe0f The settlement date (' + effDate + ') is outside this period (' + fromDate + ' to ' + toDate + '). Continue?')) return;
                   }
                   const isPartial = amount < Math.abs(report.branchCashDue) - 0.005;
-                  if (!window.confirm((isPartial ? 'Record partial branch settlement of ' : 'Record full branch settlement of ') + sym + amount.toFixed(2) + ' for ' + report.branchName + ' dated ' + effDate + '?\nThis records cash handed from the branch to the company main account.')) return;
+                  if (!window.confirm((isPartial ? 'Record partial branch settlement of ' : 'Record full branch settlement of ') + sym + fmt2(amount) + ' for ' + report.branchName + ' dated ' + effDate + '?\nThis records cash handed from the branch to the company main account.')) return;
                   setCoSettling(true);
                   try {
                    const branchTag = '[BRANCH:' + (branchFilter || '__ALL__') + ']';
@@ -10994,7 +11000,7 @@ import React, { useState, useEffect } from 'react';
                    });
                    if (data.success) {
                   await loadAdjustmentsFromAPI();
-                  alert('\u2705 Branch settlement of ' + sym + amount.toFixed(2) + ' recorded for ' + report.branchName + ' on ' + effDate + '.');
+                  alert('\u2705 Branch settlement of ' + sym + fmt2(amount) + ' recorded for ' + report.branchName + ' on ' + effDate + '.');
                   setCoSettleNote('');
                   generateReport();
                    } else alert('Unable to record the settlement: ' + (data.error || 'Unknown error'));
@@ -11003,7 +11009,7 @@ import React, { useState, useEffect } from 'react';
                 };
 
                 const handleDeleteBranchSettle = async function(s) {
-                  if (!window.confirm('Delete this branch settlement of ' + sym + parseFloat(s.amount).toFixed(2) + ' dated ' + s.date + '?')) return;
+                  if (!window.confirm('Delete this branch settlement of ' + sym + fmt2(parseFloat(s.amount)) + ' dated ' + s.date + '?')) return;
                   try {
                    await apiCall(API_ENDPOINTS.adjustments + '/' + s.id, { method: 'DELETE' });
                    await loadAdjustmentsFromAPI();
@@ -11036,34 +11042,34 @@ import React, { useState, useEffect } from 'react';
                   if (!report) return;
                   const marginColor = report.margin >= 0 ? '#16a34a' : '#dc2626';
                   const agentRows = report.byAgent.map(function(a) {
-                  return '<tr><td>'+a.code+'</td><td>'+a.city+'</td><td>'+a.count+'</td><td>'+sym+a.cash.toFixed(2)+'</td><td>'+(a.bank>0?sym+a.bank.toFixed(2):'—')+'</td><td>'+(a.paid>0?'-'+sym+a.paid.toFixed(2):'—')+'</td><td><b>'+sym+(a.cash-a.paid).toFixed(2)+'</b></td></tr>';
+                  return '<tr><td>'+a.code+'</td><td>'+a.city+'</td><td>'+a.count+'</td><td>'+sym+fmt2(a.cash)+'</td><td>'+(a.bank>0?sym+fmt2(a.bank):'—')+'</td><td>'+(a.paid>0?'-'+sym+fmt2(a.paid):'—')+'</td><td><b>'+sym+fmt2((a.cash-a.paid))+'</b></td></tr>';
                   }).join('');
                   const payRows = report.empPayroll.map(function(e) {
-                  return '<tr><td>'+e.name+'</td><td>'+e.code+'</td><td><b>'+e.currency+e.pay.toFixed(2)+'</b></td></tr>';
+                  return '<tr><td>'+e.name+'</td><td>'+e.code+'</td><td><b>'+e.currency+fmt2(e.pay)+'</b></td></tr>';
                   }).join('');
                   const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Company Accounting</title>'
                   +'<style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:Arial,sans-serif;font-size:11px;padding:20px;color:#1f2937;}h1{font-size:18px;color:#4338ca;margin-bottom:2px;}.sub{color:#6b7280;font-size:11px;margin-bottom:16px;}.sec{margin-bottom:16px;}.sec-title{font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;color:#374151;padding-bottom:3px;border-bottom:2px solid #e5e7eb;margin-bottom:6px;display:flex;justify-content:space-between;}table{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:4px;}th{background:#f9fafb;text-align:left;padding:4px 6px;font-size:9px;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb;}td{padding:4px 6px;border-bottom:1px solid #f3f4f6;}.sum{background:#f0fdf4;border:2px solid #bbf7d0;border-radius:6px;padding:12px;margin-top:12px;}.srow{display:flex;justify-content:space-between;padding:2px 0;font-size:11px;}.stotal{display:flex;justify-content:space-between;padding-top:8px;margin-top:6px;border-top:2px solid #e5e7eb;font-size:15px;font-weight:bold;}.footer{margin-top:20px;text-align:center;font-size:9px;color:#9ca3af;}@page{size:A4 portrait;margin:10mm;}@media print{body{padding:8px;}}</style>'
                   +'</head><body>'
                   +'<h1>Company Accounting Report</h1>'
                   +'<div class="sub">Period: '+new Date(report.periodStart).toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})+' — '+new Date(report.periodEnd).toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})+'</div>'
-                  +'<div class="sec"><div class="sec-title"><span>Agent Collections</span><span>Net: '+sym+report.netCollections.toFixed(2)+'</span></div>'
+                  +'<div class="sec"><div class="sec-title"><span>Agent Collections</span><span>Net: '+sym+fmt2(report.netCollections)+'</span></div>'
                   +'<table><thead><tr><th>Code</th><th>City</th><th>Records</th><th>Cash</th><th>Bank</th><th>Paid to Agent</th><th>Net</th></tr></thead><tbody>'+agentRows
-                  +'<tr style="background:#f0fdf4;font-weight:bold;"><td colspan="3" style="text-align:right;">TOTAL</td><td>'+sym+report.totalCashCollected.toFixed(2)+'</td><td>'+sym+report.totalBankCollected.toFixed(2)+'</td><td>-'+sym+report.totalPaidToAgents.toFixed(2)+'</td><td>'+sym+report.netCollections.toFixed(2)+'</td></tr>'
+                  +'<tr style="background:#f0fdf4;font-weight:bold;"><td colspan="3" style="text-align:right;">TOTAL</td><td>'+sym+fmt2(report.totalCashCollected)+'</td><td>'+sym+fmt2(report.totalBankCollected)+'</td><td>-'+sym+fmt2(report.totalPaidToAgents)+'</td><td>'+sym+fmt2(report.netCollections)+'</td></tr>'
                   +'</tbody></table></div>'
-                  +'<div class="sec"><div class="sec-title"><span>Employee Payroll</span><span>Total: '+sym+report.totalPayroll.toFixed(2)+'</span></div>'
+                  +'<div class="sec"><div class="sec-title"><span>Employee Payroll</span><span>Total: '+sym+fmt2(report.totalPayroll)+'</span></div>'
                   +'<table><thead><tr><th>Employee</th><th>ID</th><th>Pay</th></tr></thead><tbody>'+payRows
-                  +'<tr style="background:#eff6ff;font-weight:bold;"><td colspan="2" style="text-align:right;">TOTAL PAYROLL</td><td>'+sym+report.totalPayroll.toFixed(2)+'</td></tr>'
+                  +'<tr style="background:#eff6ff;font-weight:bold;"><td colspan="2" style="text-align:right;">TOTAL PAYROLL</td><td>'+sym+fmt2(report.totalPayroll)+'</td></tr>'
                   +'</tbody></table></div>'
-                  +'<div class="sec"><div class="sec-title"><span>Approved Expenses</span><span>Total: '+sym+report.totalExpenses.toFixed(2)+'</span></div>'
+                  +'<div class="sec"><div class="sec-title"><span>Approved Expenses</span><span>Total: '+sym+fmt2(report.totalExpenses)+'</span></div>'
                   +'<table><thead><tr><th>Date</th><th>Employee</th><th>Category</th><th>Description</th><th>Amount</th></tr></thead><tbody>'
-                  +report.exps.map(function(e){return '<tr><td>'+new Date(e.date).toLocaleDateString('en-GB')+'</td><td>'+e.employeeName+'</td><td>'+e.category+'</td><td>'+(e.description||'')+'</td><td>'+sym+e.amount.toFixed(2)+'</td></tr>';}).join('')
-                  +'<tr style="background:#f0fdfa;font-weight:bold;"><td colspan="4" style="text-align:right;">TOTAL EXPENSES</td><td>'+sym+report.totalExpenses.toFixed(2)+'</td></tr>'
+                  +report.exps.map(function(e){return '<tr><td>'+new Date(e.date).toLocaleDateString('en-GB')+'</td><td>'+e.employeeName+'</td><td>'+e.category+'</td><td>'+(e.description||'')+'</td><td>'+sym+fmt2(e.amount)+'</td></tr>';}).join('')
+                  +'<tr style="background:#f0fdfa;font-weight:bold;"><td colspan="4" style="text-align:right;">TOTAL EXPENSES</td><td>'+sym+fmt2(report.totalExpenses)+'</td></tr>'
                   +'</tbody></table></div>'
                   +'<div class="sum"><div style="font-size:9px;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;color:#374151;margin-bottom:8px;">Profit & Loss Summary</div>'
-                  +'<div class="srow"><span>Net Agent Collections</span><span style="color:#16a34a;font-weight:600;">+'+sym+report.netCollections.toFixed(2)+'</span></div>'
-                  +'<div class="srow"><span>Total Payroll</span><span style="color:#dc2626;font-weight:600;">-'+sym+report.totalPayroll.toFixed(2)+'</span></div>'
-                  +'<div class="srow"><span>Total Expenses</span><span style="color:#dc2626;font-weight:600;">-'+sym+report.totalExpenses.toFixed(2)+'</span></div>'
-                  +'<div class="stotal"><span style="color:'+marginColor+';">'+(report.margin>=0?'Net Profit':'Net Loss')+'</span><span style="color:'+marginColor+';">'+(report.margin>=0?'+':'')+sym+report.margin.toFixed(2)+'</span></div>'
+                  +'<div class="srow"><span>Net Agent Collections</span><span style="color:#16a34a;font-weight:600;">+'+sym+fmt2(report.netCollections)+'</span></div>'
+                  +'<div class="srow"><span>Total Payroll</span><span style="color:#dc2626;font-weight:600;">-'+sym+fmt2(report.totalPayroll)+'</span></div>'
+                  +'<div class="srow"><span>Total Expenses</span><span style="color:#dc2626;font-weight:600;">-'+sym+fmt2(report.totalExpenses)+'</span></div>'
+                  +'<div class="stotal"><span style="color:'+marginColor+';">'+(report.margin>=0?'Net Profit':'Net Loss')+'</span><span style="color:'+marginColor+';">'+(report.margin>=0?'+':'')+sym+fmt2(report.margin)+'</span></div>'
                   +'</div>'
                   +'<div class="footer">B-Post Employee Management System &nbsp;·&nbsp; Generated '+new Date().toLocaleString('en-GB')+'</div>'
                   +'</body></html>';
@@ -11140,20 +11146,20 @@ import React, { useState, useEffect } from 'react';
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
                     <p className="text-xs text-green-600 font-semibold uppercase">Cash Collected</p>
-                    <p className="text-xl font-bold text-green-700 mt-1">{sym}{report.totalCashCollected.toFixed(2)}</p>
+                    <p className="text-xl font-bold text-green-700 mt-1">{sym}{fmt2(report.totalCashCollected)}</p>
                     </div>
                     <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
                     <p className="text-xs text-blue-600 font-semibold uppercase">Bank Transfer</p>
-                    <p className="text-xl font-bold text-blue-700 mt-1">{sym}{report.totalBankCollected.toFixed(2)}</p>
+                    <p className="text-xl font-bold text-blue-700 mt-1">{sym}{fmt2(report.totalBankCollected)}</p>
                     <p className="text-[10px] text-blue-400 mt-1">→ company main account (excluded from branch net)</p>
                     </div>
                     <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
                     <p className="text-xs text-red-600 font-semibold uppercase">Payroll + Expenses</p>
-                    <p className="text-xl font-bold text-red-700 mt-1">{sym}{(report.totalPayroll + report.totalExpenses).toFixed(2)}</p>
+                    <p className="text-xl font-bold text-red-700 mt-1">{sym}{fmt2((report.totalPayroll + report.totalExpenses))}</p>
                     </div>
                     <div className={'border-2 rounded-xl p-4 text-center ' + (report.margin >= 0 ? 'bg-emerald-50 border-emerald-400' : 'bg-red-50 border-red-400')}>
                     <p className={'text-xs font-bold uppercase ' + (report.margin >= 0 ? 'text-emerald-600' : 'text-red-600')}>{report.margin >= 0 ? 'Net Profit' : 'Net Loss'}</p>
-                    <p className={'text-2xl font-bold mt-1 ' + (report.margin >= 0 ? 'text-emerald-700' : 'text-red-700')}>{report.margin >= 0 ? '+' : ''}{sym}{Math.abs(report.margin).toFixed(2)}</p>
+                    <p className={'text-2xl font-bold mt-1 ' + (report.margin >= 0 ? 'text-emerald-700' : 'text-red-700')}>{report.margin >= 0 ? '+' : ''}{sym}{fmt2(Math.abs(report.margin))}</p>
                     </div>
                     </div>
 
@@ -11162,7 +11168,7 @@ import React, { useState, useEffect } from 'react';
                     <div className="flex items-center justify-between px-4 py-3 bg-green-50 cursor-pointer select-none" onClick={() => toggleSection('collections')}>
                     <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-green-500 inline-block"></span>Agent Collections</h3>
                     <div className="flex items-center gap-3">
-                      <span className="font-bold text-green-700">Net: {sym}{report.netCollections.toFixed(2)}</span>
+                      <span className="font-bold text-green-700">Net: {sym}{fmt2(report.netCollections)}</span>
                       <span className="text-gray-400 text-xs px-2 py-0.5 bg-white rounded border border-gray-200">{collapsed.collections ? '▼ Show' : '▲ Hide'}</span>
                     </div>
                     </div>
@@ -11176,19 +11182,19 @@ import React, { useState, useEffect } from 'react';
                       <td className="px-3 py-2"><span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-bold">{a.code}</span></td>
                       <td className="px-3 py-2 text-gray-600">{a.city}</td>
                       <td className="px-3 py-2 text-gray-500">{a.count}</td>
-                      <td className="px-3 py-2 font-semibold text-green-700">{sym}{a.cash.toFixed(2)}</td>
-                      <td className="px-3 py-2 font-semibold text-blue-600">{a.bank > 0 ? sym+a.bank.toFixed(2) : '—'}</td>
-                      <td className="px-3 py-2 text-red-500">{a.paid > 0 ? '-'+sym+a.paid.toFixed(2) : '—'}</td>
-                      <td className="px-3 py-2 font-bold text-gray-800">{sym}{(a.cash-a.paid).toFixed(2)}</td>
+                      <td className="px-3 py-2 font-semibold text-green-700">{sym}{fmt2(a.cash)}</td>
+                      <td className="px-3 py-2 font-semibold text-blue-600">{a.bank > 0 ? sym+fmt2(a.bank) : '—'}</td>
+                      <td className="px-3 py-2 text-red-500">{a.paid > 0 ? '-'+sym+fmt2(a.paid) : '—'}</td>
+                      <td className="px-3 py-2 font-bold text-gray-800">{sym}{fmt2((a.cash-a.paid))}</td>
                       </tr>
                       );
                     })}
                     <tr className="bg-green-50 font-bold border-t-2 border-green-200">
                       <td colSpan="3" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Total</td>
-                      <td className="px-3 py-2 text-green-700">{sym}{report.totalCashCollected.toFixed(2)}</td>
-                      <td className="px-3 py-2 text-blue-600">{sym}{report.totalBankCollected.toFixed(2)}</td>
-                      <td className="px-3 py-2 text-red-600">-{sym}{report.totalPaidToAgents.toFixed(2)}</td>
-                      <td className="px-3 py-2 text-gray-800">{sym}{report.netCollections.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-green-700">{sym}{fmt2(report.totalCashCollected)}</td>
+                      <td className="px-3 py-2 text-blue-600">{sym}{fmt2(report.totalBankCollected)}</td>
+                      <td className="px-3 py-2 text-red-600">-{sym}{fmt2(report.totalPaidToAgents)}</td>
+                      <td className="px-3 py-2 text-gray-800">{sym}{fmt2(report.netCollections)}</td>
                     </tr>
                     </tbody>
                     </table>
@@ -11200,7 +11206,7 @@ import React, { useState, useEffect } from 'react';
                     <div className="flex items-center justify-between px-4 py-3 bg-blue-50 cursor-pointer select-none" onClick={() => toggleSection('payroll')}>
                     <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>Employee Payroll (Approved Timesheets)</h3>
                     <div className="flex items-center gap-3">
-                      <span className="font-bold text-red-600">-{sym}{report.totalPayroll.toFixed(2)}</span>
+                      <span className="font-bold text-red-600">-{sym}{fmt2(report.totalPayroll)}</span>
                       <span className="text-gray-400 text-xs px-2 py-0.5 bg-white rounded border border-gray-200">{collapsed.payroll ? '▼ Show' : '▲ Hide'}</span>
                     </div>
                     </div>
@@ -11210,11 +11216,11 @@ import React, { useState, useEffect } from 'react';
                     <thead><tr className="bg-blue-50 border-t border-gray-100">{['Employee','ID','Earned'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-blue-700">{h}</th>;})}</tr></thead>
                     <tbody className="divide-y divide-gray-100">
                       {report.empPayroll.map(function(e, i) {
-                      return <tr key={i} className="hover:bg-blue-50"><td className="px-3 py-2 font-medium text-gray-800">{e.name}</td><td className="px-3 py-2 text-gray-500">{e.code}</td><td className="px-3 py-2 font-bold text-blue-700">{e.currency}{e.pay.toFixed(2)}</td></tr>;
+                      return <tr key={i} className="hover:bg-blue-50"><td className="px-3 py-2 font-medium text-gray-800">{e.name}</td><td className="px-3 py-2 text-gray-500">{e.code}</td><td className="px-3 py-2 font-bold text-blue-700">{e.currency}{fmt2(e.pay)}</td></tr>;
                       })}
                       <tr className="bg-blue-50 font-bold border-t-2 border-blue-200">
                       <td colSpan="2" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Total Payroll</td>
-                      <td className="px-3 py-2 text-red-600">-{sym}{report.totalPayroll.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-red-600">-{sym}{fmt2(report.totalPayroll)}</td>
                       </tr>
                     </tbody>
                     </table>
@@ -11227,7 +11233,7 @@ import React, { useState, useEffect } from 'react';
                     <div className="flex items-center justify-between px-4 py-3 bg-teal-50 cursor-pointer select-none" onClick={() => toggleSection('expenses')}>
                     <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-teal-500 inline-block"></span>Approved Expenses</h3>
                     <div className="flex items-center gap-3">
-                      <span className="font-bold text-red-600">-{sym}{report.totalExpenses.toFixed(2)}</span>
+                      <span className="font-bold text-red-600">-{sym}{fmt2(report.totalExpenses)}</span>
                       <span className="text-gray-400 text-xs px-2 py-0.5 bg-white rounded border border-gray-200">{collapsed.expenses ? '▼ Show' : '▲ Hide'}</span>
                     </div>
                     </div>
@@ -11237,11 +11243,11 @@ import React, { useState, useEffect } from 'react';
                     <thead><tr className="bg-teal-50 border-t border-gray-100">{['Date','Employee','Category','Description','Amount'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-teal-700">{h}</th>;})}</tr></thead>
                     <tbody className="divide-y divide-gray-100">
                       {report.exps.map(function(e) {
-                      return <tr key={e.id} className="hover:bg-teal-50"><td className="px-3 py-2 text-gray-600 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-GB')}</td><td className="px-3 py-2 text-gray-700">{e.employeeName}</td><td className="px-3 py-2"><span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-semibold">{e.category}</span></td><td className="px-3 py-2 text-gray-600">{e.description||'—'}</td><td className="px-3 py-2 font-bold text-teal-700">{sym}{e.amount.toFixed(2)}</td></tr>;
+                      return <tr key={e.id} className="hover:bg-teal-50"><td className="px-3 py-2 text-gray-600 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-GB')}</td><td className="px-3 py-2 text-gray-700">{e.employeeName}</td><td className="px-3 py-2"><span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-semibold">{e.category}</span></td><td className="px-3 py-2 text-gray-600">{e.description||'—'}</td><td className="px-3 py-2 font-bold text-teal-700">{sym}{fmt2(e.amount)}</td></tr>;
                       })}
                       <tr className="bg-teal-50 font-bold border-t-2 border-teal-200">
                       <td colSpan="4" className="px-3 py-2 text-right text-gray-700 text-xs uppercase">Total Expenses</td>
-                      <td className="px-3 py-2 text-red-600">-{sym}{report.totalExpenses.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-red-600">-{sym}{fmt2(report.totalExpenses)}</td>
                       </tr>
                     </tbody>
                     </table>
@@ -11254,21 +11260,21 @@ import React, { useState, useEffect } from 'react';
                     <div className={'flex items-center justify-between px-4 py-3 cursor-pointer select-none ' + (report.margin >= 0 ? 'bg-emerald-50' : 'bg-red-50')} onClick={() => toggleSection('summary')}>
                     <p className="text-xs font-bold text-gray-600 uppercase tracking-wider">Profit & Loss Summary</p>
                     <div className="flex items-center gap-3">
-                      <span className={'text-lg font-bold ' + (report.margin >= 0 ? 'text-emerald-700' : 'text-red-700')}>{report.margin >= 0 ? '+' : ''}{sym}{Math.abs(report.margin).toFixed(2)}</span>
+                      <span className={'text-lg font-bold ' + (report.margin >= 0 ? 'text-emerald-700' : 'text-red-700')}>{report.margin >= 0 ? '+' : ''}{sym}{fmt2(Math.abs(report.margin))}</span>
                       <span className="text-gray-400 text-xs px-2 py-0.5 bg-white rounded border border-gray-200">{collapsed.summary ? '▼ Show' : '▲ Hide'}</span>
                     </div>
                     </div>
                     {!collapsed.summary && (
                     <div className={'p-6 ' + (report.margin >= 0 ? 'bg-emerald-50' : 'bg-red-50')}>
                     <div className="space-y-2">
-                      <div className="flex justify-between text-sm"><span className="text-gray-600">Cash Collected</span><span className="font-semibold text-green-700">+{sym}{report.totalCashCollected.toFixed(2)}</span></div>
-                      <div className="flex justify-between text-sm"><span className="text-gray-400">Bank Transfers <span className="text-[10px]">(to main account — not in branch profit)</span></span><span className="font-semibold text-gray-400">{sym}{report.totalBankCollected.toFixed(2)}</span></div>
-                      {report.totalPaidToAgents > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Paid to Agents</span><span className="font-semibold text-red-600">-{sym}{report.totalPaidToAgents.toFixed(2)}</span></div>}
-                      <div className="flex justify-between text-sm"><span className="text-gray-600">Total Payroll</span><span className="font-semibold text-red-600">-{sym}{report.totalPayroll.toFixed(2)}</span></div>
-                      <div className="flex justify-between text-sm"><span className="text-gray-600">Total Expenses</span><span className="font-semibold text-red-600">-{sym}{report.totalExpenses.toFixed(2)}</span></div>
+                      <div className="flex justify-between text-sm"><span className="text-gray-600">Cash Collected</span><span className="font-semibold text-green-700">+{sym}{fmt2(report.totalCashCollected)}</span></div>
+                      <div className="flex justify-between text-sm"><span className="text-gray-400">Bank Transfers <span className="text-[10px]">(to main account — not in branch profit)</span></span><span className="font-semibold text-gray-400">{sym}{fmt2(report.totalBankCollected)}</span></div>
+                      {report.totalPaidToAgents > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Paid to Agents</span><span className="font-semibold text-red-600">-{sym}{fmt2(report.totalPaidToAgents)}</span></div>}
+                      <div className="flex justify-between text-sm"><span className="text-gray-600">Total Payroll</span><span className="font-semibold text-red-600">-{sym}{fmt2(report.totalPayroll)}</span></div>
+                      <div className="flex justify-between text-sm"><span className="text-gray-600">Total Expenses</span><span className="font-semibold text-red-600">-{sym}{fmt2(report.totalExpenses)}</span></div>
                       <div className={'flex justify-between font-bold text-xl border-t-2 border-gray-300 pt-3 mt-2 ' + (report.margin >= 0 ? 'text-emerald-700' : 'text-red-700')}>
                       <span>{report.margin >= 0 ? 'Net Profit' : 'Net Loss'}</span>
-                      <span>{report.margin >= 0 ? '+' : ''}{sym}{Math.abs(report.margin).toFixed(2)}</span>
+                      <span>{report.margin >= 0 ? '+' : ''}{sym}{fmt2(Math.abs(report.margin))}</span>
                       </div>
                     </div>
                     </div>
@@ -11281,20 +11287,20 @@ import React, { useState, useEffect } from 'react';
                     {Math.abs(report.openingBalance || 0) >= 0.005 && (
                     <div className="flex justify-between text-sm border-b border-dashed border-indigo-200 pb-2 mb-1">
                       <span className="text-gray-600 font-semibold">Brought forward (unsettled from before {new Date(report.periodStart).toLocaleDateString('en-GB',{day:'2-digit',month:'short'})})</span>
-                      <span className={'font-semibold ' + (report.openingBalance >= 0 ? 'text-red-600' : 'text-green-700')}>{report.openingBalance >= 0 ? '+' : ''}{sym}{report.openingBalance.toFixed(2)}</span>
+                      <span className={'font-semibold ' + (report.openingBalance >= 0 ? 'text-red-600' : 'text-green-700')}>{report.openingBalance >= 0 ? '+' : ''}{sym}{fmt2(report.openingBalance)}</span>
                     </div>
                     )}
-                    <div className="flex justify-between text-sm"><span className="text-gray-600">Net Cash Collected (cash − paid to agents)</span><span className="font-semibold text-green-700">+{sym}{(report.totalCashCollected - report.totalPaidToAgents).toFixed(2)}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-gray-600">Less: Payroll paid from branch cash</span><span className="font-semibold text-red-600">-{sym}{report.totalPayroll.toFixed(2)}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-gray-600">Less: Expenses paid from branch cash</span><span className="font-semibold text-red-600">-{sym}{report.totalExpenses.toFixed(2)}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-gray-600">Net Cash Collected (cash − paid to agents)</span><span className="font-semibold text-green-700">+{sym}{fmt2((report.totalCashCollected - report.totalPaidToAgents))}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-gray-600">Less: Payroll paid from branch cash</span><span className="font-semibold text-red-600">-{sym}{fmt2(report.totalPayroll)}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-gray-600">Less: Expenses paid from branch cash</span><span className="font-semibold text-red-600">-{sym}{fmt2(report.totalExpenses)}</span></div>
                     {report.totalSettled !== 0 && (
                     <div className="border-t border-dashed border-indigo-300 pt-2">
-                      <div className="flex justify-between text-sm"><span className="text-gray-600 font-semibold">Already Settled to Company</span><span className="font-semibold text-blue-600">-{sym}{report.totalSettled.toFixed(2)}</span></div>
+                      <div className="flex justify-between text-sm"><span className="text-gray-600 font-semibold">Already Settled to Company</span><span className="font-semibold text-blue-600">-{sym}{fmt2(report.totalSettled)}</span></div>
                       {report.branchSettlements.map(function(s,i){
                        const cleanNote = (s.reason||'').replace(/\[BRANCH:[^\]]*\]\s*/,'');
                        return (
                        <div key={s.id||i} className="flex justify-between items-center text-xs text-gray-500 bg-white/70 rounded px-2 py-1 mt-1">
-                      <span>{s.date} · {sym}{parseFloat(s.amount).toFixed(2)}{cleanNote ? ' · ' + cleanNote : ''}</span>
+                      <span>{s.date} · {sym}{fmt2(parseFloat(s.amount))}{cleanNote ? ' · ' + cleanNote : ''}</span>
                       <button onClick={function(){handleDeleteBranchSettle(s);}} className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 rounded hover:bg-red-200 text-xs font-semibold">Remove</button>
                        </div>
                        );
@@ -11303,7 +11309,7 @@ import React, { useState, useEffect } from 'react';
                     )}
                     <div className={'flex justify-between font-bold text-lg border-t-2 border-indigo-300 pt-3 mt-2 ' + (Math.abs(report.branchCashDue) < 0.005 ? 'text-gray-600' : report.branchCashDue > 0 ? 'text-red-700' : 'text-green-700')}>
                       <span>{Math.abs(report.branchCashDue) < 0.005 ? 'Fully Settled' : report.branchCashDue > 0 ? 'Cash Owed to Company' : 'Company Owes Branch'}</span>
-                      <span>{sym}{Math.abs(report.branchCashDue).toFixed(2)}</span>
+                      <span>{sym}{fmt2(Math.abs(report.branchCashDue))}</span>
                     </div>
                   </div>
 
@@ -11324,10 +11330,10 @@ import React, { useState, useEffect } from 'react';
                       <input value={coSettleNote} onChange={function(e){setCoSettleNote(e.target.value);}} placeholder="e.g. Cash handed to HQ 31/05" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                     </div>
                     <button onClick={handleBranchSettle} disabled={coSettling} className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">
-                      {coSettling ? 'Settling…' : 'Settle ' + sym + (parseFloat(coSettleAmount)||0).toFixed(2)}
+                      {coSettling ? 'Settling…' : 'Settle ' + sym + fmt2((parseFloat(coSettleAmount)||0))}
                     </button>
                     </div>
-                    <p className="text-xs text-gray-400 mt-2">{parseFloat(coSettleAmount) >= Math.abs(report.branchCashDue) - 0.005 ? 'Full balance will be cleared.' : 'Remaining ' + sym + (Math.abs(report.branchCashDue) - (parseFloat(coSettleAmount)||0)).toFixed(2) + ' carries forward.'}</p>
+                    <p className="text-xs text-gray-400 mt-2">{parseFloat(coSettleAmount) >= Math.abs(report.branchCashDue) - 0.005 ? 'Full balance will be cleared.' : 'Remaining ' + sym + fmt2((Math.abs(report.branchCashDue) - (parseFloat(coSettleAmount)||0))) + ' carries forward.'}</p>
                   </div>
                   )}
                   </div>
@@ -11657,7 +11663,7 @@ import React, { useState, useEffect } from 'react';
                    {selectedEmployee && (
                   <div className="mt-2 text-sm text-gray-600">
                    <p><strong>Position:</strong> {selectedEmployee.position}</p>
-                   <p><strong>Hourly Rate:</strong> {getCurrencySymbol(selectedEmployee.currency || 'GBP')}{(parseFloat(selectedEmployee.hourlyRate)||0).toFixed(2)}</p>
+                   <p><strong>Hourly Rate:</strong> {getCurrencySymbol(selectedEmployee.currency || 'GBP')}{fmt2((parseFloat(selectedEmployee.hourlyRate)||0))}</p>
                   </div>
                    )}
                   </div>
@@ -11722,7 +11728,7 @@ import React, { useState, useEffect } from 'react';
                    <div>
                   <p className="text-sm text-gray-600">Total Hours</p>
                   <p className="text-2xl font-bold text-indigo-900">
-                   {(calculatedHours.regular + calculatedHours.overtime).toFixed(2)}
+                   {fmt2((calculatedHours.regular + calculatedHours.overtime))}
                   </p>
                    </div>
                   </div>
@@ -12349,7 +12355,7 @@ import React, { useState, useEffect } from 'react';
                    </select>
                    {selectedEmployee && (
                   <p className="text-sm text-gray-600 mt-2">
-                   Position: {selectedEmployee.position} | Rate: {getCurrencySymbol(selectedEmployee.currency || 'GBP')}{(parseFloat(selectedEmployee.hourlyRate)||0).toFixed(2)}/hr
+                   Position: {selectedEmployee.position} | Rate: {getCurrencySymbol(selectedEmployee.currency || 'GBP')}{fmt2((parseFloat(selectedEmployee.hourlyRate)||0))}/hr
                   </p>
                    )}
                   </div>
@@ -12417,7 +12423,7 @@ import React, { useState, useEffect } from 'react';
                    <div>
                   <p className="text-sm text-indigo-700 font-semibold">Total Hours</p>
                   <p className="text-2xl font-bold text-indigo-900">
-                   {(hoursCalculation.regular + hoursCalculation.overtime).toFixed(2)}
+                   {fmt2((hoursCalculation.regular + hoursCalculation.overtime))}
                   </p>
                    </div>
                   </div>
@@ -12911,7 +12917,7 @@ import React, { useState, useEffect } from 'react';
                    <button onClick={()=>setEditing(true)} className="group flex items-center gap-1 hover:text-amber-700">
                   <span className={effectiveBreak>0?'text-amber-600 font-semibold':'text-gray-400'}>{effectiveBreak>0?`${effectiveBreak}m`:'—'}</span>
                   {autoBreak>0&&ts.breakMinutes===0&&<span className="text-xs text-gray-400">(auto)</span>}
-                  {effectiveBreak>0&&<span className="text-xs text-amber-600">-{sym}{((effectiveBreak/60)*rate).toFixed(2)}</span>}
+                  {effectiveBreak>0&&<span className="text-xs text-amber-600">-{sym}{fmt2(((effectiveBreak/60)*rate))}</span>}
                   <span className="text-gray-300 group-hover:text-amber-500 text-xs">✎</span>
                    </button>
                   );
@@ -13169,7 +13175,7 @@ import React, { useState, useEffect } from 'react';
 
                   const confirmed = window.confirm(
                    `Pay out ${minutesToDisplay(mins)} of annual leave for ${selectedEmp.firstName} ${selectedEmp.lastName}?\n\n` +
-                   `= ${currSym}${payAmount.toFixed(2)} (${hoursEquivalent.toFixed(2)}h × ${currSym}${selectedEmp.hourlyRate}/hr)\n\nThis will be added as a bonus payment.`
+                   `= ${currSym}${fmt2(payAmount)} (${fmt2(hoursEquivalent)}h × ${currSym}${selectedEmp.hourlyRate}/hr)\n\nThis will be added as a bonus payment.`
                   );
                   if (!confirmed) return;
 
@@ -13180,14 +13186,14 @@ import React, { useState, useEffect } from 'react';
                    employeeId: selectedEmp.id,
                    type: 'annual_leave',
                    amount: parseFloat(payAmount.toFixed(2)),
-                   reason: `Annual leave payout: ${minutesToDisplay(mins)} (${hoursEquivalent.toFixed(2)} hrs)`,
+                   reason: `Annual leave payout: ${minutesToDisplay(mins)} (${fmt2(hoursEquivalent)} hrs)`,
                    date: new Date().toISOString().split('T')[0],
                    hours: mins,
                   })
                    });
                    if (data.success) {
                   await loadAdjustmentsFromAPI();
-                  setSuccessMsg(`✓ Paid out ${minutesToDisplay(mins)} = ${currSym}${payAmount.toFixed(2)} for ${selectedEmp.firstName}`);
+                  setSuccessMsg(`✓ Paid out ${minutesToDisplay(mins)} = ${currSym}${fmt2(payAmount)} for ${selectedEmp.firstName}`);
                   setPayoutMinutes('');
                    } else {
                   setPayoutError(data.error || 'Failed to process payout');
@@ -13245,7 +13251,7 @@ import React, { useState, useEffect } from 'react';
                   <td className="px-4 py-3 text-right text-blue-700">{minutesToDisplay(lb.accruedMinutes)}</td>
                   <td className="px-4 py-3 text-right text-red-600">{lb.paidOut > 0 ? minutesToDisplay(lb.paidOut) : '—'}</td>
                   <td className="px-4 py-3 text-right font-bold text-emerald-700">{minutesToDisplay(lb.remainingMinutes)}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-gray-800">{sym}{payVal.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-gray-800">{sym}{fmt2(payVal)}</td>
                    </tr>
                   );
                    })}
@@ -13304,8 +13310,8 @@ import React, { useState, useEffect } from 'react';
                   />
                   {selectedEmp && payoutMinutes > 0 && (
                    <p className="mt-2 text-sm text-gray-600">
-                  = {getCurrencySymbol(selectedEmp.currency || 'GBP')}{((parseFloat(payoutMinutes) / 60) * (selectedEmp.hourlyRate || 0)).toFixed(2)} bonus payment
-                  &nbsp;({(parseFloat(payoutMinutes)/60).toFixed(2)}h × {getCurrencySymbol(selectedEmp.currency || 'GBP')}{selectedEmp.hourlyRate}/hr)
+                  = {getCurrencySymbol(selectedEmp.currency || 'GBP')}{fmt2(((parseFloat(payoutMinutes) / 60) * (selectedEmp.hourlyRate || 0)))} bonus payment
+                  &nbsp;({fmt2((parseFloat(payoutMinutes)/60))}h × {getCurrencySymbol(selectedEmp.currency || 'GBP')}{selectedEmp.hourlyRate}/hr)
                    </p>
                   )}
                    </div>
@@ -13728,7 +13734,7 @@ import React, { useState, useEffect } from 'react';
                    {expenses.filter(e => e.status === 'pending' && visibleEmployees.some(v => v.id === e.employeeId)).length}
                   </p>
                   <p className="text-xs text-teal-600 font-semibold">
-                   £{expenses.filter(e => e.status === 'pending' && visibleEmployees.some(v => v.id === e.employeeId)).reduce((s,e)=>s+e.amount,0).toFixed(2)} awaiting
+                   £{fmt2(expenses.filter(e => e.status === 'pending' && visibleEmployees.some(v => v.id === e.employeeId)).reduce((s,e)=>s+e.amount,0))} awaiting
                   </p>
                    </div>
                   </div>
@@ -13764,7 +13770,7 @@ import React, { useState, useEffect } from 'react';
                    byCurrency[sym] = (byCurrency[sym] || 0) + bal;
                   });
                   return Object.entries(byCurrency).map(([sym, total]) => (
-                   <div key={sym}>{sym}{total.toFixed(2)}</div>
+                   <div key={sym}>{sym}{fmt2(total)}</div>
                   ));
                    })()}
                   </div>
@@ -13873,7 +13879,7 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   ) : (
                    <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-semibold text-gray-800">{sym}{(emp.hourlyRate || 0).toFixed(2)}</span>
+                  <span className="text-sm font-semibold text-gray-800">{sym}{fmt2((emp.hourlyRate || 0))}</span>
                   <span className="text-xs text-gray-400">/hr</span>
                   {hasPermission('canSetRates') && (
                    <button onClick={() => startEditRate(emp)} className="text-indigo-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
@@ -13903,11 +13909,11 @@ import React, { useState, useEffect } from 'react';
                    </td>
                    <td className="px-5 py-4">
                   <div className={'text-base font-bold ' + (hasBalance ? 'text-green-600' : 'text-gray-400')}>
-                   {sym}{payroll.balance.toFixed(2)}
+                   {sym}{fmt2(payroll.balance)}
                   </div>
                   {payroll.payments > 0 && (
                    <div className="text-xs text-gray-500 mt-0.5">
-                  Earned: {sym}{payroll.totalPay.toFixed(2)} | Paid: {sym}{payroll.payments.toFixed(2)}
+                  Earned: {sym}{fmt2(payroll.totalPay)} | Paid: {sym}{fmt2(payroll.payments)}
                    </div>
                   )}
                    </td>
@@ -13937,7 +13943,7 @@ import React, { useState, useEffect } from 'react';
                   byCurrency[sym] = (byCurrency[sym] || 0) + calculatePayroll(emp.id).balance;
                    });
                    return Object.entries(byCurrency).map(([sym, total]) => (
-                  <span key={sym} className="block">{sym}{total.toFixed(2)}</span>
+                  <span key={sym} className="block">{sym}{fmt2(total)}</span>
                    ));
                   })()}
                    </td>
@@ -13979,7 +13985,7 @@ import React, { useState, useEffect } from 'react';
                   <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{new Date(exp.date).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</td>
                   <td className="px-4 py-3"><span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-semibold">{exp.category}</span></td>
                   <td className="px-4 py-3 text-gray-600">{exp.description|| ''}</td>
-                  <td className="px-4 py-3 font-bold text-gray-800">{getCurrencySymbol(exp.currency)}{exp.amount.toFixed(2)}</td>
+                  <td className="px-4 py-3 font-bold text-gray-800">{getCurrencySymbol(exp.currency)}{fmt2(exp.amount)}</td>
                   <td className="px-4 py-3 text-gray-500 text-xs">{exp.receiptNote|| ''}</td>
                   <td className="px-4 py-3">
                    <div className="flex gap-2">
