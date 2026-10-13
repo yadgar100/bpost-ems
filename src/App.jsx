@@ -10865,6 +10865,12 @@ import React, { useState, useEffect } from 'react';
                   return filteredEmp.some(function(v) { return v.id === e.employeeId; }) && (e.status === 'approved' || e.status === 'paid') && e.date >= fromDate && e.date <= toDate;
                   });
                   const totalExpenses = exps.reduce(function(s,e) { return s + e.amount; }, 0);
+                  // Expenses in this period that belong to the selected branch but are NOT counted
+                  // (still pending or rejected), plus expenses recorded against admin accounts.
+                  const excludedExps = expenses.filter(function(e) {
+                  return e.date >= fromDate && e.date <= toDate && (e.status === 'pending' || e.status === 'rejected')
+                    && filteredEmp.some(function(v) { return v.id === e.employeeId; });
+                  });
 
                   const empPayroll = [];
                   filteredEmp.forEach(function(emp) {
@@ -10959,7 +10965,7 @@ import React, { useState, useEffect } from 'react';
                   const rawBalance = openingBalance + netCollections - totalExpenses - totalPayroll;
                   const branchCashDue = rawBalance >= 0 ? (rawBalance - totalSettled) : (rawBalance + totalSettled);
 
-                  setReport({ totalCashCollected, totalBankCollected, totalCollections, totalPaidToAgents, netCollections, totalExpenses, totalPayroll, empPayroll, margin, byAgent: Object.values(byAgent), exps, periodStart: fromDate, periodEnd: toDate, branchSettlements, totalSettled, branchCashDue, openingBalance, branchName: branchFilter || 'All Branches' });
+                  setReport({ totalCashCollected, totalBankCollected, totalCollections, totalPaidToAgents, netCollections, totalExpenses, totalPayroll, empPayroll, margin, byAgent: Object.values(byAgent), exps, excludedExps, periodStart: fromDate, periodEnd: toDate, branchSettlements, totalSettled, branchCashDue, openingBalance, branchName: branchFilter || 'All Branches' });
                 };
 
                 React.useEffect(function(){
@@ -11226,7 +11232,7 @@ import React, { useState, useEffect } from 'react';
                     </div>
                     </div>
                     {!collapsed.expenses && (
-                    report.exps.length === 0 ? <p className="text-gray-400 text-sm p-4">No approved expenses in this period</p> : (
+                    report.exps.length === 0 ? <div className="text-gray-400 text-sm p-4">No approved expenses in this period{(report.excludedExps||[]).length > 0 && <div className="mt-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs">{report.excludedExps.length} expense{report.excludedExps.length>1?'s':''} for this branch in the period {report.excludedExps.length>1?'are':'is'} not counted because {report.excludedExps.length>1?'they are':'it is'} still Pending or was Rejected ({report.excludedExps.filter(function(x){return x.status==='pending';}).length} pending, {report.excludedExps.filter(function(x){return x.status==='rejected';}).length} rejected). Approve {report.excludedExps.length>1?'them':'it'} in the Expense Claims Manager to include {report.excludedExps.length>1?'them':'it'} here.</div>}</div> : (
                     <table className="w-full text-sm">
                     <thead><tr className="bg-teal-50 border-t border-gray-100">{['Date','Employee','Category','Description','Amount'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-teal-700">{h}</th>;})}</tr></thead>
                     <tbody className="divide-y divide-gray-100">
