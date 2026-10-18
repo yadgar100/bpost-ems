@@ -1744,6 +1744,8 @@ import React, { useState, useEffect } from 'react';
             const [showAgentReport, setShowAgentReport] = useState(false);
             const [showIraqPay, setShowIraqPay] = useState(false);
             const [iraqPayments, setIraqPayments] = useState([]);
+            // Batches an administrator has deleted are kept (hidden) under a "[DELETED] " label so they can be restored.
+            const [iraqDeletedPayments, setIraqDeletedPayments] = useState([]);
             const [iraqPayState, setIraqPayState] = useState({ activeTab:'view', batchName:'', empId:'', filterEmp:'', filterStatus:'all', filterBatch:'', filterFrom:'', filterTo:'', previewRows:[] });
             // Held outside the Pay in Iraq screen (a ref, so updating it never re-renders anything) so a file you
             // are midway through reviewing survives the periodic background refresh.
@@ -1964,7 +1966,7 @@ import React, { useState, useEffect } from 'react';
             const loadIraqPaymentsFromAPI = async () => {
                 try {
                   const data = await apiCall(API_ENDPOINTS.iraqPay);
-                  if (data.success && data.payments) { lockScroll(); setIraqPayments(data.payments.map(function(p){
+                  if (data.success && data.payments) { lockScroll(); const _allIraq = data.payments.map(function(p){
                    const _notes = p.Notes || '';
                    // To Office is stored inside Notes as "Office: X" (optionally followed by "| note").
                    const _toOffice = _notes.indexOf('Office:') !== -1
@@ -1985,7 +1987,9 @@ import React, { useState, useEffect } from 'react';
                    collectedGBP:parseFloat(p.CollectedGBP)||0, collectedEUR:parseFloat(p.CollectedEUR)||0,
                    receiverContact:_rc, receiver:_receiverName, receiverMobile:_receiverMobile, toOffice:_toOffice,
                    status:p.Status, notes:_notes, createdAt:p.CreatedAt, collectedAt:p.CollectedAt
-                  };})); }
+                  };});
+                  setIraqPayments(_allIraq.filter(function(p){ return String(p.batchName || '').indexOf('[DELETED] ') !== 0; }));
+                  setIraqDeletedPayments(_allIraq.filter(function(p){ return String(p.batchName || '').indexOf('[DELETED] ') === 0; })); }
                 } catch(e) { console.error('loadIraqPay error:',e); }
             };
 
@@ -4879,7 +4883,7 @@ import React, { useState, useEffect } from 'react';
             /* ── End IraqPayCard ──────────────────────────────────────────────────────── */
 
             /* ── IraqPay Admin Manager ─────────────────────────────────────────────── */
-            const IraqPayManager = ({ onClose, visibleEmployees: visEmp, iraqPayments, loadIraqPaymentsFromAPI, apiCall, API_ENDPOINTS, persistedState, onStateChange, uploadStore }) => {
+            const IraqPayManager = ({ onClose, visibleEmployees: visEmp, iraqPayments, iraqDeletedPayments, loadIraqPaymentsFromAPI, apiCall, API_ENDPOINTS, persistedState, onStateChange, uploadStore }) => {
                 const mk = (k) => (v) => onStateChange && onStateChange(function(s){return{...s,[k]:typeof v==='function'?v(s[k]):v};});
                 const activeTab = persistedState ? persistedState.activeTab : 'view'; const setActiveTab = mk('activeTab');
                 const filterEmp = persistedState ? persistedState.filterEmp : ''; const setFilterEmp = mk('filterEmp');
@@ -5141,6 +5145,42 @@ import React, { useState, useEffect } from 'react';
                 const filterFrom = persistedState ? persistedState.filterFrom : ''; const setFilterFrom = mk('filterFrom');
                 const filterTo = persistedState ? persistedState.filterTo : ''; const setFilterTo = mk('filterTo');
                 const [deletingBatch, setDeletingBatch] = useState(false);
+                const [showDeletedBatches, setShowDeletedBatches] = useState(false);
+                const [busyDeletedBatch, setBusyDeletedBatch] = useState('');
+                const deletedList = iraqDeletedPayments || [];
+                const deletedBatchGroups = (function() {
+                  const g = {};
+                  deletedList.forEach(function(p) {
+                   const k = p.batchName;
+                   if (!g[k]) g[k] = { key: k, name: k.replace('[DELETED] ', ''), records: [], employees: {} };
+                   g[k].records.push(p);
+                   if (p.employeeName) g[k].employees[p.employeeName] = true;
+                  });
+                  return Object.keys(g).sort().map(function(k) { return g[k]; });
+                })();
+                const restoreDeletedBatch = async function(group) {
+                  if (!window.confirm('Restore batch "' + group.name + '" (' + group.records.length + ' records)?\n\nIt will reappear in Pay in Iraq exactly as it was.')) return;
+                  setBusyDeletedBatch(group.key);
+                  try {
+                   for (const p of group.records) {
+                  await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method: 'PUT', body: JSON.stringify({ batchName: group.name }) });
+                   }
+                   await loadIraqPaymentsFromAPI();
+                   alert('Batch "' + group.name + '" restored — ' + group.records.length + ' records.');
+                  } catch(e) { alert('Unable to restore the batch: ' + e.message + '\n\nSome records may have been restored. Please refresh and try again.'); await loadIraqPaymentsFromAPI(); }
+                  setBusyDeletedBatch('');
+                };
+                const purgeDeletedBatch = async function(group) {
+                  const typed = window.prompt('⚠️ This will PERMANENTLY delete ' + group.records.length + ' record(s) from the deleted batch "' + group.name + '".\n\nThere is no recovery after this. Type the batch name exactly to confirm:\n\n"' + group.name + '"');
+                  if (typed === null) return;
+                  if (typed.trim() !== group.name) { alert('Batch name did not match — nothing was deleted.'); return; }
+                  setBusyDeletedBatch(group.key);
+                  try {
+                   for (const p of group.records) { await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method: 'DELETE' }); }
+                   await loadIraqPaymentsFromAPI();
+                  } catch(e) { alert('Unable to delete the batch permanently: ' + e.message); await loadIraqPaymentsFromAPI(); }
+                  setBusyDeletedBatch('');
+                };
                 const [showMoveBatch, setShowMoveBatch] = useState(false);
                 const [moveBatchName, setMoveBatchName] = useState('');
                 const [moveBatchRecords, setMoveBatchRecords] = useState([]);
@@ -5374,28 +5414,16 @@ import React, { useState, useEffect } from 'react';
                   const batchToDelete = filterBatch;
                   if (!batchToDelete) { alert('Please select a batch to delete.'); return; }
                   const batchRecords = iraqPayments.filter(function(p){ return p.batchName === batchToDelete; });
-                  // Deleting a whole batch is permanent (a real hard delete, no undo) — require
-                  // TYPING the batch name back, not just clicking through a generic confirm().
-                  // A stray click on this button (it sits right next to the batch dropdown) used
-                  // to be enough to wipe a batch with only one OK-click; this closes that gap.
-                  const typed = window.prompt(
-                   '⚠️ This will PERMANENTLY delete ' + batchRecords.length + ' record(s) in batch "' + batchToDelete + '".\n\n' +
-                   'This cannot be undone — there is no recovery. To confirm, type the batch name exactly:\n\n"' + batchToDelete + '"'
-                  );
-                  if (typed === null) return; // cancelled
-                  if (typed.trim() !== batchToDelete) {
-                   alert('Batch name did not match — nothing was deleted.');
-                   return;
-                  }
+                  if (!window.confirm('Delete batch "' + batchToDelete + '" (' + batchRecords.length + ' records)?\n\nThe batch will be hidden from Pay in Iraq, reports and the employee portal. You can restore it at any time from "Deleted Batches".')) return;
                   setDeletingBatch(true);
                   try {
                    for (const p of batchRecords) {
-                  await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method: 'DELETE' });
+                  await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method: 'PUT', body: JSON.stringify({ batchName: '[DELETED] ' + batchToDelete }) });
                    }
                    await loadIraqPaymentsFromAPI();
                    setFilterBatch('');
-                   alert('Batch "' + batchToDelete + '" deleted — ' + batchRecords.length + ' records removed.');
-                  } catch(e) { alert('Unable to delete the batch: ' + e.message); }
+                   alert('Batch "' + batchToDelete + '" deleted — ' + batchRecords.length + ' records hidden. You can restore it from "Deleted Batches".');
+                  } catch(e) { alert('Unable to delete the batch: ' + e.message); await loadIraqPaymentsFromAPI(); }
                   setDeletingBatch(false);
                 };
 
@@ -5645,6 +5673,9 @@ import React, { useState, useEffect } from 'react';
                    {deletingBatch ? 'Deleting...' : '🗑 Delete Batch'}
                   </button>
                    )}
+                   <button onClick={function(){ setShowDeletedBatches(true); }} className="px-3 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg text-sm font-semibold hover:bg-gray-200 flex items-center gap-1">
+                  🗂 Deleted Batches{deletedBatchGroups.length > 0 ? ' (' + deletedBatchGroups.length + ')' : ''}
+                   </button>
                    {filterBatch && (
                   <button onClick={openMoveBatchModal} className="px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold hover:bg-amber-600 flex items-center gap-1">
                    📦 Move Pending →
@@ -5878,6 +5909,41 @@ import React, { useState, useEffect } from 'react';
                    </div>
                   )}
 
+                  {showDeletedBatches && (
+                   <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-screen overflow-y-auto">
+                   <div className="bg-gradient-to-r from-gray-700 to-gray-800 rounded-t-2xl px-6 py-4 flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-white">🗂 Deleted Batches</h3>
+                  <button onClick={function(){ setShowDeletedBatches(false); }} className="text-white text-xl px-2">✕</button>
+                   </div>
+                   <div className="p-6">
+                  <p className="text-sm text-gray-500 mb-4">Deleted batches are hidden from Pay in Iraq, reports and the employee portal. Restore a batch to bring it back exactly as it was.</p>
+                  {deletedBatchGroups.length === 0 ? (
+                   <p className="text-gray-400 text-sm py-6 text-center">No deleted batches.</p>
+                  ) : (
+                   <div className="space-y-3">
+                  {deletedBatchGroups.map(function(g) {
+                   const collectedCount = g.records.filter(function(r){ return r.status === 'collected'; }).length;
+                   const busy = busyDeletedBatch === g.key;
+                   return (
+                    <div key={g.key} className="border border-gray-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+                   <div>
+                  <p className="font-bold text-gray-800">{g.name}</p>
+                  <p className="text-xs text-gray-500">{g.records.length} records · {collectedCount} collected · {Object.keys(g.employees).join(', ') || '—'}</p>
+                   </div>
+                   <div className="flex gap-2">
+                  <button disabled={busy} onClick={function(){ restoreDeletedBatch(g); }} className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50">{busy ? 'Working…' : '↩ Restore'}</button>
+                  <button disabled={busy} onClick={function(){ purgeDeletedBatch(g); }} className="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-semibold hover:bg-red-200 disabled:opacity-50">Delete permanently</button>
+                   </div>
+                    </div>
+                   );
+                  })}
+                   </div>
+                  )}
+                   </div>
+                  </div>
+                   </div>
+                  )}
                   {showMoveBatch && (
                    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
                   <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-screen overflow-y-auto">
@@ -13485,6 +13551,7 @@ import React, { useState, useEffect } from 'react';
                    onClose={() => setShowIraqPay(false)}
                    visibleEmployees={visibleEmployees}
                    iraqPayments={iraqPayments}
+                   iraqDeletedPayments={iraqDeletedPayments}
                    loadIraqPaymentsFromAPI={loadIraqPaymentsFromAPI}
                    apiCall={apiCall}
                    API_ENDPOINTS={API_ENDPOINTS}
