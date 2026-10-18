@@ -9441,6 +9441,19 @@ import React, { useState, useEffect } from 'react';
                    el.scrollTop = modalScrollY.current;
                   }
                 });
+                const [receiptView, setReceiptView] = useState(null);
+                const [loadingReceiptId, setLoadingReceiptId] = useState(null);
+                // Receipt photos are not loaded with the list (they are large); fetch one when asked.
+                const openReceipt = async function(exp) {
+                  if (exp.receiptImage) { setReceiptView(exp.receiptImage); return; }
+                  setLoadingReceiptId(exp.id);
+                  try {
+                   const data = await apiCall(API_ENDPOINTS.expenses + '/' + exp.id + '/receipt');
+                   if (data && data.receiptImage) setReceiptView(data.receiptImage);
+                   else alert('No receipt image is stored for this expense.');
+                  } catch (e) { alert('Unable to load the receipt: ' + e.message); }
+                  setLoadingReceiptId(null);
+                };
                 const adjAmountRef = React.useRef(null);
                 const adjHoursRef = React.useRef(null);
                 const adjReasonRef = React.useRef(null);
@@ -9522,6 +9535,14 @@ import React, { useState, useEffect } from 'react';
 
                 return (
                   <div ref={modalScrollRef} onScroll={handleModalScroll} className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto">
+                   {receiptView && (
+                  <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-[60] p-4" onClick={function(){ setReceiptView(null); }}>
+                   <div className="relative max-w-3xl max-h-full">
+                  <button onClick={function(){ setReceiptView(null); }} className="absolute top-2 right-2 bg-white text-gray-800 rounded-full w-8 h-8 flex items-center justify-center font-bold text-lg hover:bg-gray-100 shadow">✕</button>
+                  <img src={receiptView} alt="Receipt" className="max-h-[90vh] max-w-full rounded-lg" onClick={function(e){ e.stopPropagation(); }} />
+                   </div>
+                  </div>
+                   )}
                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl my-8">
                   <div className="sticky top-0 z-10 bg-white rounded-t-2xl p-6 border-b border-gray-200 flex justify-between items-center">
                    <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
@@ -9611,6 +9632,7 @@ import React, { useState, useEffect } from 'react';
                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Category</th>
                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Description</th>
                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Notes</th>
+                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Receipt</th>
                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Amount</th>
                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Status</th>
                   </tr>
@@ -9637,6 +9659,7 @@ import React, { useState, useEffect } from 'react';
                   })()}
                    </td>
                    <td className="px-4 py-2 text-xs text-gray-600 whitespace-normal break-words max-w-xs">{exp.receiptNote || <span className="text-gray-300">—</span>}</td>
+                   <td className="px-4 py-2">{(exp.hasReceipt || exp.receiptImage) ? <button onClick={function(){ openReceipt(exp); }} disabled={loadingReceiptId === exp.id} className="px-2 py-1 bg-teal-50 text-teal-700 border border-teal-200 rounded text-xs font-semibold hover:bg-teal-100 disabled:opacity-50 whitespace-nowrap">{loadingReceiptId === exp.id ? 'Loading…' : '📎 View receipt'}</button> : <span className="text-gray-300">—</span>}</td>
                    <td className="px-4 py-2 font-bold text-gray-800">{rowSym}{fmt2(exp.amount)}</td>
                    <td className="px-4 py-2">
                   <span className={'px-2 py-0.5 rounded-full text-xs font-semibold capitalize ' + getStatusBadgeClass(exp.status)}>{exp.status}</span>
@@ -9645,7 +9668,7 @@ import React, { useState, useEffect } from 'react';
                    );
                   })}
                   <tr className="bg-gray-50 font-bold border-t-2 border-gray-300">
-                   <td colSpan="3" className="px-4 py-2 text-right text-gray-700">TOTAL</td>
+                   <td colSpan="5" className="px-4 py-2 text-right text-gray-700">TOTAL</td>
                    <td className="px-4 py-2 text-gray-800">{rowSym}{fmt2(rowTotal)}</td>
                    <td></td>
                   </tr>
