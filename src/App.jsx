@@ -1901,6 +1901,7 @@ import React, { useState, useEffect } from 'react';
                   currency: e.Currency || e.currency || '',
                   receiptNote: e.ReceiptNote || e.receiptNote || '',
                   receiptImage: e.ReceiptImage || e.receiptImage || null,
+                  hasReceipt: !!(e.HasReceipt || e.hasReceipt || e.ReceiptImage || e.receiptImage),
                   status: (e.Status || e.status || 'pending').toLowerCase(),
                   paidAt: e.PaidAt || e.paidAt || null,
                   paidBy: e.PaidBy || e.paidBy || '',
@@ -8741,6 +8742,18 @@ import React, { useState, useEffect } from 'react';
                 const expEmpFilter = persistedState ? persistedState.expEmpFilter : ''; const setExpEmpFilter = mk('expEmpFilter');
                 const [showAddForm, setShowAddForm] = useState(false);
                 const [lightboxImage, setLightboxImage] = useState(null);
+                const [loadingReceiptId, setLoadingReceiptId] = useState(null);
+                // Receipt photos are large, so the list loads without them and each photo is fetched on demand.
+                const openReceipt = async function(exp) {
+                  if (exp.receiptImage) { setLightboxImage(exp.receiptImage); return; }
+                  setLoadingReceiptId(exp.id);
+                  try {
+                   const data = await apiCall(API_ENDPOINTS.expenses + '/' + exp.id + '/receipt');
+                   if (data && data.receiptImage) setLightboxImage(data.receiptImage);
+                   else alert('No receipt image is stored for this expense.');
+                  } catch (e) { alert('Unable to load the receipt: ' + e.message); }
+                  setLoadingReceiptId(null);
+                };
                 const today = new Date().toISOString().split('T')[0];
                 // Default the visible list to the current week (Mon-Sun) so it doesn't keep
                 // growing forever as more expenses are added — admin can widen the range anytime.
@@ -9355,6 +9368,8 @@ import React, { useState, useEffect } from 'react';
                   <img src={exp.receiptImage} alt="Receipt"
                    onClick={() => setLightboxImage(exp.receiptImage)}
                    className="w-12 h-12 object-cover rounded-lg border border-gray-300 hover:opacity-80 transition cursor-zoom-in" title="Click to view full size" />
+                   ) : exp.hasReceipt ? (
+                  <button onClick={function(){ openReceipt(exp); }} disabled={loadingReceiptId === exp.id} className="px-2 py-1 bg-teal-50 text-teal-700 border border-teal-200 rounded text-xs font-semibold hover:bg-teal-100 disabled:opacity-50">{loadingReceiptId === exp.id ? 'Loading…' : '📎 View receipt'}</button>
                    ) : (
                   <span className="text-gray-400 text-xs">{exp.receiptNote || '—'}</span>
                    )}
