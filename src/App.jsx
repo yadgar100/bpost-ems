@@ -4786,14 +4786,11 @@ import React, { useState, useEffect } from 'react';
                   {!searchActive && batches.length > 1 && (
                    <div className="mb-3">
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Filter by Batch</label>
-                  <select value={selectedBatch} onChange={function(e){setSelectedBatch(e.target.value);}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                   <option value="">All Batches ({base.length} shipments)</option>
-                   {batches.map(function(b){
+                  <SearchableSelect value={selectedBatch} onChange={function(v){ setSelectedBatch(String(v)); }} className="w-full" placeholder="All Batches" searchPlaceholder="Search batch name…"
+                   options={[{value:'',label:'All Batches ('+base.length+' shipments)'}].concat(batches.map(function(b){
                   const count = base.filter(function(p){return p.batchName===b;}).length;
-                  if (count === 0) return null;
-                  return <option key={b} value={b}>{b} ({count} shipments)</option>;
-                   })}
-                  </select>
+                  return count === 0 ? null : {value:b, label:b+' ('+count+' shipments)', search:b};
+                   }).filter(Boolean))} />
                    </div>
                   )}
 
@@ -5684,29 +5681,15 @@ import React, { useState, useEffect } from 'react';
 
                   <option value="collected">Collected</option>
                    </select>
-                   <select value={filterBatch} onChange={function(e){setFilterBatch(e.target.value);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                  <option value="">All Batches</option>
-                  {(function() {
-                   // Group monthly batches (e.g. "Hawler-July", "Slemani-Aug") separately from
-                   // everything else — but every batch stays selectable here (unlike before),
-                   // since one-off/legacy names like "Slemani-456" still need to be pickable to
-                   // Move Pending, Delete, or otherwise manage them.
-                   const MONTH_RE = /-(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|jun(e)?|jul(y)?|aug(ust)?|sep(t|tember)?|oct(ober)?|nov(ember)?|dec(ember)?)$/i;
-                   const endsWithMonth = function(name) { return MONTH_RE.test((name||'').trim()); };
-                   const allBatches = [...new Set(iraqPayments.map(function(p){return p.batchName;}))].sort();
-                   const monthly = allBatches.filter(endsWithMonth);
-                   const other = allBatches.filter(function(b){ return !endsWithMonth(b); });
-                   const opt = function(b) {
-                  return <option key={b} value={b}>{b} ({iraqPayments.filter(function(p){return p.batchName===b;}).length})</option>;
-                   };
-                   return (
-                  <React.Fragment>
-                   {monthly.length > 0 && <optgroup label="Monthly Batches">{monthly.map(opt)}</optgroup>}
-                   {other.length > 0 && <optgroup label="Other Batches">{other.map(opt)}</optgroup>}
-                  </React.Fragment>
-                   );
-                  })()}
-                   </select>
+                   <SearchableSelect value={filterBatch} onChange={function(v){ setFilterBatch(String(v)); }} placeholder="All Batches" searchPlaceholder="Search batch name…"
+                   options={(function() {
+                  var MRE = /-(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|jun(e)?|jul(y)?|aug(ust)?|sep(t|tember)?|oct(ober)?|nov(ember)?|dec(ember)?)$/i;
+                  var all = [...new Set(iraqPayments.map(function(p){return p.batchName;}))].filter(Boolean).sort();
+                  var ordered = all.filter(function(x){ return MRE.test((x||'').trim()); }).concat(all.filter(function(x){ return !MRE.test((x||'').trim()); }));
+                  return [{value:'',label:'All Batches'}].concat(ordered.map(function(x){
+                   return {value:x, label:x+' ('+iraqPayments.filter(function(p){return p.batchName===x;}).length+')', search:x};
+                  }));
+                   })()} />
                    {filterBatch && (
                   <button onClick={handleDeleteBatch} disabled={deletingBatch} className="px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 disabled:opacity-50 flex items-center gap-1">
                    {deletingBatch ? 'Deleting...' : '🗑 Delete Batch'}
@@ -5934,9 +5917,8 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   <div>
                    <label className="block text-sm font-semibold text-gray-700 mb-1">Move to Batch</label>
-                   <select value={reassignBatch} onChange={function(e){ setReassignBatch(e.target.value); }} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-400">
-                  {[...new Set(iraqPayments.map(function(p){return p.batchName;}))].filter(Boolean).sort().map(function(b){ return <option key={b} value={b}>{b}</option>; })}
-                   </select>
+                   <SearchableSelect value={reassignBatch} onChange={function(v){ setReassignBatch(String(v)); }} className="w-full" placeholder="Select batch" searchPlaceholder="Search batch name…"
+                   options={[...new Set(iraqPayments.map(function(p){return p.batchName;}))].filter(Boolean).sort().map(function(x){ return {value:x, label:x, search:x}; })} />
                    <p className="text-xs text-gray-400 mt-1">Leave unchanged to keep the current batch, or select a different one.</p>
                   </div>
                   <div className="flex gap-2 justify-end pt-2">
