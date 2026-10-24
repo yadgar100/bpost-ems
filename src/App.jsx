@@ -344,6 +344,52 @@ import React, { useState, useEffect } from 'react';
                 try { localStorage.removeItem(FX_DRAFT_KEY + employeeId); } catch (e) { /* ignore */ }
             };
 
+            // A dropdown with a search box at the top, so a long list (e.g. agents) can be filtered by typing.
+            const SearchableSelect = function(props) {
+              const options = props.options || [];
+              const [open, setOpen] = React.useState(false);
+              const [query, setQuery] = React.useState('');
+              const boxRef = React.useRef(null);
+              const inputRef = React.useRef(null);
+              React.useEffect(function() {
+                if (!open) return;
+                const onDown = function(e) { if (boxRef.current && !boxRef.current.contains(e.target)) { setOpen(false); setQuery(''); } };
+                document.addEventListener('mousedown', onDown);
+                document.addEventListener('touchstart', onDown);
+                return function() { document.removeEventListener('mousedown', onDown); document.removeEventListener('touchstart', onDown); };
+              }, [open]);
+              React.useEffect(function() { if (open && inputRef.current) inputRef.current.focus(); }, [open]);
+              const selected = options.find(function(o) { return String(o.value) === String(props.value); });
+              const q = query.trim().toLowerCase();
+              const shown = q ? options.filter(function(o) { return (o.search || o.label || '').toLowerCase().indexOf(q) !== -1; }) : options;
+              const choose = function(v) { props.onChange(v); setOpen(false); setQuery(''); };
+              return (
+                <div ref={boxRef} className={'relative ' + (props.className || '')}>
+                  <button type="button" onClick={function() { setOpen(!open); }}
+                    className="w-full min-w-[10rem] border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2">
+                    <span className={selected && selected.value !== '' ? 'text-gray-900' : 'text-gray-700'}>{selected ? selected.label : (props.placeholder || 'Select…')}</span>
+                    <span className="text-gray-400 text-xs">▾</span>
+                  </button>
+                  {open && (
+                    <div className="absolute z-50 mt-1 w-72 max-w-[85vw] bg-white border border-gray-300 rounded-lg shadow-xl">
+                      <div className="p-2 border-b border-gray-200">
+                        <input ref={inputRef} type="text" value={query} onChange={function(e) { setQuery(e.target.value); }}
+                          onKeyDown={function(e) { if (e.key === 'Escape') { setOpen(false); setQuery(''); } else if (e.key === 'Enter' && shown.length > 0) { e.preventDefault(); choose(shown[0].value); } }}
+                          placeholder={props.searchPlaceholder || 'Search…'} className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300" />
+                      </div>
+                      <div className="max-h-64 overflow-y-auto py-1">
+                        {shown.length === 0 ? <div className="px-3 py-2 text-sm text-gray-400">No matches</div> : shown.map(function(o) {
+                          const isSel = String(o.value) === String(props.value);
+                          return <div key={String(o.value)} onClick={function() { choose(o.value); }}
+                            className={'px-3 py-1.5 text-sm cursor-pointer hover:bg-orange-50 ' + (isSel ? 'bg-orange-100 font-semibold' : '')}>{o.label}</div>;
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            };
+
             // Formats an amount with thousands separators and two decimals (e.g. 7,500,000.00).
             const fmt2 = function(n) {
               const v = Number(n);
@@ -951,23 +997,17 @@ import React, { useState, useEffect } from 'react';
                    )}
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Employee</label>
-                  <select value={empFilter} onChange={function(e) { setEmpFilter(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                   <option value="">All Employees</option>
-                   {visEmp.filter(function(e) {
-                   // Show every employee matching branch/country, not just those who already
-                   // have a collection on record — otherwise a newly added employee is invisible
-                   // in this filter until their first collection is logged.
+                  <SearchableSelect value={empFilter} onChange={function(v) { setEmpFilter(String(v)); }} placeholder="All Employees" searchPlaceholder="Search employee name…"
+                   options={[{value:'',label:'All Employees'}].concat(visEmp.filter(function(e) {
                    return !e.isAdmin
                    && (!branchFilter || (e.branches||[]).includes(branchFilter))
                    && (!countryFilter || e.country === countryFilter);
-                   }).map(function(e) { return <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>; })}
-                  </select>
+                   }).map(function(e) { var nm=(e.firstName||'')+' '+(e.lastName||''); return {value:String(e.id), label:nm, search:nm}; }))} />
                    </div>
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Agent</label>
-                  <select value={agentFilter} onChange={function(e) { setAgentFilter(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                   <option value="">All Agents</option>
-                   {(function() {
+                  <SearchableSelect value={agentFilter} onChange={function(v) { setAgentFilter(v); }} placeholder="All Agents" searchPlaceholder="Search agent code or city…"
+                   options={(function() {
                   // Union of two sources: agents the employee has actually logged collections
                   // for (history), and agents they're currently ASSIGNED to (from Agent
                   // Management) — otherwise a freshly assigned agent with zero collections
@@ -979,11 +1019,11 @@ import React, { useState, useEffect } from 'react';
                   const fromAssignment = empFilter
                    ? agents.filter(function(a){ return (a.assignedEmployees||[]).some(function(emp){ return emp.id === parseInt(empFilter); }); }).map(function(a){ return a.agentCode; })
                    : [];
-                  return Array.from(new Set(fromHistory.concat(fromAssignment)))
+                  const cityOf = function(code) { const a = agents.find(function(x){ return (x.AgentCode || x.agentCode) === code; }); return a ? (a.City || a.city || '') : ''; };
+                  return [{ value: '', label: 'All Agents' }].concat(Array.from(new Set(fromHistory.concat(fromAssignment)))
                    .sort()
-                   .map(function(code) { return <option key={code} value={code}>{code}</option>; });
-                   })()}
-                  </select>
+                   .map(function(code) { return { value: code, label: code, search: code + ' ' + cityOf(code) }; }));
+                   })()} />
                    </div>
                    <button onClick={generateReport} className="bg-orange-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-orange-700 text-sm">Generate Report</button>
                    {reportData && <button onClick={exportCSV} className="bg-green-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-green-700 text-sm">Export CSV</button>}
@@ -1008,10 +1048,8 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-1">Agent *</label>
-                   <select value={addAgentId} onChange={function(e){setAddAgentId(e.target.value); syncDraft({agentId: e.target.value});}} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                  <option value="">Select agent...</option>
-                  {[...agents].sort(function(a,b){return (a.AgentCode||a.agentCode||'').localeCompare(b.AgentCode||b.agentCode||'');}).map(function(a){return <option key={a.Id||a.id} value={a.Id||a.id}>{a.AgentCode||a.agentCode} — {a.City||a.city}</option>;})}
-                   </select>
+                   <SearchableSelect value={addAgentId} onChange={function(v){ v = String(v); setAddAgentId(v); syncDraft({agentId: v});}} placeholder="Select agent..." searchPlaceholder="Search agent code or city…"
+                   options={[{ value: '', label: 'Select agent...' }].concat([...agents].sort(function(a,b){return (a.AgentCode||a.agentCode||'').localeCompare(b.AgentCode||b.agentCode||'');}).map(function(a){ const code = a.AgentCode||a.agentCode; const city = a.City||a.city||''; return { value: a.Id||a.id, label: code + ' — ' + city, search: code + ' ' + city }; }))} />
                   </div>
                    </div>
                    <div className="grid grid-cols-3 gap-3 mb-3">
@@ -7526,16 +7564,12 @@ import React, { useState, useEffect } from 'react';
                   </div>
                   <div>
                    <label className="block text-sm font-semibold text-gray-700 mb-2">Employee</label>
-                   <select value={selectedEmployee} onChange={(e) => setSelectedEmployee(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                  <option value="all">All Employees</option>
-                  {filteredByCountry.filter(e => !e.isAdmin
+                   <SearchableSelect value={selectedEmployee} onChange={function(v) { setSelectedEmployee(String(v)); }} placeholder="All Employees" searchPlaceholder="Search employee name…" className="w-full"
+                   options={[{value:'all',label:'All Employees'}].concat(filteredByCountry.filter(e => !e.isAdmin
                   && (selectedDepartment === 'all' || e.department === selectedDepartment)
                   && (selectedBranch === 'all' || (e.branches||[]).includes(selectedBranch))
                   && (selectedCountry === 'all' || e.country === selectedCountry)
-                  ).map(emp => (
-                   <option key={emp.id} value={emp.id}>{emp?.firstName || ""} {emp?.lastName || ""}</option>
-                  ))}
-                   </select>
+                  ).map(function(emp) { var nm=(emp.firstName||'')+' '+(emp.lastName||''); return {value:String(emp.id), label:nm, search:nm}; }))} />
                   </div>
                    </div>
 
@@ -9571,14 +9605,10 @@ import React, { useState, useEffect } from 'react';
                    </div>
                    <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Employee</label>
-                  <select value={empFilter} onChange={e => setEmpFilter(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                   <option value="">All Employees</option>
-                   {visEmp.filter(function(e) {
+                  <SearchableSelect value={empFilter} onChange={function(v) { setEmpFilter(String(v)); }} placeholder="All Employees" searchPlaceholder="Search employee name…"
+                   options={[{value:'',label:'All Employees'}].concat(visEmp.filter(function(e) {
                    return !e.isAdmin && (!branchFilter || (e.branches||[]).includes(branchFilter));
-                   }).map(function(e) {
-                  return <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>;
-                   })}
-                  </select>
+                   }).map(function(e) { var nm=(e.firstName||'')+' '+(e.lastName||''); return {value:String(e.id), label:nm, search:nm}; }))} />
                    </div>
                    <button onClick={generateReport} className="bg-teal-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-teal-700 transition text-sm">Generate Report</button>
                    {reportData && (
