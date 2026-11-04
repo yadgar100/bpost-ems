@@ -10423,10 +10423,8 @@ import React, { useState, useEffect } from 'react';
                   <div className="p-6 border-b border-gray-200 flex flex-wrap gap-3 items-end">
                   <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Employee *</label>
-                  <select value={empId} onChange={function(e){setEmpId(e.target.value);setReport(null);}} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 min-w-48">
-                  <option value="">Select Employee</option>
-                  {visEmp.filter(function(e){return !e.isAdmin;}).map(function(e){ return <option key={e.id} value={e.id}>{e.firstName} {e.lastName} ({e.employeeId})</option>; })}
-                  </select>
+                  <SearchableSelect value={empId} onChange={function(v){ setEmpId(String(v)); setReport(null); }} className="min-w-48" placeholder="Select Employee" searchPlaceholder="Search name or employee code…"
+                   options={[{value:'',label:'Select Employee'}].concat(visEmp.filter(function(e){return !e.isAdmin;}).map(function(e){ var lb=(e.firstName||'')+' '+(e.lastName||'')+' ('+e.employeeId+')'; return {value:String(e.id), label:lb, search:lb}; }))} />
                   </div>
                   <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">From Date</label>
@@ -11764,18 +11762,8 @@ import React, { useState, useEffect } from 'react';
                    <div className="space-y-6">
                   <div>
                    <label className="block text-sm font-semibold text-gray-700 mb-2">Select Employee *</label>
-                   <select
-                  value={manualEntry.employeeId}
-                  onChange={(e) => setManualEntry({...manualEntry, employeeId: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                   >
-                  <option value="">-- Select Employee --</option>
-                  {filteredByCountry.map(emp => (
-                   <option key={emp.id} value={emp.id}>
-                  {emp.employeeId} - {emp?.firstName || ""} {emp?.lastName || ""} ({emp.department})
-                   </option>
-                  ))}
-                   </select>
+                   <SearchableSelect value={manualEntry.employeeId} onChange={function(v){ setManualEntry({...manualEntry, employeeId: String(v)}); }} className="w-full" placeholder="-- Select Employee --" searchPlaceholder="Search name or employee code…"
+                   options={[{value:'',label:'-- Select Employee --'}].concat(filteredByCountry.map(function(emp){ var lb=(emp.employeeId||'')+' - '+(emp?.firstName||'')+' '+(emp?.lastName||'')+' ('+(emp.department||'')+')'; return {value:String(emp.id), label:lb, search:lb}; }))} />
                    {selectedEmployee && (
                   <div className="mt-2 text-sm text-gray-600">
                    <p><strong>Position:</strong> {selectedEmployee.position}</p>
@@ -12456,19 +12444,8 @@ import React, { useState, useEffect } from 'react';
                    <div className="space-y-6">
                   <div>
                    <label className="block text-sm font-semibold text-gray-700 mb-2">Select Employee *</label>
-                   <select
-                  value={manualEntryData.employeeId}
-                  onChange={(e) => setManualEntryData({...manualEntryData, employeeId: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  required
-                   >
-                  <option value="">Choose an employee...</option>
-                  {regularEmployees.map(emp => (
-                   <option key={emp.id} value={emp.id}>
-                  {emp?.firstName || ""} {emp?.lastName || ""} ({emp.employeeId}) - {emp.department}
-                   </option>
-                  ))}
-                   </select>
+                   <SearchableSelect value={manualEntryData.employeeId} onChange={function(v){ setManualEntryData({...manualEntryData, employeeId: String(v)}); }} className="w-full" placeholder="Choose an employee..." searchPlaceholder="Search name or employee code…"
+                   options={[{value:'',label:'Choose an employee...'}].concat(regularEmployees.map(function(emp){ var lb=(emp?.firstName||'')+' '+(emp?.lastName||'')+' ('+(emp.employeeId||'')+') - '+(emp.department||''); return {value:String(emp.id), label:lb, search:lb}; }))} />
                    {selectedEmployee && (
                   <p className="text-sm text-gray-600 mt-2">
                    Position: {selectedEmployee.position} | Rate: {getCurrencySymbol(selectedEmployee.currency || 'GBP')}{fmt2((parseFloat(selectedEmployee.hourlyRate)||0))}/hr
