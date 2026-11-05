@@ -9523,6 +9523,72 @@ import React, { useState, useEffect } from 'react';
                   a.href = url; a.download = 'expense_report_' + fromDate + '_' + toDate + '.csv'; a.click();
                 };
 
+                // Opens a print-ready (PDF-capable) copy of the report in a new window.
+                const printReport = function() {
+                  if (!reportData || reportData.length === 0) { alert('Generate a report first.'); return; }
+                  const esc = escHtmlNote;
+                  const fmtD = function(d) { return new Date(d).toLocaleDateString('en-GB'); };
+                  const stColor = { pending:'#b45309', approved:'#15803d', paid:'#1d4ed8', rejected:'#b91c1c' };
+                  const branchTxt = branchFilter || 'All Branches';
+                  const empTxt = empFilter ? ((visEmp.find(function(e){ return e.id === parseInt(empFilter); }) || {}).firstName || '') + ' ' + ((visEmp.find(function(e){ return e.id === parseInt(empFilter); }) || {}).lastName || '') : 'All Employees';
+                  let dupTotal = 0;
+                  const sections = reportData.map(function(row) {
+                   const rowTotal = row.items.filter(function(e){ return e.status !== 'rejected'; }).reduce(function(a,e){ return a + e.amount; }, 0);
+                   const _re = visEmp.find(function(e){ return e.id === row.employeeId || e.employeeId === row.employeeCode; });
+                   const rs = getCurrencySymbol(_re ? resolveEmployeeCurrency(_re) : ((row.items[0] && row.items[0].currency) || 'GBP'));
+                   const sums = [];
+                   if (row.totalPending > 0) sums.push('Pending: ' + rs + fmt2(row.totalPending));
+                   if (row.totalApproved > 0) sums.push('Approved: ' + rs + fmt2(row.totalApproved));
+                   if (row.totalPaid > 0) sums.push('Paid: ' + rs + fmt2(row.totalPaid));
+                   if (row.totalRejected > 0) sums.push('Rejected: ' + rs + fmt2(row.totalRejected));
+                   const body = row.items.map(function(exp) {
+                  const d = reportDupMap[exp.id];
+                  if (d) dupTotal++;
+                  return '<tr' + (d ? ' class="dup"' : '') + '>'
+                   + '<td class="nw">' + fmtD(exp.date) + '</td>'
+                   + '<td>' + esc(exp.category) + '</td>'
+                   + '<td dir="auto">' + esc(exp.description || '') + (d ? '<div class="dflag">&#9888; ' + (d.level === 'high' ? 'Likely duplicate' : 'Possible duplicate') + '</div>' : '') + '</td>'
+                   + '<td dir="auto">' + esc(exp.receiptNote || '') + '</td>'
+                   + '<td class="c">' + ((exp.hasReceipt || exp.receiptImage) ? 'Yes' : '&mdash;') + '</td>'
+                   + '<td class="r b nw">' + rs + fmt2(exp.amount) + '</td>'
+                   + '<td class="c b" style="color:' + (stColor[exp.status] || '#374151') + ';text-transform:capitalize">' + esc(exp.status) + '</td>'
+                   + '</tr>';
+                   }).join('');
+                   return '<div class="emp"><div class="emph"><span><b>' + esc(row.employeeName) + '</b> <span class="mut">' + esc(row.employeeCode || '') + '</span></span><span class="mut">' + sums.join(' &nbsp;·&nbsp; ') + '</span></div>'
+                   + '<table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Notes</th><th class="c">Receipt</th><th class="r">Amount</th><th class="c">Status</th></tr></thead><tbody>'
+                   + body
+                   + '<tr class="tot"><td colspan="5" class="r">TOTAL (excluding rejected)</td><td class="r nw">' + rs + fmt2(rowTotal) + '</td><td></td></tr>'
+                   + '</tbody></table></div>';
+                  }).join('');
+                  const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Expense Report ' + esc(fromDate) + ' to ' + esc(toDate) + '</title><style>'
+                   + '@page{size:A4 landscape;margin:12mm}'
+                   + '*{box-sizing:border-box}body{font-family:Arial,"Segoe UI",Tahoma,sans-serif;color:#1f2937;font-size:11px;margin:0}'
+                   + 'h1{font-size:20px;margin:0}.top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #0d9488;padding-bottom:8px;margin-bottom:10px}'
+                   + '.mut{color:#6b7280}.meta{font-size:11px;text-align:right;line-height:1.5}'
+                   + '.grand{background:#f0fdfa;border:1px solid #99f6e4;border-radius:6px;padding:8px 12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}'
+                   + '.grand b{font-size:18px;color:#0f766e}'
+                   + '.emp{margin-bottom:14px}.emph{background:#f3f4f6;padding:6px 8px;display:flex;justify-content:space-between;border:1px solid #e5e7eb;border-bottom:0;font-size:12px}'
+                   + 'table{width:100%;border-collapse:collapse;border:1px solid #e5e7eb}th{background:#0d9488;color:#fff;padding:5px 6px;text-align:left;font-size:10px}'
+                   + 'td{padding:4px 6px;border-top:1px solid #e5e7eb;vertical-align:top}tr{page-break-inside:avoid}thead{display:table-header-group}'
+                   + '.r{text-align:right}.c{text-align:center}.b{font-weight:bold}.nw{white-space:nowrap}'
+                   + 'tr.dup td{background:#fef2f2}.dflag{color:#b91c1c;font-size:9px;font-weight:bold;margin-top:2px}'
+                   + 'tr.tot td{background:#f9fafb;font-weight:bold;border-top:2px solid #9ca3af}'
+                   + '.footer{margin-top:10px;font-size:9px;color:#9ca3af;text-align:center}'
+                   + '</style></head><body>'
+                   + '<div class="top"><div><h1>Expense Report</h1><div class="mut">B-Post Employee Management System</div></div>'
+                   + '<div class="meta"><div><b>Period:</b> ' + fmtD(fromDate) + ' &ndash; ' + fmtD(toDate) + '</div><div><b>Branch:</b> ' + esc(branchTxt) + '</div><div><b>Employee:</b> ' + esc(empTxt.trim()) + '</div></div></div>'
+                   + '<div class="grand"><span>TOTAL EXPENSES (excluding rejected)</span><b>' + grandSym + fmt2(grandTotal) + '</b></div>'
+                   + sections
+                   + (dupTotal > 0 ? '<div class="mut" style="margin-top:6px">&#9888; ' + dupTotal + ' expense' + (dupTotal !== 1 ? 's are' : ' is') + ' flagged as a possible duplicate (shaded red) and should be reviewed.</div>' : '')
+                   + '<div class="footer">Printed ' + new Date().toLocaleString('en-GB') + '</div>'
+                   + '</body></html>';
+                  const w = window.open('', '_blank');
+                  if (!w) { alert('The print window was blocked. Please allow pop-ups for this site and try again.'); return; }
+                  w.document.write(html);
+                  w.document.close();
+                  setTimeout(function(){ w.focus(); w.print(); }, 500);
+                };
+
                 const getStatusBadgeClass = function(status) {
                   if (status === 'pending') return 'bg-amber-100 text-amber-700';
                   if (status === 'approved') return 'bg-green-100 text-green-700';
@@ -9595,6 +9661,9 @@ import React, { useState, useEffect } from 'react';
                    <button onClick={generateReport} className="bg-teal-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-teal-700 transition text-sm">Generate Report</button>
                    {reportData && (
                   <button onClick={exportCSV} className="bg-green-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-green-700 transition text-sm">Export CSV</button>
+                   )}
+                   {reportData && reportData.length > 0 && (
+                  <button onClick={printReport} className="bg-red-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-red-700 transition text-sm">🖨 Print / PDF</button>
                    )}
                   </div>
                   <div className="p-6">
