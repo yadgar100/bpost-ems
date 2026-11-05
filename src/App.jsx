@@ -9537,10 +9537,10 @@ import React, { useState, useEffect } from 'react';
                    const _re = visEmp.find(function(e){ return e.id === row.employeeId || e.employeeId === row.employeeCode; });
                    const rs = getCurrencySymbol(_re ? resolveEmployeeCurrency(_re) : ((row.items[0] && row.items[0].currency) || 'GBP'));
                    const sums = [];
-                   if (row.totalPending > 0) sums.push('Pending: ' + rs + fmt2(row.totalPending));
-                   if (row.totalApproved > 0) sums.push('Approved: ' + rs + fmt2(row.totalApproved));
-                   if (row.totalPaid > 0) sums.push('Paid: ' + rs + fmt2(row.totalPaid));
-                   if (row.totalRejected > 0) sums.push('Rejected: ' + rs + fmt2(row.totalRejected));
+                   if (row.totalPending > 0) sums.push('Pending: ' + curTotals(row.items, function(e){return e.status==='pending';}));
+                   if (row.totalApproved > 0) sums.push('Approved: ' + curTotals(row.items, function(e){return e.status==='approved';}));
+                   if (row.totalPaid > 0) sums.push('Paid: ' + curTotals(row.items, function(e){return e.status==='paid';}));
+                   if (row.totalRejected > 0) sums.push('Rejected: ' + curTotals(row.items, function(e){return e.status==='rejected';}));
                    const body = row.items.map(function(exp) {
                   const d = reportDupMap[exp.id];
                   if (d) dupTotal++;
@@ -9550,14 +9550,14 @@ import React, { useState, useEffect } from 'react';
                    + '<td dir="auto">' + esc(exp.description || '') + (d ? '<div class="dflag">&#9888; ' + (d.level === 'high' ? 'Likely duplicate' : 'Possible duplicate') + '</div>' : '') + '</td>'
                    + '<td dir="auto">' + esc(exp.receiptNote || '') + '</td>'
                    + '<td class="c">' + ((exp.hasReceipt || exp.receiptImage) ? 'Yes' : '&mdash;') + '</td>'
-                   + '<td class="r b nw">' + rs + fmt2(exp.amount) + '</td>'
+                   + '<td class="r b nw">' + getCurrencySymbol(reportCurOf(exp)) + fmt2(exp.amount) + '</td>'
                    + '<td class="c b" style="color:' + (stColor[exp.status] || '#374151') + ';text-transform:capitalize">' + esc(exp.status) + '</td>'
                    + '</tr>';
                    }).join('');
                    return '<div class="emp"><div class="emph"><span><b>' + esc(row.employeeName) + '</b> <span class="mut">' + esc(row.employeeCode || '') + '</span></span><span class="mut">' + sums.join(' &nbsp;·&nbsp; ') + '</span></div>'
                    + '<table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Notes</th><th class="c">Receipt</th><th class="r">Amount</th><th class="c">Status</th></tr></thead><tbody>'
                    + body
-                   + '<tr class="tot"><td colspan="5" class="r">TOTAL (excluding rejected)</td><td class="r nw">' + rs + fmt2(rowTotal) + '</td><td></td></tr>'
+                   + '<tr class="tot"><td colspan="5" class="r">TOTAL (excluding rejected)</td><td class="r nw">' + curTotals(row.items, notRejected).split(' + ').join('<br>') + '</td><td></td></tr>'
                    + '</tbody></table></div>';
                   }).join('');
                   const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Expense Report ' + esc(fromDate) + ' to ' + esc(toDate) + '</title><style>'
@@ -9577,7 +9577,7 @@ import React, { useState, useEffect } from 'react';
                    + '</style></head><body>'
                    + '<div class="top"><div><h1>Expense Report</h1><div class="mut">B-Post Employee Management System</div></div>'
                    + '<div class="meta"><div><b>Period:</b> ' + fmtD(fromDate) + ' &ndash; ' + fmtD(toDate) + '</div><div><b>Branch:</b> ' + esc(branchTxt) + '</div><div><b>Employee:</b> ' + esc(empTxt.trim()) + '</div></div></div>'
-                   + '<div class="grand"><span>TOTAL EXPENSES (excluding rejected)</span><b>' + grandSym + fmt2(grandTotal) + '</b></div>'
+                   + '<div class="grand"><span>TOTAL EXPENSES (excluding rejected)</span><b>' + (curTotals(reportData.reduce(function(a,r){ return a.concat(r.items); }, []), notRejected) || (grandSym + '0.00')) + '</b></div>'
                    + sections
                    + (dupTotal > 0 ? '<div class="mut" style="margin-top:6px">&#9888; ' + dupTotal + ' expense' + (dupTotal !== 1 ? 's are' : ' is') + ' flagged as a possible duplicate (shaded red) and should be reviewed.</div>' : '')
                    + '<div class="footer">Printed ' + new Date().toLocaleString('en-GB') + '</div>'
@@ -9604,6 +9604,14 @@ import React, { useState, useEffect } from 'react';
                 const reportDupMap = findDuplicateExpenses(expenses.filter(function(e){ return visEmp.some(function(v){ return v.id === e.employeeId; }); }), reportCurOf);
                 const reportDupCount = reportData ? reportData.reduce(function(n, r){ return n + r.items.filter(function(e){ return reportDupMap[e.id]; }).length; }, 0) : 0;
 
+                // Totals per currency (an employee can have expenses in several currencies).
+                const curTotals = function(items, pred) {
+                  const by = {};
+                  items.forEach(function(e) { if (pred && !pred(e)) return; const c = reportCurOf(e); by[c] = (by[c] || 0) + (parseFloat(e.amount) || 0); });
+                  const keys = MULTI_CURRENCIES.filter(function(c){ return by[c] !== undefined; });
+                  return keys.map(function(c){ return getCurrencySymbol(c) + fmt2(by[c]); }).join(' + ');
+                };
+                const notRejected = function(e) { return e.status !== 'rejected'; };
                 const grandTotal = reportData ? reportData.reduce(function(s,r) {
                   return s + r.items.filter(function(e) { return e.status !== 'rejected'; }).reduce(function(ss,e) { return ss+e.amount; }, 0);
                 }, 0) : 0;
@@ -9680,7 +9688,7 @@ import React, { useState, useEffect } from 'react';
                   <div className="space-y-6">
                    <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 text-center mb-6">
                   <p className="text-xs text-teal-600 font-semibold uppercase">Total Expenses ({fromDate} to {toDate})</p>
-                  <p className="text-3xl font-bold text-teal-700 mt-1">{grandSym}{fmt2(grandTotal)}</p>
+                  <p className="text-3xl font-bold text-teal-700 mt-1">{curTotals(reportData.reduce(function(a,r){ return a.concat(r.items); }, []), notRejected) || (grandSym + '0.00')}</p>
                    </div>
                    {reportDupCount > 0 && (
                   <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-lg px-4 py-3 text-xs">
@@ -9700,10 +9708,10 @@ import React, { useState, useEffect } from 'react';
                   <span className="text-gray-500 text-sm ml-2">{row.employeeCode}</span>
                    </div>
                    <div className="flex gap-4 text-xs flex-wrap">
-                  {row.totalPending > 0 && <span className="text-amber-600 font-semibold">Pending: {rowSym}{fmt2(row.totalPending)}</span>}
-                  {row.totalApproved > 0 && <span className="text-green-600 font-semibold">Approved: {rowSym}{fmt2(row.totalApproved)}</span>}
-                  {row.totalPaid > 0 && <span className="text-blue-600 font-semibold">Paid: {rowSym}{fmt2(row.totalPaid)}</span>}
-                  {row.totalRejected > 0 && <span className="text-red-400 font-semibold">Rejected: {rowSym}{fmt2(row.totalRejected)}</span>}
+                  {row.totalPending > 0 && <span className="text-amber-600 font-semibold">Pending: {curTotals(row.items, function(e){return e.status==='pending';})}</span>}
+                  {row.totalApproved > 0 && <span className="text-green-600 font-semibold">Approved: {curTotals(row.items, function(e){return e.status==='approved';})}</span>}
+                  {row.totalPaid > 0 && <span className="text-blue-600 font-semibold">Paid: {curTotals(row.items, function(e){return e.status==='paid';})}</span>}
+                  {row.totalRejected > 0 && <span className="text-red-400 font-semibold">Rejected: {curTotals(row.items, function(e){return e.status==='rejected';})}</span>}
                    </div>
                   </div>
                   <table className="w-full text-sm">
@@ -9741,7 +9749,7 @@ import React, { useState, useEffect } from 'react';
                    </td>
                    <td className="px-4 py-2 text-xs text-gray-600 whitespace-normal break-words max-w-xs">{exp.receiptNote || <span className="text-gray-300">—</span>}</td>
                    <td className="px-4 py-2">{(exp.hasReceipt || exp.receiptImage) ? <button onClick={function(){ openReceipt(exp); }} disabled={loadingReceiptId === exp.id} className="px-2 py-1 bg-teal-50 text-teal-700 border border-teal-200 rounded text-xs font-semibold hover:bg-teal-100 disabled:opacity-50 whitespace-nowrap">{loadingReceiptId === exp.id ? 'Loading…' : '📎 View receipt'}</button> : <span className="text-gray-300">—</span>}</td>
-                   <td className="px-4 py-2 font-bold text-gray-800">{rowSym}{fmt2(exp.amount)}</td>
+                   <td className="px-4 py-2 font-bold text-gray-800 whitespace-nowrap">{getCurrencySymbol(reportCurOf(exp))}{fmt2(exp.amount)}</td>
                    <td className="px-4 py-2">
                   <span className={'px-2 py-0.5 rounded-full text-xs font-semibold capitalize ' + getStatusBadgeClass(exp.status)}>{exp.status}</span>
                    </td>
@@ -9750,7 +9758,7 @@ import React, { useState, useEffect } from 'react';
                   })}
                   <tr className="bg-gray-50 font-bold border-t-2 border-gray-300">
                    <td colSpan="5" className="px-4 py-2 text-right text-gray-700">TOTAL</td>
-                   <td className="px-4 py-2 text-gray-800">{rowSym}{fmt2(rowTotal)}</td>
+                   <td className="px-4 py-2 text-gray-800">{curTotals(row.items, notRejected).split(' + ').map(function(t,i){ return <div key={i}>{t}</div>; })}</td>
                    <td></td>
                   </tr>
                    </tbody>
