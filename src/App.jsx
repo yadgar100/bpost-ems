@@ -643,6 +643,7 @@ import React, { useState, useEffect } from 'react';
                 const branchFilter = persistedState ? persistedState.branchFilter : ''; const setBranchFilter = mk('branchFilter');
                 const countryFilter = persistedState ? persistedState.countryFilter : ''; const setCountryFilter = mk('countryFilter');
                 const agentFilter = persistedState ? persistedState.agentFilter : ''; const setAgentFilter = mk('agentFilter');
+                const typeFilter = (persistedState && persistedState.typeFilter) || ''; const setTypeFilter = mk('typeFilter');
                 const reportData = persistedState ? persistedState.reportData : null; const setReportData = mk('reportData');
                 const [editingId, setEditingId] = useState(null);
                 const [editVals, setEditVals] = useState({});
@@ -851,6 +852,16 @@ import React, { useState, useEffect } from 'react';
                    if (branchFilter && !(emp.branches||[]).includes(branchFilter)) { reasons.push({id:c.id, why:'branch filter mismatch', empBranches:emp.branches}); return false; }
                    if (countryFilter && emp.country !== countryFilter) { reasons.push({id:c.id, why:'country filter mismatch'}); return false; }
                    if (agentFilter && c.agentCode !== agentFilter) { reasons.push({id:c.id, why:'agent filter mismatch'}); return false; }
+                   if (typeFilter) {
+                  const hasBank = (c.bankAmount || 0) > 0;
+                  const ok = typeFilter === 'bank' ? hasBank
+                   : typeFilter === 'bank_pending' ? (hasBank && !isBankApproved(c))
+                   : typeFilter === 'bank_approved' ? (hasBank && isBankApproved(c))
+                   : typeFilter === 'cash' ? !hasBank
+                   : typeFilter === 'paid_agent' ? ((c.amountPaid || 0) > 0)
+                   : true;
+                  if (!ok) { reasons.push({id:c.id, why:'payment type filter mismatch'}); return false; }
+                   }
                    if (!(c.date >= fromDate && c.date <= toDate)) { reasons.push({id:c.id, why:'date outside filter', date:c.date, fromDate, toDate}); return false; }
                    return true;
                   }).sort(function(a,b) { return a.date < b.date ? -1 : 1; });
@@ -1024,6 +1035,17 @@ import React, { useState, useEffect } from 'react';
                    .sort()
                    .map(function(code) { return { value: code, label: code, search: code + ' ' + cityOf(code) }; }));
                    })()} />
+                   </div>
+                   <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Payment Type</label>
+                  <select value={typeFilter} onChange={function(e){ setTypeFilter(e.target.value); }} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                   <option value="">All Payments</option>
+                   <option value="bank">Bank transfers only</option>
+                   <option value="bank_pending">Bank – awaiting approval</option>
+                   <option value="bank_approved">Bank – approved</option>
+                   <option value="cash">Cash only (no bank transfer)</option>
+                   <option value="paid_agent">Paid to agent</option>
+                  </select>
                    </div>
                    <button onClick={generateReport} className="bg-orange-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-orange-700 text-sm">Generate Report</button>
                    {reportData && <button onClick={exportCSV} className="bg-green-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-green-700 text-sm">Export CSV</button>}
