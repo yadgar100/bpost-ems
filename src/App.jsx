@@ -2373,6 +2373,8 @@ import React, { useState, useEffect } from 'react';
     img { width: 400px; height: 400px; border: 2px solid #e5e7eb; border-radius: 12px; }
     .instruction { margin-top: 24px; font-size: 20px; font-weight: 600; color: #374151; }
     .instruction-sub { margin-top: 8px; font-size: 14px; color: #9ca3af; }
+    .manual-code { margin-top: 20px; padding-top: 16px; border-top: 1px dashed #d1d5db; font-size: 14px; color: #6b7280; }
+    .manual-code span { display: inline-block; margin-top: 6px; font-family: 'Courier New', monospace; font-size: 26px; font-weight: 700; letter-spacing: 3px; color: #1e3a8a; }
     @media print {
       body { padding: 0; }
       .card { border: 4px solid #1e3a8a; box-shadow: none; }
@@ -2389,6 +2391,7 @@ import React, { useState, useEffect } from 'react';
     <img src="${qrUrl}" alt="QR Code" />
     <div class="instruction">📱 Scan to Check In / Check Out</div>
     <div class="instruction-sub">Point your camera at this QR code when starting or finishing your shift</div>
+    <div class="manual-code">Can't scan? Choose Manual Entry and type this code:<br/><span>${location.qrCode}</span></div>
   </div>
   <br/>
   <button class="no-print" onclick="window.print()" style="padding:12px 32px;font-size:18px;background:#1e3a8a;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-top:16px;">
