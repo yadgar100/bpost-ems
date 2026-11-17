@@ -5249,6 +5249,15 @@ import React, { useState, useEffect } from 'react';
                 const filterBatch = persistedState ? persistedState.filterBatch : ''; const setFilterBatch = mk('filterBatch');
                 // searchCode is LOCAL (not persisted) — persisted state triggers re-render on each keystroke
                 const [searchCode, setSearchCode] = useState('');
+                // Column filters (the filter row under the table headings)
+                const [officeQ, setOfficeQ] = useState('');
+                const [curHas, setCurHas] = useState({ IQD:'all', USD:'all', GBP:'all', EUR:'all' });
+                // Destination office of a shipment: the text after "Office:" up to the first " | " separator
+                const officeOf = function(p) {
+                  const n = String(p.notes || '');
+                  if (!/^Office:/i.test(n)) return '';
+                  return n.replace(/^Office:/i, '').split(' | ')[0].trim();
+                };
                 const searchRef = React.useRef(null);
                 const filterFrom = persistedState ? persistedState.filterFrom : ''; const setFilterFrom = mk('filterFrom');
                 const filterTo = persistedState ? persistedState.filterTo : ''; const setFilterTo = mk('filterTo');
@@ -5611,6 +5620,13 @@ import React, { useState, useEffect } from 'react';
                   if (filterStatus !== 'all' && p.status !== filterStatus) return false;
                   if (filterBatch && p.batchName !== filterBatch) return false;
                   if (searchCode && !p.shipmentCode.toLowerCase().includes(searchCode.toLowerCase())) return false;
+                  if (officeQ.trim()) {
+                   const oq = officeQ.trim().toLowerCase(), of = officeOf(p).toLowerCase();
+                   if (oq === '(no office)') { if (of) return false; } else if (of.indexOf(oq) === -1) return false;
+                  }
+                  for (const cur of ['IQD','USD','GBP','EUR']) {
+                   if (curHas[cur] === 'has' && !((parseFloat(p['amount' + cur]) || 0) > 0)) return false;
+                  }
                   if (filterFrom && p.createdAt && p.createdAt.slice(0,10) < filterFrom) return false;
                   if (filterTo && p.createdAt && p.createdAt.slice(0,10) > filterTo) return false;
                   return true;
@@ -5880,7 +5896,31 @@ import React, { useState, useEffect } from 'react';
                    <table className="w-full text-sm border-collapse">
                   <thead><tr className="bg-blue-50">
                    {['Employee','Batch','Shipment Code','To Office','IQD','USD','GBP','EUR','Collected','Status','Actions'].map(function(h){return <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-blue-700 border-b border-blue-100">{h}</th>;})}
-                  </tr></thead>
+                  </tr>
+                  <tr className="bg-white border-b border-blue-100">
+                   <td className="px-2 py-1" colSpan="3"><span className="text-xs text-gray-400">Column filters ▸</span></td>
+                   <td className="px-2 py-1">
+                  <input type="text" list="iraq-office-list" value={officeQ} onChange={function(e){ setOfficeQ(e.target.value); }} placeholder="Filter office…" className="w-32 border border-gray-300 rounded px-2 py-1 text-xs" />
+                  <datalist id="iraq-office-list">
+                   <option value="(no office)" />
+                   {[...new Set(iraqPayments.filter(function(r){ return !filterBatch || r.batchName === filterBatch; }).map(officeOf).filter(Boolean))].sort().map(function(o){ return <option key={o} value={o} />; })}
+                  </datalist>
+                   </td>
+                   {['IQD','USD','GBP','EUR'].map(function(cur){
+                  return <td key={cur} className="px-2 py-1">
+                   <select value={curHas[cur]} onChange={function(e){ setCurHas(Object.assign({}, curHas, {[cur]: e.target.value})); }} className="w-16 border border-gray-300 rounded px-1 py-1 text-xs">
+                    <option value="all">All</option>
+                    <option value="has">Has {cur}</option>
+                   </select>
+                  </td>;
+                   })}
+                   <td className="px-2 py-1" colSpan="3">
+                  {(officeQ || ['IQD','USD','GBP','EUR'].some(function(c){ return curHas[c] !== 'all'; })) && (
+                   <button onClick={function(){ setOfficeQ(''); setCurHas({ IQD:'all', USD:'all', GBP:'all', EUR:'all' }); }} className="px-2 py-1 bg-gray-100 text-gray-600 border border-gray-300 rounded text-xs font-semibold hover:bg-gray-200">✕ Clear column filters</button>
+                  )}
+                   </td>
+                  </tr>
+                  </thead>
                   <tbody className="divide-y divide-gray-100">
                   {filtered.length === 0 && <tr><td colSpan="11" className="text-center py-8 text-gray-400">No records found</td></tr>}
                   {filtered.map(function(p){
