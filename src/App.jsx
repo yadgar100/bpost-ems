@@ -1806,7 +1806,12 @@ import React, { useState, useEffect } from 'react';
             const [iraqPayments, setIraqPayments] = useState([]);
             // Batches an administrator has deleted are kept (hidden) under a "[DELETED] " label so they can be restored.
             const [iraqDeletedPayments, setIraqDeletedPayments] = useState([]);
-            const [iraqPayState, setIraqPayState] = useState({ activeTab:'view', batchName:'', empId:'', filterEmp:'', filterStatus:'all', filterBatch:'', filterFrom:'', filterTo:'', previewRows:[] });
+            const [iraqPayState, setIraqPayState] = useState(function() {
+              // Pay in Iraq filters survive a page refresh (saved in this browser only)
+              let sv = {};
+              try { sv = JSON.parse(localStorage.getItem('bpost_iraqpay_filters') || 'null') || {}; } catch (e) { sv = {}; }
+              return { activeTab:'view', batchName:'', empId:'', filterEmp: sv.filterEmp || '', filterStatus: sv.filterStatus || 'all', filterBatch: sv.filterBatch || '', filterFrom: sv.filterFrom || '', filterTo: sv.filterTo || '', showDupOnly: !!sv.showDupOnly, previewRows:[] };
+            });
             // Held outside the Pay in Iraq screen (a ref, so updating it never re-renders anything) so a file you
             // are midway through reviewing survives the periodic background refresh.
             const iraqUploadStoreRef = React.useRef({ batchName: '', empId: '', previewRows: [], skippedRows: [], dupDecisions: {} });
@@ -5248,10 +5253,12 @@ import React, { useState, useEffect } from 'react';
 
                 const filterBatch = persistedState ? persistedState.filterBatch : ''; const setFilterBatch = mk('filterBatch');
                 // searchCode is LOCAL (not persisted) — persisted state triggers re-render on each keystroke
-                const [searchCode, setSearchCode] = useState('');
+                const IRAQ_FILTER_KEY = 'bpost_iraqpay_filters';
+                const _iraqSaved = (function() { try { return JSON.parse(localStorage.getItem(IRAQ_FILTER_KEY) || 'null') || {}; } catch (e) { return {}; } })();
+                const [searchCode, setSearchCode] = useState(_iraqSaved.searchCode || '');
                 // Column filters (the filter row under the table headings)
-                const [officeQ, setOfficeQ] = useState('');
-                const [curHas, setCurHas] = useState({ IQD:'all', USD:'all', GBP:'all', EUR:'all' });
+                const [officeQ, setOfficeQ] = useState(_iraqSaved.officeQ || '');
+                const [curHas, setCurHas] = useState(Object.assign({ IQD:'all', USD:'all', GBP:'all', EUR:'all' }, _iraqSaved.curHas || {}));
                 // Destination office of a shipment: the text after "Office:" up to the first " | " separator
                 const officeOf = function(p) {
                   const n = String(p.notes || '');
@@ -5261,6 +5268,16 @@ import React, { useState, useEffect } from 'react';
                 const searchRef = React.useRef(null);
                 const filterFrom = persistedState ? persistedState.filterFrom : ''; const setFilterFrom = mk('filterFrom');
                 const filterTo = persistedState ? persistedState.filterTo : ''; const setFilterTo = mk('filterTo');
+                // Save every filter so a page refresh keeps them (browser-local; cleared only by the user)
+                React.useEffect(function() {
+                  try {
+                   localStorage.setItem(IRAQ_FILTER_KEY, JSON.stringify({
+                  filterEmp: filterEmp || '', filterStatus: filterStatus || 'all', filterBatch: filterBatch || '',
+                  filterFrom: filterFrom || '', filterTo: filterTo || '', showDupOnly: !!showDupOnly,
+                  searchCode: searchCode || '', officeQ: officeQ || '', curHas: curHas
+                   }));
+                  } catch (e) {}
+                }, [filterEmp, filterStatus, filterBatch, filterFrom, filterTo, showDupOnly, searchCode, officeQ, curHas]);
                 const [deletingBatch, setDeletingBatch] = useState(false);
                 const [showDeletedBatches, setShowDeletedBatches] = useState(false);
                 const [busyDeletedBatch, setBusyDeletedBatch] = useState('');
