@@ -4970,6 +4970,8 @@ import React, { useState, useEffect } from 'react';
                 const [uploading, setUploading] = useState(false);
                 const [editingId, setEditingId] = useState(null);
                 const [editVals, setEditVals] = useState({});
+                const [editRaw, setEditRaw] = useState({});
+                const [autoConvert, setAutoConvert] = useState(true);
 
                 const currencies = ['IQD','USD','GBP','EUR'];
 
@@ -5127,6 +5129,51 @@ import React, { useState, useEffect } from 'react';
                   setUploading(false);
                 };
 
+                // ── Batch (manifest) exchange rates, derived from the shipments already in that batch ──
+                // For each currency the rate is the most frequent "IQD per 1 unit" ratio found across the batch's
+                // shipments that carry both an IQD amount and an amount in that currency.
+                const getBatchRates = function(batchName) {
+                  const rates = { IQD: 1 };
+                  ['USD','GBP','EUR'].forEach(function(cur) {
+                   const counts = {};
+                   iraqPayments.forEach(function(r) {
+                  if (r.batchName !== batchName) return;
+                  const iqd = parseFloat(r.amountIQD) || 0, fx = parseFloat(r['amount' + cur]) || 0;
+                  if (iqd < 50000 || fx <= 0) return;
+                  const k = Math.round(iqd / fx);
+                  counts[k] = (counts[k] || 0) + 1;
+                   });
+                   let best = null, bestN = 0;
+                   Object.keys(counts).forEach(function(k) { if (counts[k] > bestN) { best = parseFloat(k); bestN = counts[k]; } });
+                   if (best) rates[cur] = best;
+                  });
+                  return rates;
+                };
+
+                // Called from the edit inputs: stores the typed value and, when enabled, recalculates the other
+                // currencies of the same shipment that already hold an amount, using this batch's rates.
+                const handleAmountEdit = function(p, field, raw) {
+                  const num = parseFloat(raw) || 0;
+                  const nv = Object.assign({}, editVals, { [field]: num });
+                  const nr = Object.assign({}, editRaw, { [field]: raw });
+                  if (autoConvert && /^amount(IQD|USD|GBP|EUR)$/.test(field)) {
+                   const rates = getBatchRates(p.batchName);
+                   const src = field.replace('amount','');
+                   if (rates[src]) {
+                  const inIQD = num * rates[src];
+                  ['IQD','USD','GBP','EUR'].forEach(function(cur) {
+                   if (cur === src || !rates[cur]) return;
+                   const f = 'amount' + cur;
+                   const hasAmt = (parseFloat(editVals[f]) || 0) > 0 || (parseFloat(p[f]) || 0) > 0;
+                   if (!hasAmt) return;
+                   const out = cur === 'IQD' ? Math.round(inIQD) : Math.round(inIQD / rates[cur] * 100) / 100;
+                   nv[f] = out; nr[f] = String(out);
+                  });
+                   }
+                  }
+                  setEditVals(nv); setEditRaw(nr);
+                };
+
                 const handleSaveEdit = async function(p) {
                   try {
                    const vals = Object.assign({}, editVals);
@@ -5143,7 +5190,7 @@ import React, { useState, useEffect } from 'react';
                    if (anyCollected) vals.status = 'collected';
                    await apiCall(API_ENDPOINTS.iraqPay + '/' + p.id, { method:'PUT', body: JSON.stringify(vals) });
                    await loadIraqPaymentsFromAPI();
-                   setEditingId(null); setEditVals({});
+                   setEditingId(null); setEditVals({}); setEditRaw({});
                   } catch(e) { alert('Unable to save the changes: ' + e.message); }
                 };
 
@@ -5270,6 +5317,31 @@ import React, { useState, useEffect } from 'react';
                   amountIQD: '', amountUSD: '', amountGBP: '', amountEUR: '', notes: ''
                 });
                 const [addShipSaving, setAddShipSaving] = useState(false);
+                const [addAutoConv, setAddAutoConv] = useState(true);
+                const [addManual, setAddManual] = useState({}); // currencies typed by hand (never overwritten by auto-fill)
+
+                // Typing an amount fills the other currencies from the selected batch's rates.
+                // Currencies the user typed by hand are left untouched.
+                const handleAddAmount = function(cur, raw) {
+                  const nf = Object.assign({}, addShipForm, { ['amount' + cur]: raw });
+                  const nm = Object.assign({}, addManual);
+                  if (raw === '' || raw === null) delete nm[cur]; else nm[cur] = true;
+                  if (addAutoConv) {
+                   const rates = getBatchRates((addShipForm.batchName || '').trim());
+                   const num = parseFloat(raw) || 0;
+                   if (rates[cur]) {
+                  const inIQD = num * rates[cur];
+                  ['IQD','USD','GBP','EUR'].forEach(function(o) {
+                   if (o === cur || nm[o] || !rates[o]) return;
+                   if (num <= 0) { nf['amount' + o] = ''; return; }
+                   const out = o === 'IQD' ? Math.round(inIQD) : Math.round(inIQD / rates[o] * 100) / 100;
+                   nf['amount' + o] = String(out);
+                  });
+                   }
+                  }
+                  setAddManual(nm);
+                  setAddShipForm(nf);
+                };
 
                 // Save draft on every form change while the modal is open.
                 React.useEffect(function() {
@@ -5301,6 +5373,7 @@ import React, { useState, useEffect } from 'react';
                    toOffice:       '',
                    amountIQD: '', amountUSD: '', amountGBP: '', amountEUR: '', notes: ''
                   });
+                  setAddManual({});
                   setShowAddShipment(true);
                 };
 
@@ -5787,6 +5860,22 @@ import React, { useState, useEffect } from 'react';
                   )}
                    </div>
                   )}
+                  {editingId && (function() {
+                   const ep = iraqPayments.find(function(r){ return r.id === editingId; });
+                   if (!ep) return null;
+                   const rt = getBatchRates(ep.batchName);
+                   const parts = ['USD','GBP','EUR'].filter(function(c){ return rt[c]; }).map(function(c){ return '1 ' + c + ' = ' + rt[c].toLocaleString() + ' IQD'; });
+                   return (
+                  <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-xs text-blue-900">
+                   <label className="flex items-center gap-2 font-semibold cursor-pointer">
+                  <input type="checkbox" checked={autoConvert} onChange={function(e){ setAutoConvert(e.target.checked); }} />
+                  Auto-convert the other currencies using the batch rate
+                   </label>
+                   <span>Batch <b>{ep.batchName}</b>: {parts.length ? parts.join(' · ') : 'no rate could be derived from this batch'}</span>
+                   <span className="text-blue-700">You can still adjust any amount manually before saving.</span>
+                  </div>
+                   );
+                  })()}
                   <div className="overflow-x-auto">
                    <table className="w-full text-sm border-collapse">
                   <thead><tr className="bg-blue-50">
@@ -5797,7 +5886,8 @@ import React, { useState, useEffect } from 'react';
                   {filtered.map(function(p){
                    const isEditing = editingId === p.id;
                    const inp = function(field, val) {
-                  return <input type="number" min="0" step="0.01" defaultValue={val} onChange={function(e){setEditVals(Object.assign({},editVals,{[field]:parseFloat(e.target.value)||0}));}} className="w-20 border border-gray-300 rounded px-1 py-0.5 text-xs" />;
+                  const isAmt = field.indexOf('amount') === 0;
+                  return <input type="number" min="0" step="0.01" value={editRaw[field] !== undefined ? editRaw[field] : (val === undefined || val === null ? '' : val)} onChange={function(e){ if (isAmt) { handleAmountEdit(p, field, e.target.value); } else { setEditVals(Object.assign({},editVals,{[field]:parseFloat(e.target.value)||0})); setEditRaw(Object.assign({},editRaw,{[field]:e.target.value})); } }} className="w-20 border border-gray-300 rounded px-1 py-0.5 text-xs" />;
                    };
                    return (
                   <tr key={p.id} className={(dupMap[p.id] ? (dupMap[p.id].hasCollected ? 'bg-red-50 hover:bg-red-100 ' : 'bg-amber-50 hover:bg-amber-100 ') : 'hover:bg-gray-50 ') + (p.status==='collected'?'opacity-70':'')}>
@@ -5869,11 +5959,11 @@ import React, { useState, useEffect } from 'react';
                   {isEditing ? (
                    <div className="flex gap-1">
                   <button onClick={function(){handleSaveEdit(p);}} className="px-2 py-1 bg-green-600 text-white rounded text-xs">Save</button>
-                  <button onClick={function(){setEditingId(null);setEditVals({});}} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">Cancel</button>
+                  <button onClick={function(){setEditingId(null);setEditVals({});setEditRaw({});}} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">Cancel</button>
                    </div>
                   ) : (
                    <div className="flex gap-1">
-                  {hasPermission('canEditIraqPay') && <button onClick={function(){setEditingId(p.id);setEditVals({amountIQD:p.amountIQD,amountUSD:p.amountUSD,amountGBP:p.amountGBP,amountEUR:p.amountEUR,collectedIQD:p.collectedIQD,collectedUSD:p.collectedUSD,collectedGBP:p.collectedGBP,collectedEUR:p.collectedEUR});}} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">Edit</button>}
+                  {hasPermission('canEditIraqPay') && <button onClick={function(){setEditingId(p.id);setEditRaw({});setEditVals({amountIQD:p.amountIQD,amountUSD:p.amountUSD,amountGBP:p.amountGBP,amountEUR:p.amountEUR,collectedIQD:p.collectedIQD,collectedUSD:p.collectedUSD,collectedGBP:p.collectedGBP,collectedEUR:p.collectedEUR});}} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">Edit</button>}
                   {hasPermission('canEditIraqPay') && <button onClick={function(){openReassign(p);}} className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs whitespace-nowrap">Reassign</button>}
                   {hasPermission('canEditIraqPay') && <button onClick={function(){handleDelete(p);}} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">Delete</button>}
                    </div>
@@ -6213,32 +6303,45 @@ import React, { useState, useEffect } from 'react';
                   {/* Amounts */}
                   <div>
                    <label className="block text-xs font-semibold text-gray-600 mb-2">Amounts</label>
+                   {(function() {
+                  const rt = getBatchRates((addShipForm.batchName || '').trim());
+                  const parts = ['USD','GBP','EUR'].filter(function(c){ return rt[c]; }).map(function(c){ return '1 ' + c + ' = ' + rt[c].toLocaleString() + ' IQD'; });
+                  return (
+                   <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                  <label className="flex items-center gap-2 font-semibold cursor-pointer">
+                   <input type="checkbox" checked={addAutoConv} onChange={function(e){ setAddAutoConv(e.target.checked); }} />
+                   Auto-fill the other currencies using the batch rate
+                  </label>
+                  <span>{(addShipForm.batchName || '').trim() ? (parts.length ? parts.join(' · ') : 'No rate available for this batch — enter the amounts manually.') : 'Enter the batch name to load its rates.'}</span>
+                   </div>
+                  );
+                   })()}
                    <div className="grid grid-cols-4 gap-3">
                   <div>
                    <label className="text-xs text-gray-400">GBP</label>
                    <input type="number" min="0" step="0.01" value={addShipForm.amountGBP}
-                  onChange={function(e){setAddShipForm(Object.assign({}, addShipForm, {amountGBP: e.target.value}));}}
+                  onChange={function(e){handleAddAmount('GBP', e.target.value);}}
                   placeholder="0.00"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                   <div>
                    <label className="text-xs text-gray-400">USD</label>
                    <input type="number" min="0" step="0.01" value={addShipForm.amountUSD}
-                  onChange={function(e){setAddShipForm(Object.assign({}, addShipForm, {amountUSD: e.target.value}));}}
+                  onChange={function(e){handleAddAmount('USD', e.target.value);}}
                   placeholder="0.00"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                   <div>
                    <label className="text-xs text-gray-400">IQD</label>
                    <input type="number" min="0" step="1" value={addShipForm.amountIQD}
-                  onChange={function(e){setAddShipForm(Object.assign({}, addShipForm, {amountIQD: e.target.value}));}}
+                  onChange={function(e){handleAddAmount('IQD', e.target.value);}}
                   placeholder="0"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
                   <div>
                    <label className="text-xs text-gray-400">EUR</label>
                    <input type="number" min="0" step="0.01" value={addShipForm.amountEUR}
-                  onChange={function(e){setAddShipForm(Object.assign({}, addShipForm, {amountEUR: e.target.value}));}}
+                  onChange={function(e){handleAddAmount('EUR', e.target.value);}}
                   placeholder="0.00"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                   </div>
