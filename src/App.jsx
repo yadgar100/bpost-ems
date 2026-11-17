@@ -390,6 +390,77 @@ import React, { useState, useEffect } from 'react';
               );
             };
 
+            // Multi-select filter with search and checkboxes. The list opens in a fixed-position panel so it is
+            // never clipped by a scrolling table. props: options [{value,label,count}], selected [values], onChange(newArray)
+            const MultiSelectFilter = function(props) {
+              const options = props.options || [];
+              const selected = props.selected || [];
+              const [open, setOpen] = React.useState(false);
+              const [query, setQuery] = React.useState('');
+              const [pos, setPos] = React.useState({ top: 0, left: 0 });
+              const boxRef = React.useRef(null);
+              const btnRef = React.useRef(null);
+              const panelRef = React.useRef(null);
+              React.useEffect(function() {
+                if (!open) return;
+                const onDown = function(e) {
+                  if ((boxRef.current && boxRef.current.contains(e.target)) || (panelRef.current && panelRef.current.contains(e.target))) return;
+                  setOpen(false); setQuery('');
+                };
+                const onMove = function() { setOpen(false); };
+                document.addEventListener('mousedown', onDown);
+                document.addEventListener('touchstart', onDown);
+                window.addEventListener('resize', onMove);
+                return function() { document.removeEventListener('mousedown', onDown); document.removeEventListener('touchstart', onDown); window.removeEventListener('resize', onMove); };
+              }, [open]);
+              const toggleOpen = function() {
+                if (!open && btnRef.current) {
+                  const r = btnRef.current.getBoundingClientRect();
+                  const left = Math.max(8, Math.min(r.left, window.innerWidth - 300));
+                  setPos({ top: r.bottom + 4, left: left });
+                }
+                setOpen(!open);
+              };
+              const q = query.trim().toLowerCase();
+              const shown = q ? options.filter(function(o) { return (o.label || '').toLowerCase().indexOf(q) !== -1; }) : options;
+              const isSel = function(v) { return selected.indexOf(v) !== -1; };
+              const toggle = function(v) { props.onChange(isSel(v) ? selected.filter(function(x) { return x !== v; }) : selected.concat([v])); };
+              const label = selected.length === 0 ? (props.placeholder || 'All')
+                : selected.length === 1 ? ((options.find(function(o) { return o.value === selected[0]; }) || {}).label || selected[0])
+                : selected.length + ' selected';
+              return (
+                <div ref={boxRef} className="relative inline-block">
+                  <button ref={btnRef} type="button" onClick={toggleOpen}
+                    className={'w-36 border rounded px-2 py-1 text-xs bg-white text-left flex items-center justify-between gap-1 ' + (selected.length ? 'border-blue-500 text-blue-800 font-semibold' : 'border-gray-300 text-gray-600')}>
+                    <span className="truncate">{label}</span><span className="text-gray-400">▾</span>
+                  </button>
+                  {open && (
+                    <div ref={panelRef} style={{ position: 'fixed', top: pos.top, left: pos.left, width: '18rem', maxWidth: '92vw', zIndex: 9999 }} className="bg-white border border-gray-300 rounded-lg shadow-xl">
+                      <div className="p-2 border-b border-gray-200">
+                        <input type="text" autoFocus value={query} onChange={function(e) { setQuery(e.target.value); }} placeholder={props.searchPlaceholder || 'Search…'}
+                          className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm focus:outline-none" />
+                        <div className="flex items-center justify-between mt-2 text-xs">
+                          <button type="button" onClick={function() { props.onChange(Array.from(new Set(selected.concat(shown.map(function(o) { return o.value; }))))); }} className="text-blue-700 font-semibold hover:underline">Select all{q ? ' shown' : ''}</button>
+                          <button type="button" onClick={function() { props.onChange([]); }} className="text-gray-600 font-semibold hover:underline">Clear ({selected.length})</button>
+                        </div>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto py-1">
+                        {shown.length === 0 ? <div className="px-3 py-2 text-sm text-gray-400">No matches</div> : shown.map(function(o) {
+                          return (
+                            <label key={String(o.value)} className={'flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-blue-50 ' + (isSel(o.value) ? 'bg-blue-50 font-semibold' : '')}>
+                              <input type="checkbox" checked={isSel(o.value)} onChange={function() { toggle(o.value); }} />
+                              <span className="flex-1">{o.label}</span>
+                              {o.count !== undefined && <span className="text-xs text-gray-400">{o.count}</span>}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            };
+
             // Formats an amount with thousands separators and two decimals (e.g. 7,500,000.00).
             const fmt2 = function(n) {
               const v = Number(n);
@@ -5257,7 +5328,7 @@ import React, { useState, useEffect } from 'react';
                 const _iraqSaved = (function() { try { return JSON.parse(localStorage.getItem(IRAQ_FILTER_KEY) || 'null') || {}; } catch (e) { return {}; } })();
                 const [searchCode, setSearchCode] = useState(_iraqSaved.searchCode || '');
                 // Column filters (the filter row under the table headings)
-                const [officeQ, setOfficeQ] = useState(_iraqSaved.officeQ || '');
+                const [officeSel, setOfficeSel] = useState(Array.isArray(_iraqSaved.officeSel) ? _iraqSaved.officeSel : []);
                 const [curHas, setCurHas] = useState(Object.assign({ IQD:'all', USD:'all', GBP:'all', EUR:'all' }, _iraqSaved.curHas || {}));
                 // Destination office of a shipment: the text after "Office:" up to the first " | " separator
                 const officeOf = function(p) {
@@ -5274,10 +5345,10 @@ import React, { useState, useEffect } from 'react';
                    localStorage.setItem(IRAQ_FILTER_KEY, JSON.stringify({
                   filterEmp: filterEmp || '', filterStatus: filterStatus || 'all', filterBatch: filterBatch || '',
                   filterFrom: filterFrom || '', filterTo: filterTo || '', showDupOnly: !!showDupOnly,
-                  searchCode: searchCode || '', officeQ: officeQ || '', curHas: curHas
+                  searchCode: searchCode || '', officeSel: officeSel, curHas: curHas
                    }));
                   } catch (e) {}
-                }, [filterEmp, filterStatus, filterBatch, filterFrom, filterTo, showDupOnly, searchCode, officeQ, curHas]);
+                }, [filterEmp, filterStatus, filterBatch, filterFrom, filterTo, showDupOnly, searchCode, officeSel, curHas]);
                 const [deletingBatch, setDeletingBatch] = useState(false);
                 const [showDeletedBatches, setShowDeletedBatches] = useState(false);
                 const [busyDeletedBatch, setBusyDeletedBatch] = useState('');
@@ -5637,9 +5708,10 @@ import React, { useState, useEffect } from 'react';
                   if (filterStatus !== 'all' && p.status !== filterStatus) return false;
                   if (filterBatch && p.batchName !== filterBatch) return false;
                   if (searchCode && !p.shipmentCode.toLowerCase().includes(searchCode.toLowerCase())) return false;
-                  if (officeQ.trim()) {
-                   const oq = officeQ.trim().toLowerCase(), of = officeOf(p).toLowerCase();
-                   if (oq === '(no office)') { if (of) return false; } else if (of.indexOf(oq) === -1) return false;
+                  if (officeSel.length) {
+                   const of = officeOf(p);
+                   const ok = of ? officeSel.some(function(v) { return v !== '__none__' && v.toLowerCase() === of.toLowerCase(); }) : officeSel.indexOf('__none__') !== -1;
+                   if (!ok) return false;
                   }
                   for (const cur of ['IQD','USD','GBP','EUR']) {
                    if (curHas[cur] === 'has' && !((parseFloat(p['amount' + cur]) || 0) > 0)) return false;
@@ -5917,11 +5989,19 @@ import React, { useState, useEffect } from 'react';
                   <tr className="bg-white border-b border-blue-100">
                    <td className="px-2 py-1" colSpan="3"><span className="text-xs text-gray-400">Column filters ▸</span></td>
                    <td className="px-2 py-1">
-                  <input type="text" list="iraq-office-list" value={officeQ} onChange={function(e){ setOfficeQ(e.target.value); }} placeholder="Filter office…" className="w-32 border border-gray-300 rounded px-2 py-1 text-xs" />
-                  <datalist id="iraq-office-list">
-                   <option value="(no office)" />
-                   {[...new Set(iraqPayments.filter(function(r){ return !filterBatch || r.batchName === filterBatch; }).map(officeOf).filter(Boolean))].sort().map(function(o){ return <option key={o} value={o} />; })}
-                  </datalist>
+                  <MultiSelectFilter
+                   selected={officeSel}
+                   onChange={setOfficeSel}
+                   placeholder="All offices"
+                   searchPlaceholder="Search office…"
+                   options={(function() {
+                  const pool = iraqPayments.filter(function(r){ return !filterBatch || r.batchName === filterBatch; });
+                  const cnt = {}; let none = 0;
+                  pool.forEach(function(r){ const o = officeOf(r); if (o) cnt[o] = (cnt[o] || 0) + 1; else none++; });
+                  const opts = Object.keys(cnt).sort().map(function(o){ return { value: o, label: o, count: cnt[o] }; });
+                  officeSel.forEach(function(v){ if (v !== '__none__' && !cnt[v]) opts.push({ value: v, label: v, count: 0 }); });
+                  return [{ value: '__none__', label: '(no office)', count: none }].concat(opts);
+                   })()} />
                    </td>
                    {['IQD','USD','GBP','EUR'].map(function(cur){
                   return <td key={cur} className="px-2 py-1">
@@ -5932,8 +6012,8 @@ import React, { useState, useEffect } from 'react';
                   </td>;
                    })}
                    <td className="px-2 py-1" colSpan="3">
-                  {(officeQ || ['IQD','USD','GBP','EUR'].some(function(c){ return curHas[c] !== 'all'; })) && (
-                   <button onClick={function(){ setOfficeQ(''); setCurHas({ IQD:'all', USD:'all', GBP:'all', EUR:'all' }); }} className="px-2 py-1 bg-gray-100 text-gray-600 border border-gray-300 rounded text-xs font-semibold hover:bg-gray-200">✕ Clear column filters</button>
+                  {(officeSel.length > 0 || ['IQD','USD','GBP','EUR'].some(function(c){ return curHas[c] !== 'all'; })) && (
+                   <button onClick={function(){ setOfficeSel([]); setCurHas({ IQD:'all', USD:'all', GBP:'all', EUR:'all' }); }} className="px-2 py-1 bg-gray-100 text-gray-600 border border-gray-300 rounded text-xs font-semibold hover:bg-gray-200">✕ Clear column filters</button>
                   )}
                    </td>
                   </tr>
