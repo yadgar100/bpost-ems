@@ -4849,8 +4849,14 @@ import React, { useState, useEffect } from 'react';
                 const searchActive = searchCode.trim().length > 0;
                 const base = myIraqPay.filter(function(p){ return p.status === statusFilter && !isHiddenCollected(p); });
                 const batchFiltered = (!searchActive && selectedBatch) ? base.filter(function(p){return p.batchName === selectedBatch;}) : base;
+                // Search covers EVERY shipment of this employee — pending and collected, in every batch (including
+                // collected shipments of superseded batches that the lists hide) — so a code that was just
+                // collected can always be found again. Pending results are listed first.
+                const searchNeedle = searchCode.trim().toLowerCase();
+                const searchPool = myIraqPay;
                 const shown = searchActive
-                  ? base.filter(function(p){ return p.shipmentCode.toLowerCase().includes(searchCode.trim().toLowerCase()); })
+                  ? searchPool.filter(function(p){ return String(p.shipmentCode || '').toLowerCase().includes(searchNeedle); })
+                      .sort(function(a, b){ return (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1); })
                   : batchFiltered;
 
                 return (
@@ -4896,14 +4902,14 @@ import React, { useState, useEffect } from 'react';
                   )}
 
                   {searchActive && (
-                   <p className="text-xs text-blue-700 mb-2 bg-blue-100 rounded-lg px-3 py-1.5">🌐 Searching across all batches</p>
+                   <p className="text-xs text-blue-700 mb-2 bg-blue-100 rounded-lg px-3 py-1.5">🌐 Searching all batches — pending and collected</p>
                   )}
 
-                  <p className="text-xs text-gray-500 mb-3">{shown.length} of {searchActive ? base.length : batchFiltered.length} shipment{shown.length!==1?'s':''}</p>
+                  <p className="text-xs text-gray-500 mb-3">{searchActive ? (shown.length + ' shipment' + (shown.length!==1?'s':'') + ' found out of ' + myIraqPay.length) : (shown.length + ' of ' + batchFiltered.length + ' shipment' + (shown.length!==1?'s':''))}</p>
 
                   <div className="space-y-3">
                    {shown.length === 0 && (
-                  <p className="text-center text-gray-400 text-sm py-6">No {statusFilter} shipments{searchActive ? ' match your search' : ''}.</p>
+                  <p className="text-center text-gray-400 text-sm py-6">{searchActive ? 'No shipment with this code is assigned to you (pending or collected). Please check the code, or contact an administrator.' : 'No ' + statusFilter + ' shipments.'}</p>
                    )}
                    {shown.map(function(p){
                   return <IraqPayCard key={p.id} p={p} apiCall={apiCall} API_ENDPOINTS={API_ENDPOINTS} loadIraqPaymentsFromAPI={loadIraqPaymentsFromAPI} sym={sym} />;
