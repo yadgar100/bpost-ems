@@ -5297,6 +5297,51 @@ import React, { useState, useEffect } from 'react';
                 };
                 const closeReassign = function() { setReassignRec(null); setReassignEmp(''); setReassignBatch(''); };
 
+                // ── "Also assign" — give the same shipment to ANOTHER employee while it stays with the current one ──
+                // Creates a second record (pending, nothing collected) for the chosen employee. The original is untouched.
+                const [shareRec, setShareRec] = useState(null);
+                const [shareEmp, setShareEmp] = useState('');
+                const [shareBatch, setShareBatch] = useState('');
+                const [sharing, setSharing] = useState(false);
+                const openShare = function(p) { setShareRec(p); setShareEmp(''); setShareBatch(p.batchName || ''); };
+                const closeShare = function() { setShareRec(null); setShareEmp(''); setShareBatch(''); };
+                const handleShare = async function() {
+                  if (!shareRec) return;
+                  if (!shareEmp) { alert('Please select the employee to also assign this shipment to.'); return; }
+                  const newEmp = visEmp.find(function(e){ return e.id === parseInt(shareEmp); });
+                  const newEmpName = newEmp ? (newEmp.firstName + ' ' + newEmp.lastName) : 'selected employee';
+                  const batch = (shareBatch || shareRec.batchName || '').trim();
+                  const already = iraqPayments.some(function(r){ return r.id !== shareRec.id && r.shipmentCode === shareRec.shipmentCode && r.batchName === batch && parseInt(r.employeeId) === parseInt(shareEmp); });
+                  if (parseInt(shareEmp) === parseInt(shareRec.employeeId) && batch === shareRec.batchName) { alert('This employee already holds this shipment in that batch. Please choose a different employee or batch.'); return; }
+                  const msg = 'Also assign shipment ' + shareRec.shipmentCode + ' to ' + newEmpName + '?\n\n'
+                   + 'It will STAY with ' + (shareRec.employeeName || 'the current employee') + ' and a second copy (pending, nothing collected) will be created for ' + newEmpName + ' in batch ' + batch + '.\n\n'
+                   + 'Please note: both employees will be able to record a collection, and the amounts will be counted twice in the batch totals.'
+                   + (already ? '\n\n⚠ ' + newEmpName + ' already has this shipment code in this batch.' : '');
+                  if (!window.confirm(msg)) return;
+                  setSharing(true);
+                  try {
+                   const recv = [shareRec.receiver, shareRec.receiverMobile].filter(Boolean).join(' | ');
+                   const baseNote = iraqNoteText(shareRec.notes);
+                   const body = {
+                    batchName:       batch,
+                    shipmentCode:    shareRec.shipmentCode,
+                    employeeId:      parseInt(shareEmp),
+                    amountIQD:       parseFloat(shareRec.amountIQD) || 0,
+                    amountUSD:       parseFloat(shareRec.amountUSD) || 0,
+                    amountGBP:       parseFloat(shareRec.amountGBP) || 0,
+                    amountEUR:       parseFloat(shareRec.amountEUR) || 0,
+                    receiverContact: recv,
+                    toOffice:        officeOf(shareRec),
+                    notes:           (baseNote ? baseNote + ' ' : '') + '[Also assigned to ' + (shareRec.employeeName || 'another employee') + ']'
+                   };
+                   await apiCall(API_ENDPOINTS.iraqPay, { method:'POST', body: JSON.stringify(body) });
+                   await loadIraqPaymentsFromAPI();
+                   closeShare();
+                   alert('✅ ' + shareRec.shipmentCode + ' is now also assigned to ' + newEmpName + '. It remains with ' + (shareRec.employeeName || 'the original employee') + '.');
+                  } catch(e) { alert('Unable to assign the shipment: ' + e.message); }
+                  setSharing(false);
+                };
+
                 const handleReassign = async function() {
                   if (!reassignRec) return;
                   if (!reassignEmp) { alert('Please select an employee to assign to.'); return; }
@@ -6107,6 +6152,7 @@ import React, { useState, useEffect } from 'react';
                   ) : (
                    <div className="flex gap-1">
                   {hasPermission('canEditIraqPay') && <button onClick={function(){setEditingId(p.id);setEditRaw({});setEditVals({amountIQD:p.amountIQD,amountUSD:p.amountUSD,amountGBP:p.amountGBP,amountEUR:p.amountEUR,collectedIQD:p.collectedIQD,collectedUSD:p.collectedUSD,collectedGBP:p.collectedGBP,collectedEUR:p.collectedEUR});}} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">Edit</button>}
+                  {hasPermission('canEditIraqPay') && <button onClick={function(){openShare(p);}} title="Assign this shipment to another employee as well, keeping it with the current employee" className="px-2 py-1 bg-teal-100 text-teal-700 rounded text-xs whitespace-nowrap">Also assign</button>}
                   {hasPermission('canEditIraqPay') && <button onClick={function(){openReassign(p);}} className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs whitespace-nowrap">Reassign</button>}
                   {hasPermission('canEditIraqPay') && <button onClick={function(){handleDelete(p);}} className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">Delete</button>}
                    </div>
@@ -6182,6 +6228,40 @@ import React, { useState, useEffect } from 'react';
                   <div className="flex gap-2 justify-end pt-2">
                    <button onClick={closeReassign} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 text-sm">Cancel</button>
                    <button onClick={handleReassign} disabled={reassigning} className="px-5 py-2 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 disabled:opacity-50 text-sm">{reassigning ? 'Reassigning…' : 'Reassign'}</button>
+                  </div>
+                   </div>
+                  </div>
+                   </div>
+                  )}
+
+                  {shareRec && (
+                   <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+                   <div className="bg-gradient-to-r from-teal-600 to-emerald-600 px-6 py-4 flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-white">Also Assign Shipment</h3>
+                  <button onClick={closeShare} className="text-teal-100 hover:text-white text-xl font-bold">×</button>
+                   </div>
+                   <div className="p-6 space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                   <div className="flex justify-between"><span className="text-gray-500">Shipment</span><span className="font-bold text-gray-800">{shareRec.shipmentCode}</span></div>
+                   <div className="flex justify-between mt-1"><span className="text-gray-500">Stays with</span><span className="font-medium text-gray-700">{shareRec.employeeName || '—'}{shareRec.batchName ? ' · ' + shareRec.batchName : ''}</span></div>
+                   <div className="flex justify-between mt-1 text-xs text-gray-400"><span>Amounts</span><span>{shareRec.amountIQD ? shareRec.amountIQD.toLocaleString()+' IQD ' : ''}{shareRec.amountUSD ? '$'+fmt2(shareRec.amountUSD)+' ' : ''}{shareRec.amountGBP ? '£'+fmt2(shareRec.amountGBP)+' ' : ''}{shareRec.amountEUR ? '€'+fmt2(shareRec.amountEUR) : ''}</span></div>
+                  </div>
+                  <div>
+                   <label className="block text-sm font-semibold text-gray-700 mb-1">Also assign to Employee <span className="text-red-500">*</span></label>
+                   <SearchableSelect value={shareEmp} onChange={function(v){ setShareEmp(String(v)); }} className="w-full" placeholder="Select employee…" searchPlaceholder="Search employee…"
+                   options={[{value:'',label:'Select employee…'}].concat(visEmp.slice().sort(function(a,b){ return (a.firstName+a.lastName).localeCompare(b.firstName+b.lastName); }).filter(function(e){ return e.id !== parseInt(shareRec.employeeId); }).map(function(e){ return {value:String(e.id), label:e.firstName+' '+e.lastName+' ('+e.employeeId+')', search:e.firstName+' '+e.lastName+' '+e.employeeId}; }))} />
+                  </div>
+                  <div>
+                   <label className="block text-sm font-semibold text-gray-700 mb-1">Batch for the new copy</label>
+                   <SearchableSelect value={shareBatch} onChange={function(v){ setShareBatch(String(v)); }} className="w-full" placeholder="Select batch" searchPlaceholder="Search batch name…"
+                   options={[...new Set(iraqPayments.map(function(r){return r.batchName;}))].filter(Boolean).sort().map(function(x){ return {value:x, label:x, search:x}; })} />
+                   <p className="text-xs text-gray-400 mt-1">Defaults to the current batch.</p>
+                  </div>
+                  <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">The original stays with {shareRec.employeeName || 'the current employee'}. A second copy (pending, nothing collected) is created for the selected employee. Both employees can record a collection, and the amounts will be counted twice in the batch totals.</p>
+                  <div className="flex gap-2 justify-end pt-2">
+                   <button onClick={closeShare} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 text-sm">Cancel</button>
+                   <button onClick={handleShare} disabled={sharing} className="px-5 py-2 bg-teal-600 text-white rounded-lg font-semibold hover:bg-teal-700 disabled:opacity-50 text-sm">{sharing ? 'Assigning…' : 'Also assign'}</button>
                   </div>
                    </div>
                   </div>
